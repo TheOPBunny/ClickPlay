@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  IMPORTANT: App Sandbox must be DISABLED for CGEvent injection to work.
+  Sandboxed apps cannot post CGEvents to other processes — this is a macOS security restriction.
+  
+  This means the app cannot be distributed on the Mac App Store as-is.
+  For personal/local use, building without sandbox is fine.
+-->
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<false/>
+	<!-- 
+	  If you need to distribute via App Store someday, you'd need to switch to
+	  a virtual HID device approach (IOKit/DriverKit) instead of CGEvent.
+	-->
+</dict>
+</plist>
