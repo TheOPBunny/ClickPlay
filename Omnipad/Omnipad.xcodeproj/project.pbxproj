@@ -1,0 +1,558 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXContainerItemProxy section */
+		108AC7542DB5997900B7EFFD /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 108AC73A2DB5997800B7EFFD /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 108AC7412DB5997800B7EFFD;
+			remoteInfo = Omnipad;
+		};
+		108AC75E2DB5997900B7EFFD /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 108AC73A2DB5997800B7EFFD /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 108AC7412DB5997800B7EFFD;
+			remoteInfo = Omnipad;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		108AC7422DB5997800B7EFFD /* Omnipad.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Omnipad.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		108AC7532DB5997900B7EFFD /* OmnipadTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OmnipadTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		108AC75D2DB5997900B7EFFD /* OmnipadUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OmnipadUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		108AC7442DB5997800B7EFFD /* Omnipad */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Omnipad;
+			sourceTree = "<group>";
+		};
+		108AC7562DB5997900B7EFFD /* OmnipadTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = OmnipadTests;
+			sourceTree = "<group>";
+		};
+		108AC7602DB5997900B7EFFD /* OmnipadUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = OmnipadUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		108AC73F2DB5997800B7EFFD /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		108AC7502DB5997900B7EFFD /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		108AC75A2DB5997900B7EFFD /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		108AC7392DB5997800B7EFFD = {
+			isa = PBXGroup;
+			children = (
+				108AC7442DB5997800B7EFFD /* Omnipad */,
+				108AC7562DB5997900B7EFFD /* OmnipadTests */,
+				108AC7602DB5997900B7EFFD /* OmnipadUITests */,
+				108AC7432DB5997800B7EFFD /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		108AC7432DB5997800B7EFFD /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				108AC7422DB5997800B7EFFD /* Omnipad.app */,
+				108AC7532DB5997900B7EFFD /* OmnipadTests.xctest */,
+				108AC75D2DB5997900B7EFFD /* OmnipadUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		108AC7412DB5997800B7EFFD /* Omnipad */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 108AC7672DB5997900B7EFFD /* Build configuration list for PBXNativeTarget "Omnipad" */;
+			buildPhases = (
+				108AC73E2DB5997800B7EFFD /* Sources */,
+				108AC73F2DB5997800B7EFFD /* Frameworks */,
+				108AC7402DB5997800B7EFFD /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				108AC7442DB5997800B7EFFD /* Omnipad */,
+			);
+			name = Omnipad;
+			packageProductDependencies = (
+			);
+			productName = Omnipad;
+			productReference = 108AC7422DB5997800B7EFFD /* Omnipad.app */;
+			productType = "com.apple.product-type.application";
+		};
+		108AC7522DB5997900B7EFFD /* OmnipadTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 108AC76A2DB5997900B7EFFD /* Build configuration list for PBXNativeTarget "OmnipadTests" */;
+			buildPhases = (
+				108AC74F2DB5997900B7EFFD /* Sources */,
+				108AC7502DB5997900B7EFFD /* Frameworks */,
+				108AC7512DB5997900B7EFFD /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				108AC7552DB5997900B7EFFD /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				108AC7562DB5997900B7EFFD /* OmnipadTests */,
+			);
+			name = OmnipadTests;
+			packageProductDependencies = (
+			);
+			productName = OmnipadTests;
+			productReference = 108AC7532DB5997900B7EFFD /* OmnipadTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		108AC75C2DB5997900B7EFFD /* OmnipadUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 108AC76D2DB5997900B7EFFD /* Build configuration list for PBXNativeTarget "OmnipadUITests" */;
+			buildPhases = (
+				108AC7592DB5997900B7EFFD /* Sources */,
+				108AC75A2DB5997900B7EFFD /* Frameworks */,
+				108AC75B2DB5997900B7EFFD /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				108AC75F2DB5997900B7EFFD /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				108AC7602DB5997900B7EFFD /* OmnipadUITests */,
+			);
+			name = OmnipadUITests;
+			packageProductDependencies = (
+			);
+			productName = OmnipadUITests;
+			productReference = 108AC75D2DB5997900B7EFFD /* OmnipadUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		108AC73A2DB5997800B7EFFD /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1630;
+				LastUpgradeCheck = 1630;
+				TargetAttributes = {
+					108AC7412DB5997800B7EFFD = {
+						CreatedOnToolsVersion = 16.3;
+					};
+					108AC7522DB5997900B7EFFD = {
+						CreatedOnToolsVersion = 16.3;
+						TestTargetID = 108AC7412DB5997800B7EFFD;
+					};
+					108AC75C2DB5997900B7EFFD = {
+						CreatedOnToolsVersion = 16.3;
+						TestTargetID = 108AC7412DB5997800B7EFFD;
+					};
+				};
+			};
+			buildConfigurationList = 108AC73D2DB5997800B7EFFD /* Build configuration list for PBXProject "Omnipad" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 108AC7392DB5997800B7EFFD;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 108AC7432DB5997800B7EFFD /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				108AC7412DB5997800B7EFFD /* Omnipad */,
+				108AC7522DB5997900B7EFFD /* OmnipadTests */,
+				108AC75C2DB5997900B7EFFD /* OmnipadUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		108AC7402DB5997800B7EFFD /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		108AC7512DB5997900B7EFFD /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		108AC75B2DB5997900B7EFFD /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		108AC73E2DB5997800B7EFFD /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		108AC74F2DB5997900B7EFFD /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		108AC7592DB5997900B7EFFD /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		108AC7552DB5997900B7EFFD /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 108AC7412DB5997800B7EFFD /* Omnipad */;
+			targetProxy = 108AC7542DB5997900B7EFFD /* PBXContainerItemProxy */;
+		};
+		108AC75F2DB5997900B7EFFD /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 108AC7412DB5997800B7EFFD /* Omnipad */;
+			targetProxy = 108AC75E2DB5997900B7EFFD /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		108AC7652DB5997900B7EFFD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 29P5MA925S;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.4;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		108AC7662DB5997900B7EFFD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 29P5MA925S;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.4;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		108AC7682DB5997900B7EFFD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Omnipad/Omnipad.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 29P5MA925S;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSMainStoryboardFile = Main;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Me.Omnipad;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		108AC7692DB5997900B7EFFD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Omnipad/Omnipad.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 29P5MA925S;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSMainStoryboardFile = Main;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Me.Omnipad;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		108AC76B2DB5997900B7EFFD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 29P5MA925S;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.4;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Me.OmnipadTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Omnipad.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Omnipad";
+			};
+			name = Debug;
+		};
+		108AC76C2DB5997900B7EFFD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 29P5MA925S;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.4;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Me.OmnipadTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Omnipad.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Omnipad";
+			};
+			name = Release;
+		};
+		108AC76E2DB5997900B7EFFD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 29P5MA925S;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Me.OmnipadUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = Omnipad;
+			};
+			name = Debug;
+		};
+		108AC76F2DB5997900B7EFFD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 29P5MA925S;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Me.OmnipadUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = Omnipad;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		108AC73D2DB5997800B7EFFD /* Build configuration list for PBXProject "Omnipad" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				108AC7652DB5997900B7EFFD /* Debug */,
+				108AC7662DB5997900B7EFFD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		108AC7672DB5997900B7EFFD /* Build configuration list for PBXNativeTarget "Omnipad" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				108AC7682DB5997900B7EFFD /* Debug */,
+				108AC7692DB5997900B7EFFD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		108AC76A2DB5997900B7EFFD /* Build configuration list for PBXNativeTarget "OmnipadTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				108AC76B2DB5997900B7EFFD /* Debug */,
+				108AC76C2DB5997900B7EFFD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		108AC76D2DB5997900B7EFFD /* Build configuration list for PBXNativeTarget "OmnipadUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				108AC76E2DB5997900B7EFFD /* Debug */,
+				108AC76F2DB5997900B7EFFD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 108AC73A2DB5997800B7EFFD /* Project object */;
+}
