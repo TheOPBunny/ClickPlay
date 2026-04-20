@@ -67,6 +67,13 @@ After making changes, validate the relevant behaviors:
 - Toggle pill hide and show works.
 - Profile switching reloads the layout correctly.
 
+## Development Setup
+- For reliable Accessibility/TCC behavior during development, use a stable signed app identity.
+- Set a real Team in Xcode signing settings.
+- Use a stable bundle identifier instead of the placeholder identifier.
+- Do not rely on ad hoc/manual signing if you want Accessibility permission to persist across rebuilds.
+- Prefer running the same signed app path between launches when validating `CGEvent` injection behavior.
+
 ## Notes for Agents
 - Assume this is a prototype that will evolve, so clarity and maintainability matter.
 - If changing input behavior, be conservative and reason through edge cases like lost mouse-up, duplicate press, and stale held keys.
