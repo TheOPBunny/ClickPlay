@@ -83,6 +83,10 @@ final class GamepadContentView: NSView {
 
         func setMinimized(_ minimized: Bool) {
             minimizeButton.title = minimized ? "+" : "−"
+            closeButton.isHidden = minimized
+            titleLabel.isHidden = minimized
+            separatorView.isHidden = minimized
+            needsLayout = true
         }
 
         private func setup() {
@@ -120,11 +124,20 @@ final class GamepadContentView: NSView {
             super.layout()
 
             let buttonSize = CGSize(width: 24, height: 24)
-            closeButton.frame = NSRect(x: 10, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
-            minimizeButton.frame = NSRect(x: closeButton.frame.maxX + 8, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
-            titleLabel.frame = NSRect(x: 84, y: bounds.midY - 10, width: max(50, bounds.width - 168), height: 20)
-            separatorView.frame = NSRect(x: 12, y: 0, width: bounds.width - 24, height: 1)
-            separatorView.isHidden = bounds.height <= 32
+            if closeButton.isHidden {
+                minimizeButton.frame = NSRect(
+                    x: bounds.midX - buttonSize.width / 2,
+                    y: bounds.midY - buttonSize.height / 2,
+                    width: buttonSize.width,
+                    height: buttonSize.height
+                )
+            } else {
+                closeButton.frame = NSRect(x: 10, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
+                minimizeButton.frame = NSRect(x: closeButton.frame.maxX + 8, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
+                titleLabel.frame = NSRect(x: 84, y: bounds.midY - 10, width: max(50, bounds.width - 168), height: 20)
+                separatorView.frame = NSRect(x: 12, y: 0, width: bounds.width - 24, height: 1)
+                separatorView.isHidden = bounds.height <= 32
+            }
         }
 
         @objc private func handleToggleMinimize() {
@@ -158,7 +171,7 @@ final class GamepadContentView: NSView {
 
     static let headerHeight: CGFloat = 32
     static let contentGap: CGFloat = 0
-    static let minimizedTileSize = CGSize(width: 164, height: headerHeight)
+    static let minimizedTileSize = CGSize(width: 56, height: headerHeight)
 
     static func windowSize(for profile: Profile, minimized: Bool) -> CGSize {
         if minimized { return minimizedTileSize }
