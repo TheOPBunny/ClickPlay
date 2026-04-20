@@ -2,7 +2,14 @@ import Cocoa
 
 final class GamepadContentView: NSView {
 
+    private final class PassthroughVisualEffectView: NSVisualEffectView {
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+
     private var buttonViews: [GamepadButton: GamepadButtonView] = [:]
+    private var dragStartWindowOrigin: NSPoint = .zero
+    private var dragStartLocationInScreen: NSPoint = .zero
+    private var isDraggingBackground = false
 
     init(frame: NSRect, profile: Profile) {
         super.init(frame: frame)
@@ -18,45 +25,12 @@ final class GamepadContentView: NSView {
         layer?.cornerRadius = 20
         layer?.masksToBounds = true
 
-        let blur = NSVisualEffectView(frame: bounds)
+        let blur = PassthroughVisualEffectView(frame: bounds)
         blur.autoresizingMask = [.width, .height]
         blur.material = .hudWindow
         blur.blendingMode = .behindWindow
         blur.state = .active
         addSubview(blur, positioned: .below, relativeTo: nil)
-
-        // Drag gesture — fires alongside normal event delivery, doesn't swallow clicks
-        let pan = NSPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
-        pan.delaysPrimaryMouseButtonEvents = false   // critical: don't delay subview mouseDown
-        addGestureRecognizer(pan)
-    }
-
-    private var dragStartWindowOrigin: NSPoint = .zero
-    private var dragStartLocation: NSPoint = .zero
-
-    @objc private func handlePan(_ gr: NSPanGestureRecognizer) {
-        // Only drag when the gesture started on empty background (not a button)
-        if gr.state == .began {
-            let pt = gr.location(in: self)
-            let overButton = buttonViews.values.contains { $0.frame.contains(pt) }
-            NSLog("[ContentView] Pan began at \(pt), overButton=\(overButton)")
-            guard !overButton else {
-                NSLog("[ContentView] Pan cancelled — started on button")
-                gr.state = .cancelled
-                return
-            }
-            dragStartWindowOrigin = window?.frame.origin ?? .zero
-            dragStartLocation = gr.location(in: nil)  // in screen coords
-        }
-        if gr.state == .changed {
-            let cur = gr.location(in: nil)
-            let dx = cur.x - dragStartLocation.x
-            let dy = cur.y - dragStartLocation.y
-            let newOrigin = NSPoint(x: dragStartWindowOrigin.x + dx,
-                                    y: dragStartWindowOrigin.y + dy)
-            window?.setFrameOrigin(newOrigin)
-            (window as? GamepadWindow)?.updatePillPosition()
-        }
     }
 
     private func buildButtons(profile: Profile) {
@@ -90,4 +64,28 @@ final class GamepadContentView: NSView {
 
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let window else { return }
+        isDraggingBackground = true
+        dragStartWindowOrigin = window.frame.origin
+        dragStartLocationInScreen = window.convertPoint(toScreen: event.locationInWindow)
+        NSLog("[ContentView] Background drag began at \(dragStartLocationInScreen)")
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard isDraggingBackground, let window else { return }
+        let currentLocationInScreen = window.convertPoint(toScreen: event.locationInWindow)
+        let dx = currentLocationInScreen.x - dragStartLocationInScreen.x
+        let dy = currentLocationInScreen.y - dragStartLocationInScreen.y
+        let newOrigin = NSPoint(x: dragStartWindowOrigin.x + dx, y: dragStartWindowOrigin.y + dy)
+        window.setFrameOrigin(newOrigin)
+        (window as? GamepadWindow)?.updatePillPosition()
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard isDraggingBackground else { return }
+        isDraggingBackground = false
+        NSLog("[ContentView] Background drag ended")
+    }
 }

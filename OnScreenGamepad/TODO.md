@@ -1,0 +1,42 @@
+# TODO
+
+## Bugs
+
+- [ ] Fix jittery window dragging and make movement feel smooth and stable.
+- [ ] Add window resizing support for the gamepad overlay.
+- [ ] Make the toggle pill draggable when the gamepad is minimized into pill mode.
+- [ ] Investigate why Accessibility permission is prompted on every startup even after permission is granted.
+Notes:
+This may be caused by Xcode rebuilding and re-signing the app on each run, but it needs to be verified.
+
+## Features
+
+- [ ] Add a built-in drop-down menu for switching profiles.
+- [ ] Add transparency controls to that same menu instead of a separate transparency menu.
+- [ ] Support layered profiles so a profile can contain sub-profiles.
+- [ ] Add buttons on the gamepad to quickly swap between sub-profiles.
+- [ ] Change button presses so button presses last 33 ms.
+- [ ] Add an option for buttons to toggle into a held-down state on press.
+- [ ] Fade the gamepad to 100% transparency after a configurable period of inactivity.
+- [ ] Explore tighter integration with `GamepadConfigurator` at `/Users/hassanzahid/Projects/Xcode/GamepadConfigurator`.
+- [ ] Evaluate whether `OnScreenGamepad` and `GamepadConfigurator` should eventually be merged.
+
+## Joystick Concept
+
+- [ ] Design and prototype a virtual joystick mode.
+Requirements:
+- Pressing the joystick button should capture the mouse.
+- The joystick should support 8-direction input.
+- Moving the mouse toward a direction should activate that input.
+- Releasing the joystick should return the mouse to the joystick deadzone.
+- Right-click should release mouse capture.
+
+## Miscellaneous
+
+- [ ] Create and add an app icon.
+- [ ] Pick a better product name.
+
+## Notes
+
+- Preserve current `KeyInjector` behavior as a compatibility boundary.
+- New input features may extend the injection system, but they should not change the current press, hold, and release semantics without explicit approval.

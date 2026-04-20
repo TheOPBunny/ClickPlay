@@ -7,22 +7,20 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B001 /* AppDelegate.swift */; };
 		A000 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = B000 /* main.swift */; };
-		A007 /* Profile.swift in Sources */ = {isa = PBXBuildFile; fileRef = B009 /* Profile.swift */; };
-		A008 /* ProfileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B010 /* ProfileStore.swift */; };
+		A001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B001 /* AppDelegate.swift */; };
 		A002 /* KeyMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = B002 /* KeyMapping.swift */; };
 		A003 /* KeyInjector.swift in Sources */ = {isa = PBXBuildFile; fileRef = B003 /* KeyInjector.swift */; };
 		A004 /* GamepadButtonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B004 /* GamepadButtonView.swift */; };
 		A005 /* GamepadContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B005 /* GamepadContentView.swift */; };
 		A006 /* GamepadWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B006 /* GamepadWindow.swift */; };
+		A007 /* Profile.swift in Sources */ = {isa = PBXBuildFile; fileRef = B009 /* Profile.swift */; };
+		A008 /* ProfileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B010 /* ProfileStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		B001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		B000 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
-		B009 /* Profile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Profile.swift; sourceTree = "<group>"; };
-		B010 /* ProfileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileStore.swift; sourceTree = "<group>"; };
+		B001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		B002 /* KeyMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyMapping.swift; sourceTree = "<group>"; };
 		B003 /* KeyInjector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyInjector.swift; sourceTree = "<group>"; };
 		B004 /* GamepadButtonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamepadButtonView.swift; sourceTree = "<group>"; };
@@ -30,27 +28,22 @@
 		B006 /* GamepadWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamepadWindow.swift; sourceTree = "<group>"; };
 		B007 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B008 /* OnScreenGamepad.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OnScreenGamepad.entitlements; sourceTree = "<group>"; };
+		B009 /* Profile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Profile.swift; sourceTree = "<group>"; };
+		B010 /* ProfileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileStore.swift; sourceTree = "<group>"; };
 		PROD /* OnScreenGamepad.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OnScreenGamepad.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		FW01 = {
+		FW01 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
-			files = ();
+			files = (
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		ROOT = {
-			isa = PBXGroup;
-			children = (
-				GRP1 /* OnScreenGamepad */,
-				GRP2 /* Products */,
-			);
-			sourceTree = "<group>";
-		};
 		GRP1 /* OnScreenGamepad */ = {
 			isa = PBXGroup;
 			children = (
@@ -77,19 +70,29 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		ROOT = {
+			isa = PBXGroup;
+			children = (
+				GRP1 /* OnScreenGamepad */,
+				GRP2 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
 		TGT1 /* OnScreenGamepad */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = CFG1;
+			buildConfigurationList = CFG1 /* Build configuration list for PBXNativeTarget "OnScreenGamepad" */;
 			buildPhases = (
 				SRC1 /* Sources */,
 				FW01 /* Frameworks */,
 				RES1 /* Resources */,
 			);
-			buildRules = ();
-			dependencies = ();
+			buildRules = (
+			);
+			dependencies = (
+			);
 			name = OnScreenGamepad;
 			productName = OnScreenGamepad;
 			productReference = PROD /* OnScreenGamepad.app */;
@@ -110,7 +113,7 @@
 					};
 				};
 			};
-			buildConfigurationList = CFG0;
+			buildConfigurationList = CFG0 /* Build configuration list for PBXProject "OnScreenGamepad" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -129,10 +132,11 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		RES1 = {
+		RES1 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = ();
+			files = (
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
@@ -157,7 +161,7 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		DBG0 /* Debug (project) */ = {
+		DBG0 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -189,7 +193,34 @@
 			};
 			name = Debug;
 		};
-		REL0 /* Release (project) */ = {
+		DBG1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = OnScreenGamepad/OnScreenGamepad.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = OnScreenGamepad/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yourname.OnScreenGamepad;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		REL0 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -212,14 +243,17 @@
 			};
 			name = Release;
 		};
-		DBG1 /* Debug (target) */ = {
+		REL1 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OnScreenGamepad/OnScreenGamepad.entitlements;
-				CODE_SIGN_STYLE = Automatic;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = "";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OnScreenGamepad/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -227,30 +261,10 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.yourname.OnScreenGamepad";
+				PRODUCT_BUNDLE_IDENTIFIER = com.yourname.OnScreenGamepad;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-			};
-			name = Debug;
-		};
-		REL1 /* Release (target) */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = OnScreenGamepad/OnScreenGamepad.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = OnScreenGamepad/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.yourname.OnScreenGamepad";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -278,7 +292,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
 	};
 	rootObject = PROJ /* Project object */;
 }
