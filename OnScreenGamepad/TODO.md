@@ -2,12 +2,15 @@
 
 ## Bugs
 
-- [ ] Fix jittery window dragging and make movement feel smooth and stable.
+- [x] Fix jittery window dragging and make movement feel smooth and stable.
 - [ ] Add window resizing support for the gamepad overlay.
 - [ ] Make the toggle pill draggable when the gamepad is minimized into pill mode.
-- [ ] Investigate why Accessibility permission is prompted on every startup even after permission is granted.
+- [x] Investigate why Accessibility permission is prompted on every startup even after permission is granted.
 Notes:
-This may be caused by Xcode rebuilding and re-signing the app on each run, but it needs to be verified.
+This was caused by unstable development signing rather than the app's Accessibility permission logic.
+Fix:
+Use a real Team, a stable bundle identifier, and a normal development signing identity instead of ad hoc/manual signing.
+Run the app from a stable signed app path and grant Accessibility permission to that signed app once.
 
 ## Features
 

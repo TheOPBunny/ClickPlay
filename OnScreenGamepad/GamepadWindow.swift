@@ -10,7 +10,8 @@ final class GamepadWindow: NSPanel {
     convenience init() {
         let screen = NSScreen.main ?? NSScreen.screens[0]
         let sw = screen.visibleFrame.width
-        let size = GamepadWindow.defaultSize
+        let profile = ProfileStore.shared.activeProfile
+        let size = CGSize(width: profile.padWidth, height: profile.padHeight)
         let origin = NSPoint(
             x: screen.visibleFrame.minX + (sw - size.width) / 2,
             y: screen.visibleFrame.minY + 20
@@ -34,7 +35,6 @@ final class GamepadWindow: NSPanel {
         isReleasedWhenClosed = false
         hidesOnDeactivate = false
 
-        let profile = ProfileStore.shared.activeProfile
         let content = GamepadContentView(frame: NSRect(origin: .zero, size: size), profile: profile)
         contentView = content
 
@@ -47,7 +47,6 @@ final class GamepadWindow: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
-    // Called by the pan gesture in GamepadContentView
     func updatePillPosition() {
         guard let pill = togglePill else { return }
         let pillSize = CGSize(width: 36, height: 20)
@@ -119,6 +118,12 @@ final class GamepadWindow: NSPanel {
     func reloadProfile() {
         let profile = ProfileStore.shared.activeProfile
         alphaValue = profile.opacity
+        let currentFrame = frame
+        let newSize = CGSize(width: profile.padWidth, height: profile.padHeight)
+        if currentFrame.size != newSize {
+            setFrame(NSRect(origin: currentFrame.origin, size: newSize), display: true)
+            updatePillPosition()
+        }
         (contentView as? GamepadContentView)?.reload(profile: profile)
     }
 }

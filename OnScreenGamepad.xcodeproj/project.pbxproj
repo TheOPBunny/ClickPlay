@@ -198,12 +198,12 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OnScreenGamepad/OnScreenGamepad.entitlements;
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=macosx*]" = "";
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = 29P5MA925S;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OnScreenGamepad/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -211,7 +211,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.yourname.OnScreenGamepad;
+				PRODUCT_BUNDLE_IDENTIFIER = com.Hassan.OnScreenGamepad;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
@@ -248,12 +248,12 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OnScreenGamepad/OnScreenGamepad.entitlements;
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=macosx*]" = "";
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = 29P5MA925S;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OnScreenGamepad/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -261,7 +261,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.yourname.OnScreenGamepad;
+				PRODUCT_BUNDLE_IDENTIFIER = com.Hassan.OnScreenGamepad;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";

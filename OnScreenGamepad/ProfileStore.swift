@@ -79,6 +79,13 @@ final class ProfileStore {
         save()
     }
 
+    func updateActiveProfileSize(width: Double, height: Double) {
+        guard let idx = profiles.firstIndex(where: { $0.id == activeProfileID }) else { return }
+        profiles[idx].padWidth = width
+        profiles[idx].padHeight = height
+        save()
+    }
+
     // MARK: -
 
     private struct SavedData: Codable {
