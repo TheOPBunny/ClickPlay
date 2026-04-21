@@ -4,6 +4,7 @@ final class GamepadButtonView: NSView {
 
     let button: GamepadButton
     private var config: ButtonConfig
+    private var pressedKeyCode: CGKeyCode?
     private let label = NSTextField(labelWithString: "")
     private var isPressed = false
     private var trackingArea: NSTrackingArea?
@@ -39,8 +40,18 @@ final class GamepadButtonView: NSView {
     }
 
     func updateConfig(_ newConfig: ButtonConfig) {
+        releaseIfNeeded()
         config = newConfig
         label.stringValue = config.label
+        updateAppearance(animated: false)
+    }
+
+    func releaseIfNeeded() {
+        guard let pressedKeyCode else { return }
+
+        KeyInjector.shared.releaseRaw(pressedKeyCode)
+        self.pressedKeyCode = nil
+        isPressed = false
         updateAppearance(animated: false)
     }
 
@@ -88,11 +99,18 @@ final class GamepadButtonView: NSView {
         let keyCode = CGKeyCode(config.keyCode)
         NSLog("[Button \(button.rawValue)] setPressed=\(pressed) keyCode=\(keyCode)")
         if pressed {
+            pressedKeyCode = keyCode
             KeyInjector.shared.pressRaw(keyCode)
         } else {
-            KeyInjector.shared.releaseRaw(keyCode)
+            let keyToRelease = pressedKeyCode ?? keyCode
+            KeyInjector.shared.releaseRaw(keyToRelease)
+            pressedKeyCode = nil
         }
         updateAppearance(animated: true)
+    }
+
+    deinit {
+        releaseIfNeeded()
     }
 
     private func updateAppearance(animated: Bool) {

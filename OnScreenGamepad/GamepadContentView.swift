@@ -335,6 +335,7 @@ final class GamepadContentView: NSView {
         })
 
         for button in buttonViews.keys where !activeButtons.contains(button) {
+            buttonViews[button]?.releaseIfNeeded()
             buttonViews[button]?.removeFromSuperview()
             buttonViews.removeValue(forKey: button)
         }
