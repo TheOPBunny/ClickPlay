@@ -74,20 +74,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(editProfilesItem)
         menu.addItem(NSMenuItem.separator())
 
-        // Profile switcher
-        let profilesHeader = NSMenuItem(title: "Profiles", action: nil, keyEquivalent: "")
-        profilesHeader.isEnabled = false
-        menu.addItem(profilesHeader)
-
-        for profile in ProfileStore.shared.profiles {
-            let item = NSMenuItem(title: profile.name, action: #selector(switchProfile(_:)), keyEquivalent: "")
-            item.representedObject = profile.id.uuidString
-            item.target = self
-            if profile.id == ProfileStore.shared.activeProfileID {
-                item.state = .on
-            }
-            menu.addItem(item)
-        }
+        let profilesItem = NSMenuItem(title: "Profiles", action: nil, keyEquivalent: "")
+        profilesItem.submenu = makeProfilesMenu()
+        menu.addItem(profilesItem)
 
         menu.addItem(NSMenuItem.separator())
         let accessibilityItem = NSMenuItem(title: "Grant Accessibility Permission", action: #selector(openAccessibility), keyEquivalent: "")
@@ -100,6 +89,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(quitItem)
 
         statusItem?.menu = menu
+    }
+
+    private func makeProfilesMenu() -> NSMenu {
+        let profilesMenu = NSMenu(title: "Profiles")
+
+        for profile in ProfileStore.shared.profiles {
+            let item = NSMenuItem(title: profile.name, action: #selector(switchProfile(_:)), keyEquivalent: "")
+            item.representedObject = profile.id.uuidString
+            item.target = self
+            item.state = profile.id == ProfileStore.shared.activeProfileID ? .on : .off
+            profilesMenu.addItem(item)
+        }
+
+        return profilesMenu
     }
 
     func launchGamepad() {
