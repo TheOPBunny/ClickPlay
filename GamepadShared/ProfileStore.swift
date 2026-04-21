@@ -80,12 +80,14 @@ final class ProfileStore {
         save()
     }
 
-    func duplicate(_ id: UUID) {
-        guard var src = profiles.first(where: { $0.id == id }) else { return }
+    @discardableResult
+    func duplicate(_ id: UUID) -> Profile? {
+        guard var src = profiles.first(where: { $0.id == id }) else { return nil }
         src.id = UUID()
         src.name = src.name + " Copy"
         profiles.append(src)
         save()
+        return src
     }
 
     func updateActiveProfileSize(width: Double, height: Double) {
