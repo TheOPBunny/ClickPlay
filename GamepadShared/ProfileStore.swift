@@ -86,8 +86,6 @@ final class ProfileStore {
         save()
     }
 
-    // MARK: -
-
     private struct SavedData: Codable {
         var profiles: [Profile]
         var activeProfileID: UUID?

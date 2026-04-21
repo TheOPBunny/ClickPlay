@@ -49,30 +49,30 @@ struct Profile: Codable, Identifiable {
         }
 
         // Shoulders / triggers
-        add(.triggerL,  x: 38,    y: H-24,  w: 52, h: 32, hex: "#8844DD", key: 14)  // E
-        add(.shoulderL, x: 38,    y: H-60,  w: 52, h: 32, hex: "#8844DD", key: 12)  // Q
-        add(.triggerZR, x: W-38,  y: H-24,  w: 52, h: 32, hex: "#8844DD", key: 15)  // R
-        add(.shoulderR, x: W-38,  y: H-60,  w: 52, h: 32, hex: "#8844DD", key: 13)  // W
+        add(.triggerL,  x: 38,    y: H - 24,  w: 52, h: 32, hex: "#8844DD", key: 14)  // E
+        add(.shoulderL, x: 38,    y: H - 60,  w: 52, h: 32, hex: "#8844DD", key: 12)  // Q
+        add(.triggerZR, x: W - 38, y: H - 24, w: 52, h: 32, hex: "#8844DD", key: 15)  // R
+        add(.shoulderR, x: W - 38, y: H - 60, w: 52, h: 32, hex: "#8844DD", key: 13)  // W
 
         // D-pad
-        add(.dpadUp,    x: 82,    y: H-111, w: 40, h: 40, hex: "#666666", key: 126)
-        add(.dpadDown,  x: 82,    y: H-199, w: 40, h: 40, hex: "#666666", key: 125)
-        add(.dpadLeft,  x: 38,    y: H-155, w: 40, h: 40, hex: "#666666", key: 123)
-        add(.dpadRight, x: 126,   y: H-155, w: 40, h: 40, hex: "#666666", key: 124)
+        add(.dpadUp,    x: 82,    y: H - 111, w: 40, h: 40, hex: "#666666", key: 126)
+        add(.dpadDown,  x: 82,    y: H - 199, w: 40, h: 40, hex: "#666666", key: 125)
+        add(.dpadLeft,  x: 38,    y: H - 155, w: 40, h: 40, hex: "#666666", key: 123)
+        add(.dpadRight, x: 126,   y: H - 155, w: 40, h: 40, hex: "#666666", key: 124)
 
         // Start / Select
-        add(.select,    x: W/2-36, y: H-91, w: 52, h: 28, hex: "#333333", key: 49)  // Space
-        add(.start,     x: W/2+36, y: H-91, w: 52, h: 28, hex: "#333333", key: 36)  // Return
+        add(.select,    x: W / 2 - 36, y: H - 91, w: 52, h: 28, hex: "#333333", key: 49)  // Space
+        add(.start,     x: W / 2 + 36, y: H - 91, w: 52, h: 28, hex: "#333333", key: 36)  // Return
 
         // Face buttons
-        add(.faceY,     x: W-82,  y: H-111, w: 44, h: 44, hex: "#CCAA00", key: 1)   // S
-        add(.faceA,     x: W-82,  y: H-199, w: 44, h: 44, hex: "#229933", key: 6)   // Z
-        add(.faceX,     x: W-126, y: H-155, w: 44, h: 44, hex: "#2255CC", key: 0)   // A
-        add(.faceB,     x: W-38,  y: H-155, w: 44, h: 44, hex: "#CC2222", key: 7)   // X
+        add(.faceY,     x: W - 82,  y: H - 111, w: 44, h: 44, hex: "#CCAA00", key: 1)   // S
+        add(.faceA,     x: W - 82,  y: H - 199, w: 44, h: 44, hex: "#229933", key: 6)   // Z
+        add(.faceX,     x: W - 126, y: H - 155, w: 44, h: 44, hex: "#2255CC", key: 0)   // A
+        add(.faceB,     x: W - 38,  y: H - 155, w: 44, h: 44, hex: "#CC2222", key: 7)   // X
 
         // Stick clicks
-        add(.leftStick,  x: 82,   y: H-240, w: 40, h: 40, hex: "#2a2a2a", key: 8)   // C
-        add(.rightStick, x: W-82, y: H-240, w: 40, h: 40, hex: "#2a2a2a", key: 9)   // V
+        add(.leftStick,  x: 82,    y: H - 240, w: 40, h: 40, hex: "#2a2a2a", key: 8)   // C
+        add(.rightStick, x: W - 82, y: H - 240, w: 40, h: 40, hex: "#2a2a2a", key: 9)  // V
 
         return Profile(
             id: UUID(),
@@ -103,9 +103,11 @@ extension NSColor {
 
     var hexString: String {
         guard let c = usingColorSpace(.sRGB) else { return "#888888" }
-        return String(format: "#%02X%02X%02X",
-                      Int(c.redComponent   * 255),
-                      Int(c.greenComponent * 255),
-                      Int(c.blueComponent  * 255))
+        return String(
+            format: "#%02X%02X%02X",
+            Int(c.redComponent * 255),
+            Int(c.greenComponent * 255),
+            Int(c.blueComponent * 255)
+        )
     }
 }
