@@ -21,6 +21,16 @@ final class ConfiguratorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func showEditorWindow() {
+        if let window {
+            if window.isMiniaturized {
+                window.deminiaturize(nil)
+            }
+
+            if !window.isVisible {
+                window.center()
+            }
+        }
+
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
