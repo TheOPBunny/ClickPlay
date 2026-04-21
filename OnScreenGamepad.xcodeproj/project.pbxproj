@@ -10,6 +10,7 @@
 		102FB38F2F9827A8003D8FDF /* ConfiguratorWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102FB38E2F9827A8003D8FDF /* ConfiguratorWindowController.swift */; };
 		102FB3912F9827A8003D8FDF /* ConfiguratorEditorViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102FB3902F9827A8003D8FDF /* ConfiguratorEditorViewController.swift */; };
 		108EF0DC2F984329009EFAAA /* KeyRecorderButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108EF0DB2F984329009EFAAA /* KeyRecorderButton.swift */; };
+		108EF0DE2F9846A8009EFAAA /* ButtonDetailPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108EF0DD2F9846A8009EFAAA /* ButtonDetailPanel.swift */; };
 		A000 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = B000 /* main.swift */; };
 		A001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B001 /* AppDelegate.swift */; };
 		A002 /* ../GamepadShared/KeyMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = B002 /* ../GamepadShared/KeyMapping.swift */; };
@@ -25,6 +26,7 @@
 		102FB38E2F9827A8003D8FDF /* ConfiguratorWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfiguratorWindowController.swift; sourceTree = "<group>"; };
 		102FB3902F9827A8003D8FDF /* ConfiguratorEditorViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfiguratorEditorViewController.swift; sourceTree = "<group>"; };
 		108EF0DB2F984329009EFAAA /* KeyRecorderButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyRecorderButton.swift; sourceTree = "<group>"; };
+		108EF0DD2F9846A8009EFAAA /* ButtonDetailPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ButtonDetailPanel.swift; sourceTree = "<group>"; };
 		B000 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		B001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		B002 /* ../GamepadShared/KeyMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../GamepadShared/KeyMapping.swift; sourceTree = "<group>"; };
@@ -67,6 +69,7 @@
 				102FB38E2F9827A8003D8FDF /* ConfiguratorWindowController.swift */,
 				102FB3902F9827A8003D8FDF /* ConfiguratorEditorViewController.swift */,
 				108EF0DB2F984329009EFAAA /* KeyRecorderButton.swift */,
+				108EF0DD2F9846A8009EFAAA /* ButtonDetailPanel.swift */,
 			);
 			path = OnScreenGamepad;
 			sourceTree = "<group>";
@@ -157,6 +160,7 @@
 			files = (
 				102FB38F2F9827A8003D8FDF /* ConfiguratorWindowController.swift in Sources */,
 				A000 /* main.swift in Sources */,
+				108EF0DE2F9846A8009EFAAA /* ButtonDetailPanel.swift in Sources */,
 				A001 /* AppDelegate.swift in Sources */,
 				A002 /* ../GamepadShared/KeyMapping.swift in Sources */,
 				A003 /* KeyInjector.swift in Sources */,
