@@ -3,8 +3,8 @@
 ## Bugs
 
 - [x] Fix jittery window dragging and make movement feel smooth and stable.
-- [ ] Add window resizing support for the gamepad overlay.
-- [ ] Make the toggle pill draggable when the gamepad is minimized into pill mode.
+- [x] Add window resizing support for the gamepad overlay.
+- [x] Make the toggle pill draggable when the gamepad is minimized into pill mode.
 - [x] Investigate why Accessibility permission is prompted on every startup even after permission is granted.
 Notes:
 This was caused by unstable development signing rather than the app's Accessibility permission logic.
