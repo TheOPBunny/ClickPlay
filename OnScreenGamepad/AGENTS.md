@@ -52,8 +52,9 @@ This is currently a functional prototype. Prefer improving the existing architec
 - Avoid changing public behavior outside the requested task.
 - Keep debug logging unless removing or reducing it is part of the task.
 - Use AppKit-native patterns already present in the codebase.
-- Do active development on the `dev` branch.
-- Make regular, incremental commits on `dev` as work progresses.
+- Unless the user explicitly says otherwise, always do active development on the `dev` branch.
+- If work begins on another branch by mistake, stop and resolve branch state before continuing.
+- Make a commit after every discrete change unless the user explicitly says not to.
 - Keep `main` as the stable branch unless the user explicitly asks for a merge or release step.
 
 ## Validation
