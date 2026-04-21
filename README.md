@@ -1,35 +1,23 @@
 # OnScreenGamepad
 
-An always-on-top macOS on-screen gamepad that sends **real, low-level CGEvent key presses** to whatever app is currently focused — no clicks, no terminal tricks, just native key injection.
+An always-on-top macOS menu bar utility that combines:
+
+- a non-activating on-screen gamepad overlay that sends **real, low-level CGEvent key presses**
+- a built-in profile configurator/editor window for editing layouts, labels, colors, and key mappings
+
+The merged `OnScreenGamepad` app is the supported product. The old standalone `GamepadConfigurator` project is retained only as an archived fallback and should not be used for normal development.
 
 ## Features
 
 - **Always-on-top overlay** — floats above every app including full-screen games
 - **Low-level key injection** via `CGEvent` → delivered directly to the focused process
 - **Zero activation steal** — pressing buttons never brings the gamepad to front or steals focus
+- **Built-in profile editor** — open `Edit Profiles…` from the menu bar app to edit profiles in a standard AppKit window
+- **Profile switching** — switch the active overlay profile from the menu bar
 - **Draggable** — click and drag anywhere on the pad to reposition
-- **Opacity control** — slider in the title strip, range 25%–100%
+- **Profile-backed layout** — overlay button layout, opacity, size, labels, and key bindings are persisted in `profiles.json`
 - **All spaces** — follows you across Mission Control spaces
 - **Full-screen compatible** — stays visible in `NSWindowCollectionBehavior.fullScreenAuxiliary` mode
-- **Easy remapping** — edit `KeyMapping.swift`, one key code per button
-
-## Default Button Map
-
-| Gamepad Button | Key Sent |
-|---|---|
-| D-Pad ↑ ↓ ← → | Arrow keys |
-| A | Z |
-| B | X |
-| X | A |
-| Y | S |
-| L / R | Q / W |
-| ZL / ZR | E / R |
-| START | Return |
-| SELECT | Space |
-| LS / RS | C / V |
-
-Edit `KeyMapping.swift` → `var keyCode: CGKeyCode` to change any mapping.  
-All Carbon `kVK_*` constants are available. Full list: https://eastmanreference.com/complete-list-of-applescript-key-codes
 
 ## Setup & Build
 
@@ -51,7 +39,10 @@ All Carbon `kVK_*` constants are available. Full list: https://eastmanreference.
 4. On first launch, macOS will ask for **Accessibility permission**.  
    Go to **System Settings → Privacy & Security → Accessibility** and enable `OnScreenGamepad`.
 
-5. Relaunch the app — the gamepad overlay will appear at the bottom-center of your screen.
+5. Relaunch the app. Use the 🎮 menu bar item to:
+   - show or hide the overlay
+   - switch profiles
+   - open `Edit Profiles…`
 
 ### Important: App Sandbox must be OFF
 
@@ -60,15 +51,35 @@ This is already set in `OnScreenGamepad.entitlements`. Don't re-enable it or key
 
 This means the app **cannot be submitted to the Mac App Store**. For personal use this is fine.
 
+## Default Button Map
+
+| Gamepad Button | Key Sent |
+|---|---|
+| D-Pad ↑ ↓ ← → | Arrow keys |
+| A | Z |
+| B | X |
+| X | A |
+| Y | S |
+| L / R | Q / W |
+| ZL / ZR | E / R |
+| START | Return |
+| SELECT | Space |
+| LS / RS | C / V |
+
 ## Architecture
 
 ```
-AppDelegate.swift         App entry, checks Accessibility permission
-├── GamepadWindow.swift   NSPanel subclass — always-on-top, non-activating, draggable
-│   └── GamepadContentView.swift   Lays out all button views
-│       └── GamepadButtonView.swift   Individual button — tracks mouse, drives press state
-│           └── KeyInjector.swift   Posts CGEvents to .cgAnnotatedSessionEventTap
-└── KeyMapping.swift      Maps GamepadButton enum → CGKeyCode (edit to remap)
+main.swift
+AppDelegate.swift                    App entry, menu bar item, overlay/editor coordination
+GamepadWindow.swift                  Non-activating overlay panel
+GamepadContentView.swift             Overlay layout and drag behavior
+GamepadButtonView.swift              Per-button mouse handling and key lifecycle
+KeyInjector.swift                    Low-level CGEvent posting and held-key tracking
+ConfiguratorWindowController.swift   Standard editor window owner
+ConfiguratorEditorViewController.swift
+GamepadShared/Profile.swift          Profile and button config models
+GamepadShared/ProfileStore.swift     Shared persistence and active profile state
+GamepadShared/KeyMapping.swift       Stable gamepad button identities
 ```
 
 ## How Key Injection Works
@@ -91,10 +102,11 @@ evt.post(tap: .cgAnnotatedSessionEventTap)
 | Window not on top in a game | Some games use exclusive fullscreen — switch to Windowed or Borderless |
 | Buttons feel laggy | Normal if the target app has input throttling; the injection itself is synchronous |
 | Window disappeared | Click the 🎮 icon in the menu bar to bring it back |
+| Need to edit layout or bindings | Open `Edit Profiles…` from the 🎮 menu bar menu |
 
 ## Customization Ideas
 
 - **Analog stick simulation** — add `NSPanGestureRecognizer` to a circular area and map direction to WASD
 - **Turbo / auto-repeat** — add a `Timer` in `KeyInjector` that re-fires `press()` while a button is held
-- **Profiles** — multiple `KeyMapping` presets switchable from the control strip
+- **Profile sub-profiles / layering** — extend `ProfileStore` and the editor window
 - **Resize** — change `GamepadWindow.defaultSize` and adjust `layoutButtons()` coordinates proportionally

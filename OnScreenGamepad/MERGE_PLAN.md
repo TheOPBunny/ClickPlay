@@ -210,17 +210,23 @@ Success criteria:
 - No shared-code duplication remains.
 - Build/sign/run flow is simpler than before.
 
+Status:
+
+- `OnScreenGamepad` is now the supported app.
+- The standalone `GamepadConfigurator` project is no longer the active development path.
+- The old project is currently retained only as an archived fallback until final deletion is explicitly chosen.
+
 ## Immediate Implementation Checklist
 
 - [ ] Diff shared files across both apps and reconcile differences.
 - [ ] Create a shared source area for models and persistence.
 - [ ] Build both targets against shared files.
-- [ ] Move configurator UI classes into `OnScreenGamepad`.
-- [ ] Add an `Edit Profiles…` menu item to the status bar menu.
-- [ ] Create a dedicated editor window controller/owner in `OnScreenGamepad`.
-- [ ] Verify profile edits hot-reload the overlay through `profilesDidChange`.
-- [ ] Validate activation policy behavior with the integrated editor.
-- [ ] Remove the standalone configurator target after stabilization.
+- [x] Move configurator UI classes into `OnScreenGamepad`.
+- [x] Add an `Edit Profiles…` menu item to the status bar menu.
+- [x] Create a dedicated editor window controller/owner in `OnScreenGamepad`.
+- [x] Verify profile edits hot-reload the overlay through `profilesDidChange`.
+- [x] Validate activation policy behavior with the integrated editor.
+- [x] Remove the standalone configurator app from active development.
 
 ## Technical Decisions To Keep Explicit
 

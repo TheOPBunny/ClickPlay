@@ -21,8 +21,8 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 - [ ] Change button presses so button presses last 33 ms.
 - [ ] Add an option for buttons to toggle into a held-down state on press.
 - [ ] Fade the gamepad to 100% transparency after a configurable period of inactivity.
-- [ ] Explore tighter integration with `GamepadConfigurator` at `/Users/hassanzahid/Projects/Xcode/GamepadConfigurator`.
-- [ ] Evaluate whether `OnScreenGamepad` and `GamepadConfigurator` should eventually be merged.
+- [x] Merge the old `GamepadConfigurator` workflow into `OnScreenGamepad`.
+- [ ] Decide when to fully delete the archived standalone `GamepadConfigurator` fallback.
 
 ## Joystick Concept
 
