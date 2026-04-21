@@ -21,15 +21,15 @@
 /* Begin PBXFileReference section */
 		B000 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		B001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		B002 /* KeyMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyMapping.swift; sourceTree = "<group>"; };
+		B002 /* KeyMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../GamepadShared/KeyMapping.swift; sourceTree = "<group>"; };
 		B003 /* KeyInjector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyInjector.swift; sourceTree = "<group>"; };
 		B004 /* GamepadButtonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamepadButtonView.swift; sourceTree = "<group>"; };
 		B005 /* GamepadContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamepadContentView.swift; sourceTree = "<group>"; };
 		B006 /* GamepadWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamepadWindow.swift; sourceTree = "<group>"; };
 		B007 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B008 /* OnScreenGamepad.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OnScreenGamepad.entitlements; sourceTree = "<group>"; };
-		B009 /* Profile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Profile.swift; sourceTree = "<group>"; };
-		B010 /* ProfileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileStore.swift; sourceTree = "<group>"; };
+		B009 /* Profile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../GamepadShared/Profile.swift; sourceTree = "<group>"; };
+		B010 /* ProfileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../GamepadShared/ProfileStore.swift; sourceTree = "<group>"; };
 		PROD /* OnScreenGamepad.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OnScreenGamepad.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
