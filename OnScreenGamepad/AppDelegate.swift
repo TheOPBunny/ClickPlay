@@ -129,8 +129,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let idStr = sender.representedObject as? String,
               let id = UUID(uuidString: idStr) else { return }
         ProfileStore.shared.setActive(id)
-        gamepadWindow?.reloadProfile()
-        rebuildMenu()
     }
 
     @objc func showGamepad() {
