@@ -107,6 +107,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func launchGamepad() {
         DispatchQueue.main.async {
+            if let gamepadWindow = self.gamepadWindow {
+                gamepadWindow.showGamepad()
+                return
+            }
+
             NSLog("Launching gamepad window...")
             self.gamepadWindow = GamepadWindow()
             self.gamepadWindow?.orderFrontRegardless()
