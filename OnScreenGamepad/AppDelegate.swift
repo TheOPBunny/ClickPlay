@@ -61,9 +61,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func rebuildMenu() {
         let menu = NSMenu()
 
-        menu.addItem(NSMenuItem(title: "Show Gamepad", action: #selector(showGamepad), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Hide Gamepad", action: #selector(hideGamepad), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Edit Profiles…", action: #selector(showConfigurator), keyEquivalent: ","))
+        let showItem = NSMenuItem(title: "Show Gamepad", action: #selector(showGamepad), keyEquivalent: "")
+        showItem.target = self
+        menu.addItem(showItem)
+
+        let hideItem = NSMenuItem(title: "Hide Gamepad", action: #selector(hideGamepad), keyEquivalent: "")
+        hideItem.target = self
+        menu.addItem(hideItem)
+
+        let editProfilesItem = NSMenuItem(title: "Edit Profiles…", action: #selector(showConfigurator), keyEquivalent: ",")
+        editProfilesItem.target = self
+        menu.addItem(editProfilesItem)
         menu.addItem(NSMenuItem.separator())
 
         // Profile switcher
@@ -82,9 +90,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Grant Accessibility Permission", action: #selector(openAccessibility), keyEquivalent: ""))
+        let accessibilityItem = NSMenuItem(title: "Grant Accessibility Permission", action: #selector(openAccessibility), keyEquivalent: "")
+        accessibilityItem.target = self
+        menu.addItem(accessibilityItem)
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+
+        let quitItem = NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        quitItem.target = NSApp
+        menu.addItem(quitItem)
 
         statusItem?.menu = menu
     }
@@ -130,7 +143,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func showConfigurator() {
-        configuratorWindowController.showEditorWindow()
+        DispatchQueue.main.async { [weak self] in
+            self?.configuratorWindowController.showEditorWindow()
+        }
     }
 
     @objc func openAccessibility() {
