@@ -4,6 +4,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     var gamepadWindow: GamepadWindow?
     var statusItem: NSStatusItem?
+    private lazy var configuratorWindowController = ConfiguratorWindowController()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -62,6 +63,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem(title: "Show Gamepad", action: #selector(showGamepad), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Hide Gamepad", action: #selector(hideGamepad), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Edit Profiles…", action: #selector(showConfigurator), keyEquivalent: ","))
         menu.addItem(NSMenuItem.separator())
 
         // Profile switcher
@@ -125,6 +127,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func hideGamepad() {
         gamepadWindow?.orderOut(nil)
+    }
+
+    @objc func showConfigurator() {
+        configuratorWindowController.showEditorWindow()
     }
 
     @objc func openAccessibility() {
