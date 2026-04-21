@@ -55,7 +55,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func statusBarClicked() {
         rebuildMenu()
-        statusItem?.popUpMenu(statusItem!.menu!)
+        statusItem?.button?.performClick(nil)
     }
 
     func rebuildMenu() {
