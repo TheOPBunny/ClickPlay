@@ -164,7 +164,12 @@ final class ProfileListViewController: NSViewController, NSTableViewDataSource, 
             return
         }
 
-        ProfileStore.shared.duplicate(profiles[row].id)
+        guard let duplicatedProfile = ProfileStore.shared.duplicate(profiles[row].id) else {
+            return
+        }
+
+        ProfileStore.shared.setActive(duplicatedProfile.id)
+        onProfileSelected?(duplicatedProfile)
     }
 
     @objc private func deleteProfile() {
