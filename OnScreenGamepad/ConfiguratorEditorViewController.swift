@@ -367,6 +367,7 @@ final class GamepadPreviewView: NSView {
     private var handleLayers: [GamepadButton: CALayer] = [:]
     private var selectedButton: GamepadButton?
     private var profile = ProfileStore.shared.activeProfile
+    private var lastRenderedSize: CGSize = .zero
 
     private enum DragMode {
         case move
@@ -397,6 +398,7 @@ final class GamepadPreviewView: NSView {
     func reload(profile: Profile, keepSelection: Bool) {
         let previousSelection = keepSelection ? selectedButton : nil
         self.profile = profile
+        lastRenderedSize = bounds.size
 
         buttonLayers.values.forEach { $0.removeFromSuperlayer() }
         handleLayers.values.forEach { $0.removeFromSuperlayer() }
@@ -457,6 +459,10 @@ final class GamepadPreviewView: NSView {
 
     override func layout() {
         super.layout()
+        guard bounds.size != .zero, bounds.size != lastRenderedSize else {
+            return
+        }
+
         reload(profile: profile, keepSelection: true)
     }
 
