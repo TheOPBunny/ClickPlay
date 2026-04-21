@@ -15,6 +15,9 @@ final class ConfiguratorWindowController: NSWindowController, NSWindowDelegate {
         window.contentViewController = viewController
         window.center()
         window.isReleasedWhenClosed = false
+        window.collectionBehavior = [.moveToActiveSpace]
+        window.tabbingMode = .disallowed
+        window.setFrameAutosaveName("ConfiguratorWindow")
 
         self.init(window: window)
         window.delegate = self
@@ -33,6 +36,10 @@ final class ConfiguratorWindowController: NSWindowController, NSWindowDelegate {
 
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        activateEditorApp()
+    }
+
+    private func activateEditorApp() {
+        NSRunningApplication.current.activate(options: [.activateIgnoringOtherApps])
     }
 }
