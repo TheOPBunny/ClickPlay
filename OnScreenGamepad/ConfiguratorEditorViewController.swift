@@ -42,6 +42,7 @@ final class ProfileListViewController: NSViewController, NSTableViewDataSource, 
 
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
+    private var isReloadingSelection = false
 
     private var profiles: [Profile] {
         ProfileStore.shared.profiles
@@ -96,10 +97,17 @@ final class ProfileListViewController: NSViewController, NSTableViewDataSource, 
     }
 
     func reload() {
+        isReloadingSelection = true
+        defer { isReloadingSelection = false }
+
         tableView.reloadData()
 
         guard let index = profiles.firstIndex(where: { $0.id == ProfileStore.shared.activeProfileID }) else {
             tableView.deselectAll(nil)
+            return
+        }
+
+        if tableView.selectedRow == index {
             return
         }
 
@@ -117,12 +125,22 @@ final class ProfileListViewController: NSViewController, NSTableViewDataSource, 
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
+        if isReloadingSelection {
+            return
+        }
+
         let row = tableView.selectedRow
         guard row >= 0 else {
             return
         }
 
         let profile = profiles[row]
+
+        if profile.id == ProfileStore.shared.activeProfileID {
+            onProfileSelected?(profile)
+            return
+        }
+
         ProfileStore.shared.setActive(profile.id)
         onProfileSelected?(profile)
     }
