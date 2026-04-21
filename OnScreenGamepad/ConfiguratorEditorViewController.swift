@@ -4,6 +4,7 @@ final class ConfiguratorViewController: NSSplitViewController {
 
     private let profileListViewController = ProfileListViewController()
     private let editorViewController = ButtonEditorViewController()
+    private var profilesDidChangeObserver: NSObjectProtocol?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -23,7 +24,7 @@ final class ConfiguratorViewController: NSSplitViewController {
             ProfileStore.shared.upsert(profile)
         }
 
-        NotificationCenter.default.addObserver(
+        profilesDidChangeObserver = NotificationCenter.default.addObserver(
             forName: ProfileStore.profilesDidChange,
             object: nil,
             queue: .main
@@ -33,6 +34,12 @@ final class ConfiguratorViewController: NSSplitViewController {
         }
 
         editorViewController.load(profile: ProfileStore.shared.activeProfile)
+    }
+
+    deinit {
+        if let profilesDidChangeObserver {
+            NotificationCenter.default.removeObserver(profilesDidChangeObserver)
+        }
     }
 }
 
