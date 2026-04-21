@@ -4,7 +4,7 @@ final class GamepadButtonView: NSView {
 
     let button: GamepadButton
     private var config: ButtonConfig
-    private var pressedKeyCode: CGKeyCode?
+    private var pressedBinding: (keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)?
     private let label = NSTextField(labelWithString: "")
     private var isPressed = false
     private var trackingArea: NSTrackingArea?
@@ -47,10 +47,10 @@ final class GamepadButtonView: NSView {
     }
 
     func releaseIfNeeded() {
-        guard let pressedKeyCode else { return }
+        guard let pressedBinding else { return }
 
-        KeyInjector.shared.releaseRaw(pressedKeyCode)
-        self.pressedKeyCode = nil
+        KeyInjector.shared.releaseRaw(pressedBinding.keyCode, modifiers: pressedBinding.modifiers)
+        self.pressedBinding = nil
         isPressed = false
         updateAppearance(animated: false)
     }
@@ -97,14 +97,15 @@ final class GamepadButtonView: NSView {
         guard pressed != isPressed else { return }
         isPressed = pressed
         let keyCode = CGKeyCode(config.keyCode)
-        NSLog("[Button \(button.rawValue)] setPressed=\(pressed) keyCode=\(keyCode)")
+        let modifiers = NSEvent.ModifierFlags(rawValue: UInt(config.keyModifiers))
+        NSLog("[Button \(button.rawValue)] setPressed=\(pressed) keyCode=\(keyCode) modifiers=\(config.keyModifiers)")
         if pressed {
-            pressedKeyCode = keyCode
-            KeyInjector.shared.pressRaw(keyCode)
+            pressedBinding = (keyCode: keyCode, modifiers: modifiers)
+            KeyInjector.shared.pressRaw(keyCode, modifiers: modifiers)
         } else {
-            let keyToRelease = pressedKeyCode ?? keyCode
-            KeyInjector.shared.releaseRaw(keyToRelease)
-            pressedKeyCode = nil
+            let bindingToRelease = pressedBinding ?? (keyCode: keyCode, modifiers: modifiers)
+            KeyInjector.shared.releaseRaw(bindingToRelease.keyCode, modifiers: bindingToRelease.modifiers)
+            pressedBinding = nil
         }
         updateAppearance(animated: true)
     }
