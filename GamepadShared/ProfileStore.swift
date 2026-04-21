@@ -51,6 +51,15 @@ final class ProfileStore {
     // MARK: - Mutations
 
     func setActive(_ id: UUID) {
+        guard profiles.contains(where: { $0.id == id }) else {
+            NSLog("[ProfileStore] Ignoring setActive for unknown profile id \(id.uuidString)")
+            return
+        }
+
+        guard activeProfileID != id else {
+            return
+        }
+
         activeProfileID = id
         save()
     }
