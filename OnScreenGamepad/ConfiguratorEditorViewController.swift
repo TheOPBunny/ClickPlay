@@ -420,9 +420,20 @@ final class GamepadPreviewView: NSView {
 
     func reload(profile: Profile, keepSelection: Bool) {
         let previousSelection = keepSelection ? selectedButton : nil
+        let shouldRebuild = bounds.size != lastRenderedSize
         self.profile = profile
         lastRenderedSize = bounds.size
 
+        if shouldRebuild {
+            rebuildLayers()
+        } else {
+            updateExistingLayers()
+        }
+
+        highlight(previousSelection)
+    }
+
+    private func rebuildLayers() {
         buttonLayers.values.forEach { $0.removeFromSuperlayer() }
         handleLayers.values.forEach { $0.removeFromSuperlayer() }
         buttonLayers.removeAll()
@@ -476,8 +487,90 @@ final class GamepadPreviewView: NSView {
             layer?.addSublayer(handleLayer)
             handleLayers[button] = handleLayer
         }
+    }
 
-        highlight(previousSelection)
+    private func updateExistingLayers() {
+        let activeButtons = Set(GamepadButton.allCases.filter {
+            guard let config = profile.buttons[$0.rawValue] else {
+                return false
+            }
+
+            return config.enabled
+        })
+
+        for button in Array(buttonLayers.keys) where !activeButtons.contains(button) {
+            buttonLayers[button]?.removeFromSuperlayer()
+            buttonLayers.removeValue(forKey: button)
+
+            handleLayers[button]?.removeFromSuperlayer()
+            handleLayers.removeValue(forKey: button)
+        }
+
+        for button in GamepadButton.allCases {
+            guard let config = profile.buttons[button.rawValue], config.enabled else {
+                continue
+            }
+
+            let buttonLayer = buttonLayers[button] ?? makeButtonLayer(for: button)
+            let handleLayer = handleLayers[button] ?? makeHandleLayer(for: button)
+            update(buttonLayer: buttonLayer, handleLayer: handleLayer, with: config)
+        }
+    }
+
+    private func makeButtonLayer(for button: GamepadButton) -> CALayer {
+        let buttonLayer = CALayer()
+        buttonLayer.cornerRadius = 6
+
+        let textLayer = CATextLayer()
+        textLayer.fontSize = 10
+        textLayer.alignmentMode = .center
+        textLayer.foregroundColor = NSColor.white.cgColor
+        textLayer.contentsScale = window?.backingScaleFactor ?? 2
+        buttonLayer.addSublayer(textLayer)
+
+        layer?.addSublayer(buttonLayer)
+        buttonLayers[button] = buttonLayer
+        return buttonLayer
+    }
+
+    private func makeHandleLayer(for button: GamepadButton) -> CALayer {
+        let handleLayer = CALayer()
+        handleLayer.backgroundColor = NSColor.white.withAlphaComponent(0.7).cgColor
+        handleLayer.cornerRadius = 2
+        handleLayer.isHidden = true
+        layer?.addSublayer(handleLayer)
+        handleLayers[button] = handleLayer
+        return handleLayer
+    }
+
+    private func update(buttonLayer: CALayer, handleLayer: CALayer, with config: ButtonConfig) {
+        let width = bounds.width
+        let height = bounds.height
+        let centerX = CGFloat(config.x) * width
+        let centerY = CGFloat(config.y) * height
+        let buttonWidth = CGFloat(config.width) * width
+        let buttonHeight = CGFloat(config.height) * height
+
+        buttonLayer.frame = CGRect(
+            x: centerX - (buttonWidth / 2),
+            y: centerY - (buttonHeight / 2),
+            width: buttonWidth,
+            height: buttonHeight
+        )
+        buttonLayer.backgroundColor = NSColor(hex: config.colorHex).withAlphaComponent(0.85).cgColor
+
+        if let textLayer = buttonLayer.sublayers?.first as? CATextLayer {
+            textLayer.string = config.label
+            textLayer.contentsScale = window?.backingScaleFactor ?? 2
+            textLayer.frame = buttonLayer.bounds
+        }
+
+        handleLayer.frame = CGRect(
+            x: buttonLayer.frame.maxX - handleSize,
+            y: buttonLayer.frame.minY,
+            width: handleSize,
+            height: handleSize
+        )
     }
 
     override func layout() {
