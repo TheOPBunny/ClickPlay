@@ -10,8 +10,56 @@ struct ButtonConfig: Codable {
     var height: Double      // as fraction of pad height
     var colorHex: String    // "#RRGGBB"
     var keyCode: Int        // CGKeyCode raw value
+    var keyModifiers: Int   // NSEvent.ModifierFlags raw value
     var label: String       // display label (can differ from button name)
     var enabled: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case x
+        case y
+        case width
+        case height
+        case colorHex
+        case keyCode
+        case keyModifiers
+        case label
+        case enabled
+    }
+
+    init(
+        x: Double,
+        y: Double,
+        width: Double,
+        height: Double,
+        colorHex: String,
+        keyCode: Int,
+        keyModifiers: Int = 0,
+        label: String,
+        enabled: Bool
+    ) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.colorHex = colorHex
+        self.keyCode = keyCode
+        self.keyModifiers = keyModifiers
+        self.label = label
+        self.enabled = enabled
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        x = try container.decode(Double.self, forKey: .x)
+        y = try container.decode(Double.self, forKey: .y)
+        width = try container.decode(Double.self, forKey: .width)
+        height = try container.decode(Double.self, forKey: .height)
+        colorHex = try container.decode(String.self, forKey: .colorHex)
+        keyCode = try container.decode(Int.self, forKey: .keyCode)
+        keyModifiers = try container.decodeIfPresent(Int.self, forKey: .keyModifiers) ?? 0
+        label = try container.decode(String.self, forKey: .label)
+        enabled = try container.decode(Bool.self, forKey: .enabled)
+    }
 }
 
 // MARK: - Profile
@@ -43,6 +91,7 @@ struct Profile: Codable, Identifiable {
                 width: bw(w), height: bh(h),
                 colorHex: hex,
                 keyCode: key,
+                keyModifiers: 0,
                 label: btn.rawValue,
                 enabled: true
             )

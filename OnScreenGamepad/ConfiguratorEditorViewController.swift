@@ -897,7 +897,10 @@ final class ButtonDetailPanel: NSView {
         xField.stringValue = String(format: "%.4f", config.x)
         yField.stringValue = String(format: "%.4f", config.y)
         enabledCheckbox.state = config.enabled ? .on : .off
-        keyRecorder.setKey(code: config.keyCode)
+        keyRecorder.setKey(
+            code: config.keyCode,
+            modifiers: NSEvent.ModifierFlags(rawValue: UInt(config.keyModifiers))
+        )
         widthLabel.stringValue = String(format: "%.3f", config.width)
         heightLabel.stringValue = String(format: "%.3f", config.height)
     }
@@ -929,8 +932,9 @@ final class ButtonDetailPanel: NSView {
         keyRecorder.translatesAutoresizingMaskIntoConstraints = false
         keyRecorder.widthAnchor.constraint(equalToConstant: 150).isActive = true
         keyRecorder.heightAnchor.constraint(equalToConstant: 28).isActive = true
-        keyRecorder.onKeyRecorded = { [weak self] code, _ in
+        keyRecorder.onKeyRecorded = { [weak self] code, modifiers in
             self?.config?.keyCode = code
+            self?.config?.keyModifiers = Int(modifiers.rawValue)
             self?.emitChange()
         }
 
