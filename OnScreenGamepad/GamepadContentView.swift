@@ -6,44 +6,6 @@ final class GamepadContentView: NSView {
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
 
-    private final class ResizeHandleView: NSView {
-        var onDragBegan: ((NSEvent) -> Void)?
-        var onDragChanged: ((NSEvent) -> Void)?
-        var onDragEnded: (() -> Void)?
-
-        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-
-        override func resetCursorRects() {
-            addCursorRect(bounds, cursor: .crosshair)
-        }
-
-        override func draw(_ dirtyRect: NSRect) {
-            super.draw(dirtyRect)
-
-            NSColor.white.withAlphaComponent(0.6).setStroke()
-            let path = NSBezierPath()
-            let inset: CGFloat = 4
-            for offset in [0, 5, 10] {
-                path.move(to: NSPoint(x: bounds.maxX - inset - CGFloat(offset), y: bounds.minY + inset))
-                path.line(to: NSPoint(x: bounds.maxX - inset, y: bounds.minY + inset + CGFloat(offset)))
-            }
-            path.lineWidth = 1.5
-            path.stroke()
-        }
-
-        override func mouseDown(with event: NSEvent) {
-            onDragBegan?(event)
-        }
-
-        override func mouseDragged(with event: NSEvent) {
-            onDragChanged?(event)
-        }
-
-        override func mouseUp(with event: NSEvent) {
-            onDragEnded?()
-        }
-    }
-
     private final class HeaderBarView: NSView {
         var onToggleMinimize: (() -> Void)?
         var onHideOverlay: (() -> Void)?
@@ -200,6 +162,7 @@ final class GamepadContentView: NSView {
     static let headerHeight: CGFloat = 32
     static let contentGap: CGFloat = 0
     static let minimizedTileSize = CGSize(width: 56, height: headerHeight)
+    static let minimumPadSize = CGSize(width: 260, height: 180)
 
     static func windowSize(for profile: Profile, minimized: Bool) -> CGSize {
         if minimized { return minimizedTileSize }
@@ -217,7 +180,6 @@ final class GamepadContentView: NSView {
     private let headerBar = HeaderBarView(frame: .zero)
     private let padSurface = PadSurfaceView(frame: .zero)
     private let blurView = PassthroughVisualEffectView(frame: .zero)
-    private let resizeHandle = ResizeHandleView(frame: .zero)
 
     private var currentProfile: Profile
     private var isMinimized = false
@@ -225,13 +187,6 @@ final class GamepadContentView: NSView {
     private var dragStartWindowOrigin: NSPoint = .zero
     private var dragStartLocationInScreen: NSPoint = .zero
     private var isDraggingWindow = false
-
-    private var resizeStartFrame: NSRect = .zero
-    private var resizeStartLocationInScreen: NSPoint = .zero
-    private var isResizing = false
-
-    private let resizeHandleSize = CGSize(width: 22, height: 22)
-    private let minimumPadSize = CGSize(width: 260, height: 180)
 
     init(frame: NSRect, profile: Profile, minimized: Bool = false) {
         currentProfile = profile
@@ -308,17 +263,6 @@ final class GamepadContentView: NSView {
             self?.endWindowDrag()
         }
         addSubview(padSurface)
-
-        resizeHandle.onDragBegan = { [weak self] event in
-            self?.beginResize(with: event)
-        }
-        resizeHandle.onDragChanged = { [weak self] event in
-            self?.continueResize(with: event)
-        }
-        resizeHandle.onDragEnded = { [weak self] in
-            self?.endResize()
-        }
-        padSurface.addSubview(resizeHandle)
     }
 
     private func updateHeader() {
@@ -344,12 +288,6 @@ final class GamepadContentView: NSView {
         let padHeight = max(0, bounds.height - Self.headerHeight - Self.contentGap)
         padSurface.isHidden = false
         padSurface.frame = NSRect(x: 0, y: 0, width: bounds.width, height: padHeight)
-        resizeHandle.frame = NSRect(
-            x: padSurface.bounds.maxX - resizeHandleSize.width - 8,
-            y: 8,
-            width: resizeHandleSize.width,
-            height: resizeHandleSize.height
-        )
     }
 
     private func buildButtons(profile: Profile) {
@@ -390,17 +328,15 @@ final class GamepadContentView: NSView {
             } else {
                 let view = GamepadButtonView(button: button, config: cfg)
                 view.frame = frame
-                padSurface.addSubview(view, positioned: .below, relativeTo: resizeHandle)
+                padSurface.addSubview(view)
                 buttonViews[button] = view
             }
         }
-
-        padSurface.addSubview(resizeHandle)
         NSLog("[ContentView] Built \(buttonViews.count) buttons")
     }
 
     private func beginWindowDrag(with event: NSEvent) {
-        guard let window, !isResizing else { return }
+        guard let window else { return }
         isDraggingWindow = true
         dragStartWindowOrigin = window.frame.origin
         dragStartLocationInScreen = window.convertPoint(toScreen: event.locationInWindow)
@@ -408,7 +344,7 @@ final class GamepadContentView: NSView {
     }
 
     private func continueWindowDrag(with event: NSEvent) {
-        guard isDraggingWindow, !isResizing, let window else { return }
+        guard isDraggingWindow, let window else { return }
         let currentLocationInScreen = window.convertPoint(toScreen: event.locationInWindow)
         let dx = currentLocationInScreen.x - dragStartLocationInScreen.x
         let dy = currentLocationInScreen.y - dragStartLocationInScreen.y
@@ -420,47 +356,5 @@ final class GamepadContentView: NSView {
         guard isDraggingWindow else { return }
         isDraggingWindow = false
         NSLog("[ContentView] Window drag ended")
-    }
-
-    private func beginResize(with event: NSEvent) {
-        guard !isMinimized, let window else { return }
-        isResizing = true
-        isDraggingWindow = false
-        resizeStartFrame = window.frame
-        resizeStartLocationInScreen = window.convertPoint(toScreen: event.locationInWindow)
-        NSLog("[ContentView] Resize began at \(resizeStartLocationInScreen)")
-    }
-
-    private func continueResize(with event: NSEvent) {
-        guard isResizing, let window else { return }
-
-        let currentLocationInScreen = window.convertPoint(toScreen: event.locationInWindow)
-        let dx = currentLocationInScreen.x - resizeStartLocationInScreen.x
-        let dy = currentLocationInScreen.y - resizeStartLocationInScreen.y
-
-        let maxSize = maximumResizablePadSize(for: window)
-        let newPadWidth = min(max(resizeStartFrame.width + dx, minimumPadSize.width), maxSize.width)
-        let newPadHeight = min(max((resizeStartFrame.height - Self.headerHeight - Self.contentGap) + dy, minimumPadSize.height), maxSize.height)
-        let newWindowSize = CGSize(width: newPadWidth, height: newPadHeight + Self.headerHeight + Self.contentGap)
-        let newFrame = NSRect(origin: resizeStartFrame.origin, size: newWindowSize)
-
-        window.setFrame(newFrame, display: true)
-        currentProfile.padWidth = newPadWidth
-        currentProfile.padHeight = newPadHeight
-    }
-
-    private func endResize() {
-        guard isResizing else { return }
-        isResizing = false
-        ProfileStore.shared.updateActiveProfileSize(width: currentProfile.padWidth, height: currentProfile.padHeight)
-        NSLog("[ContentView] Resize ended")
-    }
-
-    private func maximumResizablePadSize(for window: NSWindow) -> CGSize {
-        let visibleFrame = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? NSRect(origin: .zero, size: CGSize(width: 1440, height: 900))
-        let maxWidth = max(minimumPadSize.width, visibleFrame.maxX - window.frame.minX - 12)
-        let maxWindowHeight = max(Self.headerHeight + Self.contentGap + minimumPadSize.height, visibleFrame.maxY - window.frame.minY - 12)
-        let maxPadHeight = max(minimumPadSize.height, maxWindowHeight - Self.headerHeight - Self.contentGap)
-        return CGSize(width: maxWidth, height: maxPadHeight)
     }
 }
