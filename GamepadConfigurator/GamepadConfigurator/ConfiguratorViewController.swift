@@ -257,8 +257,6 @@ class GamepadPreviewView: NSView {
     private var handleLayers:  [GamepadButton: [CALayer]] = [:]
     private var selectedButton: GamepadButton?
     private var profile = ProfileStore.shared.activeProfile
-    private var lastRenderedBounds: CGSize = .zero
-    private var pendingKeepSelection = false
 
     // Drag state
     private enum DragMode { case move, resizeBR }
@@ -281,22 +279,8 @@ class GamepadPreviewView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     func reload(profile: Profile, keepSelection: Bool) {
-        self.profile = profile
-        pendingKeepSelection = pendingKeepSelection || keepSelection
-        renderIfPossible(keepSelection: keepSelection)
-    }
-
-    override func layout() {
-        super.layout()
-        if bounds.size != lastRenderedBounds || buttonLayers.isEmpty {
-            renderIfPossible(keepSelection: pendingKeepSelection || selectedButton != nil)
-        }
-    }
-
-    private func renderIfPossible(keepSelection: Bool) {
-        guard bounds.width > 0, bounds.height > 0 else { return }
-
         let was = keepSelection ? selectedButton : nil
+        self.profile = profile
         buttonLayers.values.forEach { $0.removeFromSuperlayer() }
         handleLayers.values.flatMap { $0 }.forEach { $0.removeFromSuperlayer() }
         buttonLayers.removeAll(); handleLayers.removeAll()
@@ -330,8 +314,6 @@ class GamepadPreviewView: NSView {
             self.layer?.addSublayer(h)
             handleLayers[btn] = [h]
         }
-        lastRenderedBounds = bounds.size
-        pendingKeepSelection = false
         if let sel = was { highlight(sel) }
     }
 
