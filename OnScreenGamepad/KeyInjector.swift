@@ -21,8 +21,10 @@ final class KeyInjector {
                 NSLog("[KeyInjector] pressRaw \(keyCode) modifiers=\(binding.modifiersRawValue) — already held, skipping")
                 return
             }
-            heldKeys.insert(binding)
             let ok = postEvent(keyCode: keyCode, modifiers: supportedModifiers, keyDown: true)
+            if ok {
+                heldKeys.insert(binding)
+            }
             NSLog("[KeyInjector] pressRaw \(keyCode) modifiers=\(binding.modifiersRawValue) posted=\(ok)")
         }
     }

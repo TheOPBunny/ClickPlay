@@ -4,6 +4,9 @@ final class ButtonEditorViewController: NSViewController {
 
     var onProfileSaved: ((Profile) -> Void)?
 
+    private static let minimumPadWidth = 260.0
+    private static let minimumPadHeight = 180.0
+
     private var profile = ProfileStore.shared.activeProfile
 
     private let nameField = NSTextField()
@@ -172,11 +175,29 @@ final class ButtonEditorViewController: NSViewController {
             profile.name = nameField.stringValue
         }
 
-        profile.padWidth = Double(padWidthField.stringValue) ?? profile.padWidth
-        profile.padHeight = Double(padHeightField.stringValue) ?? profile.padHeight
+        profile.padWidth = clampedPadDimension(
+            from: padWidthField.stringValue,
+            fallback: profile.padWidth,
+            minimum: Self.minimumPadWidth
+        )
+        profile.padHeight = clampedPadDimension(
+            from: padHeightField.stringValue,
+            fallback: profile.padHeight,
+            minimum: Self.minimumPadHeight
+        )
+        padWidthField.stringValue = "\(Int(profile.padWidth))"
+        padHeightField.stringValue = "\(Int(profile.padHeight))"
 
         onProfileSaved?(profile)
         showSavedIndicator()
+    }
+
+    private func clampedPadDimension(from stringValue: String, fallback: Double, minimum: Double) -> Double {
+        guard let parsedValue = Double(stringValue), parsedValue.isFinite else {
+            return fallback
+        }
+
+        return max(minimum, parsedValue)
     }
 
     private func showSavedIndicator() {
