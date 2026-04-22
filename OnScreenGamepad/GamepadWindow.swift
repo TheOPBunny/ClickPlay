@@ -38,7 +38,7 @@ enum GamepadSettings {
     }
 }
 
-final class GamepadWindow: NSPanel {
+final class GamepadWindow: NSPanel, NSWindowDelegate {
 
     private var isMinimized = false
     private var inactivityTimer: Timer?
@@ -57,7 +57,7 @@ final class GamepadWindow: NSPanel {
 
         self.init(
             contentRect: frame,
-            styleMask: [.borderless, .nonactivatingPanel],
+            styleMask: [.borderless, .nonactivatingPanel, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -71,6 +71,10 @@ final class GamepadWindow: NSPanel {
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         isReleasedWhenClosed = false
         hidesOnDeactivate = false
+        delegate = self
+        contentMinSize = Self.minimumContentSize
+        contentMaxSize = maximumContentSize()
+        showsResizeIndicator = true
 
         let content = GamepadContentView(frame: NSRect(origin: .zero, size: size), profile: profile)
         content.onToggleMinimize = { [weak self] in
@@ -122,6 +126,7 @@ final class GamepadWindow: NSPanel {
 
     func reloadProfile() {
         let profile = ProfileStore.shared.activeProfile
+        updateResizeConstraints()
         resizeForCurrentState(using: profile)
         (contentView as? GamepadContentView)?.reload(profile: profile, minimized: isMinimized)
         applyCurrentAlpha(animated: false)
@@ -136,6 +141,7 @@ final class GamepadWindow: NSPanel {
     private func toggleMinimized() {
         isMinimized.toggle()
         let profile = ProfileStore.shared.activeProfile
+        updateResizeConstraints()
         resizeForCurrentState(using: profile)
         (contentView as? GamepadContentView)?.setMinimized(isMinimized)
         noteUserActivity()
@@ -143,12 +149,38 @@ final class GamepadWindow: NSPanel {
     }
 
     private func resizeForCurrentState(using profile: Profile) {
+        updateResizeConstraints()
         let newSize = GamepadContentView.windowSize(for: profile, minimized: isMinimized)
         guard frame.size != newSize else { return }
 
         let currentFrame = frame
         let newOrigin = NSPoint(x: currentFrame.minX, y: currentFrame.maxY - newSize.height)
         setFrame(NSRect(origin: newOrigin, size: newSize), display: true)
+    }
+
+    func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+        guard !isMinimized else {
+            return GamepadContentView.minimizedTileSize
+        }
+
+        updateResizeConstraints()
+
+        let minimumFrame = frameRect(forContentRect: NSRect(origin: .zero, size: Self.minimumContentSize)).size
+        let maximumFrame = frameRect(forContentRect: NSRect(origin: .zero, size: maximumContentSize())).size
+
+        return NSSize(
+            width: min(max(frameSize.width, minimumFrame.width), maximumFrame.width),
+            height: min(max(frameSize.height, minimumFrame.height), maximumFrame.height)
+        )
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        updateResizeConstraints()
+    }
+
+    func windowDidEndLiveResize(_ notification: Notification) {
+        persistCurrentWindowSize()
+        updateResizeConstraints()
     }
 
     private func startInactivityMonitoring() {
@@ -164,6 +196,18 @@ final class GamepadWindow: NSPanel {
         ) { [weak self] _ in
             self?.wakeIfMouseIsOverWindow()
         }
+    }
+
+    private func updateResizeConstraints() {
+        if isMinimized {
+            let minimizedSize = GamepadContentView.minimizedTileSize
+            contentMinSize = minimizedSize
+            contentMaxSize = minimizedSize
+            return
+        }
+
+        contentMinSize = Self.minimumContentSize
+        contentMaxSize = maximumContentSize()
     }
 
     private func noteUserActivity() {
@@ -221,5 +265,34 @@ final class GamepadWindow: NSPanel {
 
     @objc private func handleFadeTimeoutDidChange() {
         noteUserActivity()
+    }
+
+    private func persistCurrentWindowSize() {
+        guard !isMinimized else { return }
+
+        let padHeight = max(
+            GamepadContentView.minimumPadSize.height,
+            contentLayoutRect.height - GamepadContentView.headerHeight - GamepadContentView.contentGap
+        )
+        let padWidth = max(GamepadContentView.minimumPadSize.width, contentLayoutRect.width)
+        ProfileStore.shared.updateActiveProfileSize(width: padWidth, height: padHeight)
+        NSLog("[GamepadWindow] Live resize ended width=\(padWidth) height=\(padHeight)")
+    }
+
+    private func maximumContentSize() -> NSSize {
+        let visibleFrame = screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let maxWidth = max(GamepadContentView.minimumPadSize.width, visibleFrame.maxX - frame.minX - 12)
+        let maxHeight = max(
+            GamepadContentView.minimumPadSize.height + GamepadContentView.headerHeight + GamepadContentView.contentGap,
+            visibleFrame.maxY - frame.minY - 12
+        )
+        return NSSize(width: maxWidth, height: maxHeight)
+    }
+
+    private static var minimumContentSize: NSSize {
+        NSSize(
+            width: GamepadContentView.minimumPadSize.width,
+            height: GamepadContentView.minimumPadSize.height + GamepadContentView.headerHeight + GamepadContentView.contentGap
+        )
     }
 }
