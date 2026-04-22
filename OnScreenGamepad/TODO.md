@@ -24,6 +24,10 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 - [x] Merge the old `GamepadConfigurator` workflow into `OnScreenGamepad`.
 - [ ] Decide when to fully delete the archived standalone `GamepadConfigurator` fallback.
 
+## Configurator
+
+- [ ] Remove size section because we can resize the gamepad manually.
+
 ## Joystick Concept
 
 - [ ] Design and prototype a virtual joystick mode.
