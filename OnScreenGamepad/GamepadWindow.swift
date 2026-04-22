@@ -38,6 +38,9 @@ final class GamepadWindow: NSPanel {
         content.onHideOverlay = { [weak self] in
             self?.hideOverlay()
         }
+        content.menuProvider = {
+            (NSApp.delegate as? AppDelegate)?.makeGamepadMenu()
+        }
         contentView = content
 
         alphaValue = profile.opacity

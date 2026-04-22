@@ -5,6 +5,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var gamepadWindow: GamepadWindow?
     var statusItem: NSStatusItem?
     private lazy var configuratorWindowController = ConfiguratorWindowController()
+    private let supportedOpacityValues: [Double] = [0.25, 0.4, 0.55, 0.7, 0.85, 1.0]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -105,6 +106,42 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return profilesMenu
     }
 
+    func makeGamepadMenu() -> NSMenu {
+        let menu = NSMenu(title: "Gamepad")
+
+        let profilesItem = NSMenuItem(title: "Profiles", action: nil, keyEquivalent: "")
+        profilesItem.submenu = makeProfilesMenu()
+        menu.addItem(profilesItem)
+
+        let transparencyItem = NSMenuItem(title: "Transparency", action: nil, keyEquivalent: "")
+        transparencyItem.submenu = makeTransparencyMenu()
+        menu.addItem(transparencyItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        let editProfilesItem = NSMenuItem(title: "Edit Profiles…", action: #selector(showConfigurator), keyEquivalent: "")
+        editProfilesItem.target = self
+        menu.addItem(editProfilesItem)
+
+        return menu
+    }
+
+    private func makeTransparencyMenu() -> NSMenu {
+        let transparencyMenu = NSMenu(title: "Transparency")
+        let currentOpacity = ProfileStore.shared.activeProfile.opacity
+
+        for opacity in supportedOpacityValues {
+            let percentage = Int(opacity * 100)
+            let item = NSMenuItem(title: "\(percentage)%", action: #selector(setActiveProfileOpacity(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = opacity
+            item.state = abs(currentOpacity - opacity) < 0.001 ? .on : .off
+            transparencyMenu.addItem(item)
+        }
+
+        return transparencyMenu
+    }
+
     func launchGamepad() {
         DispatchQueue.main.async {
             if let gamepadWindow = self.gamepadWindow {
@@ -134,6 +171,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let idStr = sender.representedObject as? String,
               let id = UUID(uuidString: idStr) else { return }
         ProfileStore.shared.setActive(id)
+    }
+
+    @objc func setActiveProfileOpacity(_ sender: NSMenuItem) {
+        guard let opacity = sender.representedObject as? Double else { return }
+
+        var profile = ProfileStore.shared.activeProfile
+        guard abs(profile.opacity - opacity) >= 0.001 else { return }
+
+        profile.opacity = opacity
+        ProfileStore.shared.upsert(profile)
     }
 
     @objc func showGamepad() {
