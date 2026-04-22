@@ -47,12 +47,14 @@ final class GamepadContentView: NSView {
     private final class HeaderBarView: NSView {
         var onToggleMinimize: (() -> Void)?
         var onHideOverlay: (() -> Void)?
+        var menuProvider: (() -> NSMenu?)?
         var onDragBegan: ((NSEvent) -> Void)?
         var onDragChanged: ((NSEvent) -> Void)?
         var onDragEnded: (() -> Void)?
 
         private let closeButton = NSButton(frame: .zero)
         private let minimizeButton = NSButton(frame: .zero)
+        private let menuButton = NSButton(frame: .zero)
         private let titleLabel = NSTextField(labelWithString: "")
         private let separatorView = NSView(frame: .zero)
 
@@ -85,6 +87,7 @@ final class GamepadContentView: NSView {
             minimizeButton.title = minimized ? "+" : "−"
             closeButton.isHidden = minimized
             titleLabel.isHidden = minimized
+            menuButton.isHidden = minimized
             separatorView.isHidden = minimized
             needsLayout = true
         }
@@ -106,6 +109,20 @@ final class GamepadContentView: NSView {
             minimizeButton.action = #selector(handleToggleMinimize)
             minimizeButton.setButtonType(.momentaryChange)
             addSubview(minimizeButton)
+
+            if let menuImage = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "Menu") {
+                menuButton.image = menuImage
+                menuButton.imagePosition = .imageOnly
+            } else {
+                menuButton.title = "⋯"
+            }
+            menuButton.font = NSFont.systemFont(ofSize: 16, weight: .semibold)
+            menuButton.isBordered = false
+            menuButton.contentTintColor = .white
+            menuButton.target = self
+            menuButton.action = #selector(handleMenu)
+            menuButton.setButtonType(.momentaryChange)
+            addSubview(menuButton)
 
             titleLabel.font = NSFont.systemFont(ofSize: 14, weight: .semibold)
             titleLabel.textColor = .white
@@ -134,7 +151,8 @@ final class GamepadContentView: NSView {
             } else {
                 closeButton.frame = NSRect(x: 10, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
                 minimizeButton.frame = NSRect(x: closeButton.frame.maxX + 8, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
-                titleLabel.frame = NSRect(x: 84, y: bounds.midY - 10, width: max(50, bounds.width - 168), height: 20)
+                menuButton.frame = NSRect(x: bounds.width - 34, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
+                titleLabel.frame = NSRect(x: 84, y: bounds.midY - 10, width: max(50, menuButton.frame.minX - 96), height: 20)
                 separatorView.frame = NSRect(x: 12, y: 0, width: bounds.width - 24, height: 1)
                 separatorView.isHidden = bounds.height <= 32
             }
@@ -146,6 +164,16 @@ final class GamepadContentView: NSView {
 
         @objc private func handleHideOverlay() {
             onHideOverlay?()
+        }
+
+        @objc private func handleMenu() {
+            guard let menu = menuProvider?() else { return }
+
+            menu.popUp(
+                positioning: nil,
+                at: NSPoint(x: menuButton.frame.minX, y: menuButton.frame.minY - 6),
+                in: self
+            )
         }
     }
 
@@ -183,6 +211,7 @@ final class GamepadContentView: NSView {
 
     var onToggleMinimize: (() -> Void)?
     var onHideOverlay: (() -> Void)?
+    var menuProvider: (() -> NSMenu?)?
 
     private var buttonViews: [GamepadButton: GamepadButtonView] = [:]
     private let headerBar = HeaderBarView(frame: .zero)
@@ -254,6 +283,9 @@ final class GamepadContentView: NSView {
         }
         headerBar.onHideOverlay = { [weak self] in
             self?.onHideOverlay?()
+        }
+        headerBar.menuProvider = { [weak self] in
+            self?.menuProvider?()
         }
         headerBar.onDragBegan = { [weak self] event in
             self?.beginWindowDrag(with: event)
