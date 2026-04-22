@@ -14,6 +14,7 @@ final class ButtonEditorViewController: NSViewController {
     private let opacityLabel = NSTextField(labelWithString: "90%")
     private let padWidthField = NSTextField()
     private let padHeightField = NSTextField()
+    private let compatibilityModeCheckbox = NSButton(checkboxWithTitle: "Compatibility Mode", target: nil, action: nil)
     private let previewView = GamepadPreviewView()
     private let detailPanel = ButtonDetailPanel()
 
@@ -34,6 +35,7 @@ final class ButtonEditorViewController: NSViewController {
         opacityLabel.stringValue = "\(Int(profile.opacity * 100))%"
         padWidthField.stringValue = "\(Int(profile.padWidth))"
         padHeightField.stringValue = "\(Int(profile.padHeight))"
+        compatibilityModeCheckbox.state = profile.compatibilityMode ? .on : .off
         previewView.reload(profile: profile, keepSelection: false)
         detailPanel.clear()
     }
@@ -61,6 +63,8 @@ final class ButtonEditorViewController: NSViewController {
         padWidthField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         padHeightField.bezelStyle = .roundedBezel
         padHeightField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        compatibilityModeCheckbox.target = self
+        compatibilityModeCheckbox.action = #selector(compatibilityModeChanged)
 
         let saveButton = NSButton(title: "Save & Apply", target: self, action: #selector(saveProfile))
         saveButton.bezelStyle = .rounded
@@ -76,6 +80,7 @@ final class ButtonEditorViewController: NSViewController {
             padWidthField,
             makeLabel("×"),
             padHeightField,
+            compatibilityModeCheckbox,
             NSView(),
             saveButton,
         ])
@@ -170,6 +175,11 @@ final class ButtonEditorViewController: NSViewController {
         opacityLabel.stringValue = "\(Int(profile.opacity * 100))%"
     }
 
+    @objc private func compatibilityModeChanged() {
+        profile.compatibilityMode = compatibilityModeCheckbox.state == .on
+        previewView.reload(profile: profile, keepSelection: true)
+    }
+
     @objc private func saveProfile() {
         if !nameField.stringValue.isEmpty {
             profile.name = nameField.stringValue
@@ -187,6 +197,7 @@ final class ButtonEditorViewController: NSViewController {
         )
         padWidthField.stringValue = "\(Int(profile.padWidth))"
         padHeightField.stringValue = "\(Int(profile.padHeight))"
+        profile.compatibilityMode = compatibilityModeCheckbox.state == .on
 
         onProfileSaved?(profile)
         showSavedIndicator()

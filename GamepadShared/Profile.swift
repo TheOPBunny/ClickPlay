@@ -1,5 +1,10 @@
 import Foundation
 
+enum ButtonInteractionMode: String, Codable {
+    case momentary
+    case toggleHold
+}
+
 // MARK: - ButtonConfig
 // Per-button layout and appearance settings stored in a profile.
 
@@ -13,6 +18,7 @@ struct ButtonConfig: Codable {
     var keyModifiers: Int   // NSEvent.ModifierFlags raw value
     var label: String       // display label (can differ from button name)
     var enabled: Bool
+    var interactionMode: ButtonInteractionMode
 
     private enum CodingKeys: String, CodingKey {
         case x
@@ -24,6 +30,7 @@ struct ButtonConfig: Codable {
         case keyModifiers
         case label
         case enabled
+        case interactionMode
     }
 
     init(
@@ -35,7 +42,8 @@ struct ButtonConfig: Codable {
         keyCode: Int,
         keyModifiers: Int = 0,
         label: String,
-        enabled: Bool
+        enabled: Bool,
+        interactionMode: ButtonInteractionMode = .momentary
     ) {
         self.x = x
         self.y = y
@@ -46,6 +54,7 @@ struct ButtonConfig: Codable {
         self.keyModifiers = keyModifiers
         self.label = label
         self.enabled = enabled
+        self.interactionMode = interactionMode
     }
 
     init(from decoder: Decoder) throws {
@@ -59,6 +68,7 @@ struct ButtonConfig: Codable {
         keyModifiers = try container.decodeIfPresent(Int.self, forKey: .keyModifiers) ?? 0
         label = try container.decode(String.self, forKey: .label)
         enabled = try container.decode(Bool.self, forKey: .enabled)
+        interactionMode = try container.decodeIfPresent(ButtonInteractionMode.self, forKey: .interactionMode) ?? .momentary
     }
 }
 
@@ -68,9 +78,49 @@ struct Profile: Codable, Identifiable {
     var id: UUID
     var name: String
     var opacity: Double                              // 0.25–1.0
+    var compatibilityMode: Bool
     var padWidth: Double                             // absolute pts
     var padHeight: Double
     var buttons: [String: ButtonConfig]              // keyed by GamepadButton.rawValue
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case opacity
+        case compatibilityMode
+        case padWidth
+        case padHeight
+        case buttons
+    }
+
+    init(
+        id: UUID,
+        name: String,
+        opacity: Double,
+        compatibilityMode: Bool = false,
+        padWidth: Double,
+        padHeight: Double,
+        buttons: [String: ButtonConfig]
+    ) {
+        self.id = id
+        self.name = name
+        self.opacity = opacity
+        self.compatibilityMode = compatibilityMode
+        self.padWidth = padWidth
+        self.padHeight = padHeight
+        self.buttons = buttons
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        opacity = try container.decode(Double.self, forKey: .opacity)
+        compatibilityMode = try container.decodeIfPresent(Bool.self, forKey: .compatibilityMode) ?? false
+        padWidth = try container.decode(Double.self, forKey: .padWidth)
+        padHeight = try container.decode(Double.self, forKey: .padHeight)
+        buttons = try container.decode([String: ButtonConfig].self, forKey: .buttons)
+    }
 
     // Default profile matching the original hardcoded layout
     static func makeDefault(name: String = "Default") -> Profile {
@@ -127,6 +177,7 @@ struct Profile: Codable, Identifiable {
             id: UUID(),
             name: name,
             opacity: 0.90,
+            compatibilityMode: false,
             padWidth: W,
             padHeight: H,
             buttons: btns

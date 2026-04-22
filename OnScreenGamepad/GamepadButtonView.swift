@@ -2,16 +2,21 @@ import Cocoa
 
 final class GamepadButtonView: NSView {
 
+    private static let compatibilityTapDuration: TimeInterval = 0.033
+
     let button: GamepadButton
     private var config: ButtonConfig
+    private var compatibilityModeEnabled: Bool
     private var pressedBinding: (keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)?
     private let label = NSTextField(labelWithString: "")
     private var isPressed = false
     private var trackingArea: NSTrackingArea?
+    private var autoReleaseWorkItem: DispatchWorkItem?
 
-    init(button: GamepadButton, config: ButtonConfig) {
+    init(button: GamepadButton, config: ButtonConfig, compatibilityModeEnabled: Bool) {
         self.button = button
         self.config = config
+        self.compatibilityModeEnabled = compatibilityModeEnabled
         super.init(frame: .zero)
         setup()
     }
@@ -39,14 +44,18 @@ final class GamepadButtonView: NSView {
         NSLog("[Button \(button.rawValue)] Created frame will be set by parent, keyCode=\(config.keyCode)")
     }
 
-    func updateConfig(_ newConfig: ButtonConfig) {
+    func updateConfig(_ newConfig: ButtonConfig, compatibilityModeEnabled: Bool) {
         releaseIfNeeded()
         config = newConfig
+        self.compatibilityModeEnabled = compatibilityModeEnabled
         label.stringValue = config.label
         updateAppearance(animated: false)
     }
 
     func releaseIfNeeded() {
+        autoReleaseWorkItem?.cancel()
+        autoReleaseWorkItem = nil
+
         guard let pressedBinding else { return }
 
         KeyInjector.shared.releaseRaw(pressedBinding.keyCode, modifiers: pressedBinding.modifiers)
@@ -75,22 +84,63 @@ final class GamepadButtonView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         NSLog("[Button \(button.rawValue)] mouseDown ✓")
-        setPressed(true)
+        handlePressStarted()
     }
 
     override func mouseUp(with event: NSEvent) {
         NSLog("[Button \(button.rawValue)] mouseUp ✓")
-        setPressed(false)
+        handlePressEnded()
     }
 
     override func mouseDragged(with event: NSEvent) {
+        guard !usesToggleHold, !usesCompatibilityTap else { return }
         let inside = bounds.contains(convert(event.locationInWindow, from: nil))
         if inside != isPressed { setPressed(inside) }
     }
 
     override func mouseExited(with event: NSEvent) {
         NSLog("[Button \(button.rawValue)] mouseExited")
+        guard !usesToggleHold, !usesCompatibilityTap else { return }
         if isPressed { setPressed(false) }
+    }
+
+    private var usesToggleHold: Bool {
+        config.interactionMode == .toggleHold
+    }
+
+    private var usesCompatibilityTap: Bool {
+        compatibilityModeEnabled && config.interactionMode == .momentary
+    }
+
+    private func handlePressStarted() {
+        if usesToggleHold {
+            setPressed(!isPressed)
+            return
+        }
+
+        if usesCompatibilityTap {
+            setPressed(true)
+            scheduleCompatibilityRelease()
+            return
+        }
+
+        setPressed(true)
+    }
+
+    private func handlePressEnded() {
+        guard !usesToggleHold, !usesCompatibilityTap else { return }
+        setPressed(false)
+    }
+
+    private func scheduleCompatibilityRelease() {
+        autoReleaseWorkItem?.cancel()
+
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.setPressed(false)
+        }
+        autoReleaseWorkItem = workItem
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration, execute: workItem)
     }
 
     private func setPressed(_ pressed: Bool) {
@@ -98,7 +148,7 @@ final class GamepadButtonView: NSView {
         isPressed = pressed
         let keyCode = CGKeyCode(config.keyCode)
         let modifiers = NSEvent.ModifierFlags(rawValue: UInt(config.keyModifiers))
-        NSLog("[Button \(button.rawValue)] setPressed=\(pressed) keyCode=\(keyCode) modifiers=\(config.keyModifiers)")
+        NSLog("[Button \(button.rawValue)] setPressed=\(pressed) keyCode=\(keyCode) modifiers=\(config.keyModifiers) mode=\(config.interactionMode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
         if pressed {
             pressedBinding = (keyCode: keyCode, modifiers: modifiers)
             KeyInjector.shared.pressRaw(keyCode, modifiers: modifiers)
@@ -106,6 +156,8 @@ final class GamepadButtonView: NSView {
             let bindingToRelease = pressedBinding ?? (keyCode: keyCode, modifiers: modifiers)
             KeyInjector.shared.releaseRaw(bindingToRelease.keyCode, modifiers: bindingToRelease.modifiers)
             pressedBinding = nil
+            autoReleaseWorkItem?.cancel()
+            autoReleaseWorkItem = nil
         }
         updateAppearance(animated: true)
     }

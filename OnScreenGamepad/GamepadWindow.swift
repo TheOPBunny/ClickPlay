@@ -1,8 +1,49 @@
 import Cocoa
 
-final class GamepadWindow: NSPanel {
+enum GamepadSettings {
+    static let fadeTimeoutDidChange = Notification.Name("GamepadFadeTimeoutDidChange")
+
+    private static let fadeTimeoutDefaultsKey = "gamepadFadeTimeout"
+
+    static let fadeAnimationDuration: TimeInterval = 0.18
+    static let fadeTimeoutOptions: [(title: String, seconds: TimeInterval?)] = [
+        ("Never", nil),
+        ("3 Seconds", 3),
+        ("5 Seconds", 5),
+        ("10 Seconds", 10),
+        ("30 Seconds", 30),
+    ]
+
+    static var fadeTimeout: TimeInterval? {
+        get {
+            let defaults = UserDefaults.standard
+            guard defaults.object(forKey: fadeTimeoutDefaultsKey) != nil else {
+                return 5
+            }
+
+            let value = defaults.double(forKey: fadeTimeoutDefaultsKey)
+            return value > 0 ? value : nil
+        }
+        set {
+            let defaults = UserDefaults.standard
+
+            if let newValue {
+                defaults.set(newValue, forKey: fadeTimeoutDefaultsKey)
+            } else {
+                defaults.set(0, forKey: fadeTimeoutDefaultsKey)
+            }
+
+            NotificationCenter.default.post(name: fadeTimeoutDidChange, object: nil)
+        }
+    }
+}
+
+final class GamepadWindow: NSPanel, NSWindowDelegate {
 
     private var isMinimized = false
+    private var inactivityTimer: Timer?
+    private var isFadedForInactivity = false
+    private var globalMouseMonitor: Any?
 
     convenience init() {
         let screen = NSScreen.main ?? NSScreen.screens[0]
@@ -16,7 +57,7 @@ final class GamepadWindow: NSPanel {
 
         self.init(
             contentRect: frame,
-            styleMask: [.borderless, .nonactivatingPanel],
+            styleMask: [.borderless, .nonactivatingPanel, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -26,10 +67,14 @@ final class GamepadWindow: NSPanel {
         backgroundColor = .clear
         hasShadow = true
         ignoresMouseEvents = false
-        acceptsMouseMovedEvents = false
+        acceptsMouseMovedEvents = true
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         isReleasedWhenClosed = false
         hidesOnDeactivate = false
+        delegate = self
+        contentMinSize = Self.minimumContentSize
+        contentMaxSize = maximumContentSize()
+        showsResizeIndicator = true
 
         let content = GamepadContentView(frame: NSRect(origin: .zero, size: size), profile: profile)
         content.onToggleMinimize = { [weak self] in
@@ -38,44 +83,216 @@ final class GamepadWindow: NSPanel {
         content.onHideOverlay = { [weak self] in
             self?.hideOverlay()
         }
+        content.menuProvider = {
+            (NSApp.delegate as? AppDelegate)?.makeGamepadMenu()
+        }
         contentView = content
 
         alphaValue = profile.opacity
+        startInactivityMonitoring()
+        noteUserActivity()
         NSLog("[GamepadWindow] Created. level=\(level.rawValue) ignoresMouseEvents=\(ignoresMouseEvents) canBecomeKey=\(canBecomeKey)")
     }
 
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
+    deinit {
+        inactivityTimer?.invalidate()
+        if let globalMouseMonitor {
+            NSEvent.removeMonitor(globalMouseMonitor)
+        }
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    override func sendEvent(_ event: NSEvent) {
+        switch event.type {
+        case .leftMouseDown, .leftMouseUp, .leftMouseDragged,
+             .rightMouseDown, .rightMouseUp, .rightMouseDragged,
+             .otherMouseDown, .otherMouseUp, .otherMouseDragged,
+             .mouseMoved:
+            noteUserActivity()
+        default:
+            break
+        }
+
+        super.sendEvent(event)
+    }
+
     func showGamepad() {
         orderFrontRegardless()
+        noteUserActivity()
     }
 
     func reloadProfile() {
         let profile = ProfileStore.shared.activeProfile
-        alphaValue = profile.opacity
+        updateResizeConstraints()
         resizeForCurrentState(using: profile)
         (contentView as? GamepadContentView)?.reload(profile: profile, minimized: isMinimized)
+        applyCurrentAlpha(animated: false)
+        resetInactivityTimer()
     }
 
     @objc private func hideOverlay() {
+        inactivityTimer?.invalidate()
         orderOut(nil)
     }
 
     private func toggleMinimized() {
         isMinimized.toggle()
         let profile = ProfileStore.shared.activeProfile
+        updateResizeConstraints()
         resizeForCurrentState(using: profile)
         (contentView as? GamepadContentView)?.setMinimized(isMinimized)
+        noteUserActivity()
         NSLog("[GamepadWindow] toggleMinimized minimized=\(isMinimized)")
     }
 
     private func resizeForCurrentState(using profile: Profile) {
+        updateResizeConstraints()
         let newSize = GamepadContentView.windowSize(for: profile, minimized: isMinimized)
         guard frame.size != newSize else { return }
 
         let currentFrame = frame
         let newOrigin = NSPoint(x: currentFrame.minX, y: currentFrame.maxY - newSize.height)
         setFrame(NSRect(origin: newOrigin, size: newSize), display: true)
+    }
+
+    func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+        guard !isMinimized else {
+            return GamepadContentView.minimizedTileSize
+        }
+
+        updateResizeConstraints()
+
+        let minimumFrame = frameRect(forContentRect: NSRect(origin: .zero, size: Self.minimumContentSize)).size
+        let maximumFrame = frameRect(forContentRect: NSRect(origin: .zero, size: maximumContentSize())).size
+
+        return NSSize(
+            width: min(max(frameSize.width, minimumFrame.width), maximumFrame.width),
+            height: min(max(frameSize.height, minimumFrame.height), maximumFrame.height)
+        )
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        updateResizeConstraints()
+    }
+
+    func windowDidEndLiveResize(_ notification: Notification) {
+        persistCurrentWindowSize()
+        updateResizeConstraints()
+    }
+
+    private func startInactivityMonitoring() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleFadeTimeoutDidChange),
+            name: GamepadSettings.fadeTimeoutDidChange,
+            object: nil
+        )
+
+        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
+        ) { [weak self] _ in
+            self?.wakeIfMouseIsOverWindow()
+        }
+    }
+
+    private func updateResizeConstraints() {
+        if isMinimized {
+            let minimizedSize = GamepadContentView.minimizedTileSize
+            contentMinSize = minimizedSize
+            contentMaxSize = minimizedSize
+            return
+        }
+
+        contentMinSize = Self.minimumContentSize
+        contentMaxSize = maximumContentSize()
+    }
+
+    private func noteUserActivity() {
+        guard isVisible else { return }
+
+        if isFadedForInactivity {
+            isFadedForInactivity = false
+            applyCurrentAlpha(animated: true)
+        }
+
+        resetInactivityTimer()
+    }
+
+    private func resetInactivityTimer() {
+        inactivityTimer?.invalidate()
+
+        guard isVisible, let fadeTimeout = GamepadSettings.fadeTimeout else {
+            if isFadedForInactivity {
+                isFadedForInactivity = false
+                applyCurrentAlpha(animated: true)
+            }
+            return
+        }
+
+        inactivityTimer = Timer.scheduledTimer(withTimeInterval: fadeTimeout, repeats: false) { [weak self] _ in
+            self?.fadeForInactivity()
+        }
+    }
+
+    private func fadeForInactivity() {
+        guard isVisible, !isFadedForInactivity else { return }
+        isFadedForInactivity = true
+        applyCurrentAlpha(animated: true)
+    }
+
+    private func wakeIfMouseIsOverWindow() {
+        guard isFadedForInactivity, isVisible, frame.contains(NSEvent.mouseLocation) else { return }
+        noteUserActivity()
+    }
+
+    private func applyCurrentAlpha(animated: Bool) {
+        let targetAlpha = isFadedForInactivity ? 0.0 : ProfileStore.shared.activeProfile.opacity
+
+        guard animated else {
+            alphaValue = targetAlpha
+            return
+        }
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = GamepadSettings.fadeAnimationDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            animator().alphaValue = targetAlpha
+        }
+    }
+
+    @objc private func handleFadeTimeoutDidChange() {
+        noteUserActivity()
+    }
+
+    private func persistCurrentWindowSize() {
+        guard !isMinimized else { return }
+
+        let padHeight = max(
+            GamepadContentView.minimumPadSize.height,
+            contentLayoutRect.height - GamepadContentView.headerHeight - GamepadContentView.contentGap
+        )
+        let padWidth = max(GamepadContentView.minimumPadSize.width, contentLayoutRect.width)
+        ProfileStore.shared.updateActiveProfileSize(width: padWidth, height: padHeight)
+        NSLog("[GamepadWindow] Live resize ended width=\(padWidth) height=\(padHeight)")
+    }
+
+    private func maximumContentSize() -> NSSize {
+        let visibleFrame = screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let maxWidth = max(GamepadContentView.minimumPadSize.width, visibleFrame.maxX - frame.minX - 12)
+        let maxHeight = max(
+            GamepadContentView.minimumPadSize.height + GamepadContentView.headerHeight + GamepadContentView.contentGap,
+            visibleFrame.maxY - frame.minY - 12
+        )
+        return NSSize(width: maxWidth, height: maxHeight)
+    }
+
+    private static var minimumContentSize: NSSize {
+        NSSize(
+            width: GamepadContentView.minimumPadSize.width,
+            height: GamepadContentView.minimumPadSize.height + GamepadContentView.headerHeight + GamepadContentView.contentGap
+        )
     }
 }

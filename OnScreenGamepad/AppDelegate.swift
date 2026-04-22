@@ -5,6 +5,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var gamepadWindow: GamepadWindow?
     var statusItem: NSStatusItem?
     private lazy var configuratorWindowController = ConfiguratorWindowController()
+    private let supportedOpacityValues: [Double] = [0.25, 0.4, 0.55, 0.7, 0.85, 1.0]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -105,6 +106,61 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return profilesMenu
     }
 
+    func makeGamepadMenu() -> NSMenu {
+        let menu = NSMenu(title: "Gamepad")
+
+        let profilesItem = NSMenuItem(title: "Profiles", action: nil, keyEquivalent: "")
+        profilesItem.submenu = makeProfilesMenu()
+        menu.addItem(profilesItem)
+
+        let transparencyItem = NSMenuItem(title: "Transparency", action: nil, keyEquivalent: "")
+        transparencyItem.submenu = makeTransparencyMenu()
+        menu.addItem(transparencyItem)
+
+        let fadeItem = NSMenuItem(title: "Fade After", action: nil, keyEquivalent: "")
+        fadeItem.submenu = makeFadeMenu()
+        menu.addItem(fadeItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        let editProfilesItem = NSMenuItem(title: "Edit Profiles…", action: #selector(showConfigurator), keyEquivalent: "")
+        editProfilesItem.target = self
+        menu.addItem(editProfilesItem)
+
+        return menu
+    }
+
+    private func makeTransparencyMenu() -> NSMenu {
+        let transparencyMenu = NSMenu(title: "Transparency")
+        let currentOpacity = ProfileStore.shared.activeProfile.opacity
+
+        for opacity in supportedOpacityValues {
+            let percentage = Int(opacity * 100)
+            let item = NSMenuItem(title: "\(percentage)%", action: #selector(setActiveProfileOpacity(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = opacity
+            item.state = abs(currentOpacity - opacity) < 0.001 ? .on : .off
+            transparencyMenu.addItem(item)
+        }
+
+        return transparencyMenu
+    }
+
+    private func makeFadeMenu() -> NSMenu {
+        let fadeMenu = NSMenu(title: "Fade After")
+        let currentTimeout = GamepadSettings.fadeTimeout
+
+        for option in GamepadSettings.fadeTimeoutOptions {
+            let item = NSMenuItem(title: option.title, action: #selector(setGlobalFadeTimeout(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = option.seconds.map(NSNumber.init(value:)) ?? NSNull()
+            item.state = fadeTimeoutsMatch(currentTimeout, option.seconds) ? .on : .off
+            fadeMenu.addItem(item)
+        }
+
+        return fadeMenu
+    }
+
     func launchGamepad() {
         DispatchQueue.main.async {
             if let gamepadWindow = self.gamepadWindow {
@@ -136,6 +192,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ProfileStore.shared.setActive(id)
     }
 
+    @objc func setActiveProfileOpacity(_ sender: NSMenuItem) {
+        guard let opacity = sender.representedObject as? Double else { return }
+
+        var profile = ProfileStore.shared.activeProfile
+        guard abs(profile.opacity - opacity) >= 0.001 else { return }
+
+        profile.opacity = opacity
+        ProfileStore.shared.upsert(profile)
+    }
+
+    @objc func setGlobalFadeTimeout(_ sender: NSMenuItem) {
+        if let timeoutValue = sender.representedObject as? NSNumber {
+            GamepadSettings.fadeTimeout = timeoutValue.doubleValue
+            return
+        }
+
+        GamepadSettings.fadeTimeout = nil
+    }
+
     @objc func showGamepad() {
         if gamepadWindow == nil {
             launchGamepad()
@@ -162,5 +237,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
+    }
+
+    private func fadeTimeoutsMatch(_ lhs: TimeInterval?, _ rhs: TimeInterval?) -> Bool {
+        switch (lhs, rhs) {
+        case (nil, nil):
+            return true
+        case let (lhs?, rhs?):
+            return abs(lhs - rhs) < 0.001
+        default:
+            return false
+        }
     }
 }
