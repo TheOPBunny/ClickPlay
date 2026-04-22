@@ -127,6 +127,7 @@ final class GamepadButtonView: NSView {
             }
         } else {
             layer?.backgroundColor = target.cgColor
+            layer?.transform = CATransform3DMakeScale(scale, scale, 1)
         }
     }
 }

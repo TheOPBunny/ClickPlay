@@ -248,8 +248,11 @@ final class GamepadPreviewView: NSView {
             onButtonMoved?(button, nextX / width, nextY / height)
 
         case .resizeBottomRight:
-            let newWidth = max(20, dragStartButtonSize.width + deltaX)
-            let newHeight = max(14, dragStartButtonSize.height - deltaY)
+            let resizeCenter = dragStartButtonCenter
+            let maxWidth = min(resizeCenter.x * 2, (width - resizeCenter.x) * 2)
+            let maxHeight = min(resizeCenter.y * 2, (height - resizeCenter.y) * 2)
+            let newWidth = (dragStartButtonSize.width + deltaX).clamped(to: 20 ... max(20, maxWidth))
+            let newHeight = (dragStartButtonSize.height - deltaY).clamped(to: 14 ... max(14, maxHeight))
 
             if let buttonLayer = buttonLayers[button] {
                 let center = buttonLayer.position
