@@ -6,13 +6,15 @@
 - [x] Add window resizing support for the gamepad overlay.
 - [x] Make the toggle pill draggable when the gamepad is minimized into pill mode.
 - [x] Investigate why Accessibility permission is prompted on every startup even after permission is granted.
+
 Notes:
 This was caused by unstable development signing rather than the app's Accessibility permission logic.
+
 Fix:
 Use a real Team, a stable bundle identifier, and a normal development signing identity instead of ad hoc/manual signing.
 Run the app from a stable signed app path and grant Accessibility permission to that signed app once.
 
-## Features
+## Gamepad
 
 - [ ] Add a built-in drop-down menu for switching profiles.
 - [ ] Add transparency controls to that same menu instead of a separate transparency menu.
@@ -21,16 +23,36 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 - [ ] Change button presses so button presses last 33 ms.
 - [ ] Add an option for buttons to toggle into a held-down state on press.
 - [ ] Fade the gamepad to 100% transparency after a configurable period of inactivity.
+- [ ] Use system corner dragging to resize.
 - [x] Merge the old `GamepadConfigurator` workflow into `OnScreenGamepad`.
 - [ ] Decide when to fully delete the archived standalone `GamepadConfigurator` fallback.
 
 ## Configurator
 
 - [ ] Remove size section because we can resize the gamepad manually.
+- [ ] Add an option to add a button.
+- [ ] Use system corner dragging to resize buttons, or allow entering dimensions in `px x px`.
+- [ ] Add cut, copy, paste, undo, and redo support for buttons.
+- [ ] Add multi-select for buttons using drag selection or `Cmd`-click.
+- [ ] Add the ability to group, align, and equalize a selected group of buttons.
+- [ ] Add a circle button shape.
+- [ ] Make the editing window larger and scale it with the application window size.
+- [ ] Allow side panels to collapse and be resized horizontally.
+- [ ] Update `KeyRecorder` so left-click starts listening for keys and another left-click stops listening.
+- [ ] Allow a button to be assigned multiple keys, for example `[xxaaa]` or `[abab]`.
+- [ ] If a button has multiple keys, add an option to activate them sequentially or simultaneously.
+- [ ] Add a "sticky" option so pressing a button keeps it held down until pressed again.
+- [ ] Add a "turbo" option so pressing a button repeatedly sends its key until pressed again.
+- [ ] Center text on buttons.
+- [ ] Investigate whether macOS Accessibility dwell actions can be activated.
+- [ ] If a label is empty, use the key as the label.
+- [ ] Add label styling controls for text size, bold, and italic.
+- [ ] Add an option for right-click to activate a button, or to activate a different recorded key.
 
 ## Joystick Concept
 
 - [ ] Design and prototype a virtual joystick mode.
+
 Requirements:
 - Pressing the joystick button should capture the mouse.
 - The joystick should support 8-direction input.
