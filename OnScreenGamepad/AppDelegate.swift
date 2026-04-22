@@ -117,6 +117,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         transparencyItem.submenu = makeTransparencyMenu()
         menu.addItem(transparencyItem)
 
+        let fadeItem = NSMenuItem(title: "Fade After", action: nil, keyEquivalent: "")
+        fadeItem.submenu = makeFadeMenu()
+        menu.addItem(fadeItem)
+
         menu.addItem(NSMenuItem.separator())
 
         let editProfilesItem = NSMenuItem(title: "Edit Profiles…", action: #selector(showConfigurator), keyEquivalent: "")
@@ -140,6 +144,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         return transparencyMenu
+    }
+
+    private func makeFadeMenu() -> NSMenu {
+        let fadeMenu = NSMenu(title: "Fade After")
+        let currentTimeout = GamepadSettings.fadeTimeout
+
+        for option in GamepadSettings.fadeTimeoutOptions {
+            let item = NSMenuItem(title: option.title, action: #selector(setGlobalFadeTimeout(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = option.seconds.map(NSNumber.init(value:)) ?? NSNull()
+            item.state = fadeTimeoutsMatch(currentTimeout, option.seconds) ? .on : .off
+            fadeMenu.addItem(item)
+        }
+
+        return fadeMenu
     }
 
     func launchGamepad() {
@@ -183,6 +202,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ProfileStore.shared.upsert(profile)
     }
 
+    @objc func setGlobalFadeTimeout(_ sender: NSMenuItem) {
+        if let timeoutValue = sender.representedObject as? NSNumber {
+            GamepadSettings.fadeTimeout = timeoutValue.doubleValue
+            return
+        }
+
+        GamepadSettings.fadeTimeout = nil
+    }
+
     @objc func showGamepad() {
         if gamepadWindow == nil {
             launchGamepad()
@@ -209,5 +237,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
+    }
+
+    private func fadeTimeoutsMatch(_ lhs: TimeInterval?, _ rhs: TimeInterval?) -> Bool {
+        switch (lhs, rhs) {
+        case (nil, nil):
+            return true
+        case let (lhs?, rhs?):
+            return abs(lhs - rhs) < 0.001
+        default:
+            return false
+        }
     }
 }
