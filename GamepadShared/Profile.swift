@@ -78,9 +78,49 @@ struct Profile: Codable, Identifiable {
     var id: UUID
     var name: String
     var opacity: Double                              // 0.25–1.0
+    var compatibilityMode: Bool
     var padWidth: Double                             // absolute pts
     var padHeight: Double
     var buttons: [String: ButtonConfig]              // keyed by GamepadButton.rawValue
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case opacity
+        case compatibilityMode
+        case padWidth
+        case padHeight
+        case buttons
+    }
+
+    init(
+        id: UUID,
+        name: String,
+        opacity: Double,
+        compatibilityMode: Bool = false,
+        padWidth: Double,
+        padHeight: Double,
+        buttons: [String: ButtonConfig]
+    ) {
+        self.id = id
+        self.name = name
+        self.opacity = opacity
+        self.compatibilityMode = compatibilityMode
+        self.padWidth = padWidth
+        self.padHeight = padHeight
+        self.buttons = buttons
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        opacity = try container.decode(Double.self, forKey: .opacity)
+        compatibilityMode = try container.decodeIfPresent(Bool.self, forKey: .compatibilityMode) ?? false
+        padWidth = try container.decode(Double.self, forKey: .padWidth)
+        padHeight = try container.decode(Double.self, forKey: .padHeight)
+        buttons = try container.decode([String: ButtonConfig].self, forKey: .buttons)
+    }
 
     // Default profile matching the original hardcoded layout
     static func makeDefault(name: String = "Default") -> Profile {
@@ -137,6 +177,7 @@ struct Profile: Codable, Identifiable {
             id: UUID(),
             name: name,
             opacity: 0.90,
+            compatibilityMode: false,
             padWidth: W,
             padHeight: H,
             buttons: btns

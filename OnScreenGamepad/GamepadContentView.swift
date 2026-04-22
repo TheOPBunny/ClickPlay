@@ -323,10 +323,14 @@ final class GamepadContentView: NSView {
             let frame = CGRect(x: cx - bw / 2, y: cy - bh / 2, width: bw, height: bh)
 
             if let view = buttonViews[button] {
-                view.updateConfig(cfg)
+                view.updateConfig(cfg, compatibilityModeEnabled: profile.compatibilityMode)
                 view.frame = frame
             } else {
-                let view = GamepadButtonView(button: button, config: cfg)
+                let view = GamepadButtonView(
+                    button: button,
+                    config: cfg,
+                    compatibilityModeEnabled: profile.compatibilityMode
+                )
                 view.frame = frame
                 padSurface.addSubview(view)
                 buttonViews[button] = view
