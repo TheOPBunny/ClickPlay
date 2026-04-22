@@ -1,5 +1,10 @@
 import Foundation
 
+enum ButtonInteractionMode: String, Codable {
+    case momentary
+    case toggleHold
+}
+
 // MARK: - ButtonConfig
 // Per-button layout and appearance settings stored in a profile.
 
@@ -13,6 +18,7 @@ struct ButtonConfig: Codable {
     var keyModifiers: Int   // NSEvent.ModifierFlags raw value
     var label: String       // display label (can differ from button name)
     var enabled: Bool
+    var interactionMode: ButtonInteractionMode
 
     private enum CodingKeys: String, CodingKey {
         case x
@@ -24,6 +30,7 @@ struct ButtonConfig: Codable {
         case keyModifiers
         case label
         case enabled
+        case interactionMode
     }
 
     init(
@@ -35,7 +42,8 @@ struct ButtonConfig: Codable {
         keyCode: Int,
         keyModifiers: Int = 0,
         label: String,
-        enabled: Bool
+        enabled: Bool,
+        interactionMode: ButtonInteractionMode = .momentary
     ) {
         self.x = x
         self.y = y
@@ -46,6 +54,7 @@ struct ButtonConfig: Codable {
         self.keyModifiers = keyModifiers
         self.label = label
         self.enabled = enabled
+        self.interactionMode = interactionMode
     }
 
     init(from decoder: Decoder) throws {
@@ -59,6 +68,7 @@ struct ButtonConfig: Codable {
         keyModifiers = try container.decodeIfPresent(Int.self, forKey: .keyModifiers) ?? 0
         label = try container.decode(String.self, forKey: .label)
         enabled = try container.decode(Bool.self, forKey: .enabled)
+        interactionMode = try container.decodeIfPresent(ButtonInteractionMode.self, forKey: .interactionMode) ?? .momentary
     }
 }
 

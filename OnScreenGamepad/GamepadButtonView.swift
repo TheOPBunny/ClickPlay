@@ -75,22 +75,42 @@ final class GamepadButtonView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         NSLog("[Button \(button.rawValue)] mouseDown ✓")
-        setPressed(true)
+        handlePressStarted()
     }
 
     override func mouseUp(with event: NSEvent) {
         NSLog("[Button \(button.rawValue)] mouseUp ✓")
-        setPressed(false)
+        handlePressEnded()
     }
 
     override func mouseDragged(with event: NSEvent) {
+        guard !usesToggleHold else { return }
         let inside = bounds.contains(convert(event.locationInWindow, from: nil))
         if inside != isPressed { setPressed(inside) }
     }
 
     override func mouseExited(with event: NSEvent) {
         NSLog("[Button \(button.rawValue)] mouseExited")
+        guard !usesToggleHold else { return }
         if isPressed { setPressed(false) }
+    }
+
+    private var usesToggleHold: Bool {
+        config.interactionMode == .toggleHold
+    }
+
+    private func handlePressStarted() {
+        if usesToggleHold {
+            setPressed(!isPressed)
+            return
+        }
+
+        setPressed(true)
+    }
+
+    private func handlePressEnded() {
+        guard !usesToggleHold else { return }
+        setPressed(false)
     }
 
     private func setPressed(_ pressed: Bool) {
@@ -98,7 +118,7 @@ final class GamepadButtonView: NSView {
         isPressed = pressed
         let keyCode = CGKeyCode(config.keyCode)
         let modifiers = NSEvent.ModifierFlags(rawValue: UInt(config.keyModifiers))
-        NSLog("[Button \(button.rawValue)] setPressed=\(pressed) keyCode=\(keyCode) modifiers=\(config.keyModifiers)")
+        NSLog("[Button \(button.rawValue)] setPressed=\(pressed) keyCode=\(keyCode) modifiers=\(config.keyModifiers) mode=\(config.interactionMode.rawValue)")
         if pressed {
             pressedBinding = (keyCode: keyCode, modifiers: modifiers)
             KeyInjector.shared.pressRaw(keyCode, modifiers: modifiers)
