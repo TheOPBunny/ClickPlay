@@ -15,6 +15,7 @@ final class ButtonDetailPanel: NSView {
     private let yField = NSTextField()
     private let widthLabel = NSTextField(labelWithString: "–")
     private let heightLabel = NSTextField(labelWithString: "–")
+    private let interactionModePopup = NSPopUpButton()
     private let enabledCheckbox = NSButton(checkboxWithTitle: "Enabled", target: nil, action: nil)
     private let applyButton = NSButton(title: "Apply Changes", target: nil, action: nil)
 
@@ -35,6 +36,7 @@ final class ButtonDetailPanel: NSView {
         keyRecorder.setKey(code: 49)
         widthLabel.stringValue = "–"
         heightLabel.stringValue = "–"
+        interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
         applyButton.isEnabled = false
     }
 
@@ -48,6 +50,7 @@ final class ButtonDetailPanel: NSView {
         xField.stringValue = String(format: "%.4f", config.x)
         yField.stringValue = String(format: "%.4f", config.y)
         enabledCheckbox.state = config.enabled ? .on : .off
+        interactionModePopup.selectItem(withTag: config.interactionMode.tag)
         keyRecorder.setKey(
             code: config.keyCode,
             modifiers: NSEvent.ModifierFlags(rawValue: UInt(config.keyModifiers))
@@ -98,6 +101,9 @@ final class ButtonDetailPanel: NSView {
         widthLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         heightLabel.textColor = .secondaryLabelColor
         heightLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        interactionModePopup.target = self
+        interactionModePopup.action = #selector(applyPressed)
+        populateInteractionModes()
 
         let stack = NSStackView()
         stack.orientation = .vertical
@@ -111,6 +117,7 @@ final class ButtonDetailPanel: NSView {
         stack.addArrangedSubview(makeRow(label: "Color:", control: colorWell))
         stack.addArrangedSubview(makeRow(label: "X (0–1):", control: xField))
         stack.addArrangedSubview(makeRow(label: "Y (0–1):", control: yField))
+        stack.addArrangedSubview(makeRow(label: "Mode:", control: interactionModePopup))
         stack.addArrangedSubview(enabledCheckbox)
         stack.addArrangedSubview(makeSizeRow())
         stack.addArrangedSubview(applyButton)
@@ -184,6 +191,17 @@ final class ButtonDetailPanel: NSView {
         emitChange()
     }
 
+    private func populateInteractionModes() {
+        interactionModePopup.removeAllItems()
+
+        for mode in ButtonInteractionMode.allCases {
+            interactionModePopup.addItem(withTitle: mode.displayName)
+            interactionModePopup.lastItem?.tag = mode.tag
+        }
+
+        interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
+    }
+
     private func emitChange() {
         guard var config, let button else {
             return
@@ -197,8 +215,44 @@ final class ButtonDetailPanel: NSView {
         config.x = Double(xField.stringValue) ?? config.x
         config.y = Double(yField.stringValue) ?? config.y
         config.enabled = enabledCheckbox.state == .on
+        config.interactionMode = ButtonInteractionMode(tag: interactionModePopup.selectedTag()) ?? .momentary
 
         self.config = config
         onChanged?(button, config)
+    }
+}
+
+private extension ButtonInteractionMode {
+    static var allCases: [ButtonInteractionMode] {
+        [.momentary, .toggleHold]
+    }
+
+    var displayName: String {
+        switch self {
+        case .momentary:
+            return "Momentary"
+        case .toggleHold:
+            return "Toggle Hold"
+        }
+    }
+
+    var tag: Int {
+        switch self {
+        case .momentary:
+            return 0
+        case .toggleHold:
+            return 1
+        }
+    }
+
+    init?(tag: Int) {
+        switch tag {
+        case 0:
+            self = .momentary
+        case 1:
+            self = .toggleHold
+        default:
+            return nil
+        }
     }
 }
