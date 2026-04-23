@@ -17,6 +17,9 @@ struct ButtonConfig: Codable {
     var keyCode: Int        // CGKeyCode raw value
     var keyModifiers: Int   // NSEvent.ModifierFlags raw value
     var label: String       // display label (can differ from button name)
+    var labelFontSize: Double
+    var labelBold: Bool
+    var labelItalic: Bool
     var enabled: Bool
     var interactionMode: ButtonInteractionMode
 
@@ -29,6 +32,9 @@ struct ButtonConfig: Codable {
         case keyCode
         case keyModifiers
         case label
+        case labelFontSize
+        case labelBold
+        case labelItalic
         case enabled
         case interactionMode
     }
@@ -42,6 +48,9 @@ struct ButtonConfig: Codable {
         keyCode: Int,
         keyModifiers: Int = 0,
         label: String,
+        labelFontSize: Double = 11,
+        labelBold: Bool = true,
+        labelItalic: Bool = false,
         enabled: Bool,
         interactionMode: ButtonInteractionMode = .momentary
     ) {
@@ -53,6 +62,9 @@ struct ButtonConfig: Codable {
         self.keyCode = keyCode
         self.keyModifiers = keyModifiers
         self.label = label
+        self.labelFontSize = labelFontSize
+        self.labelBold = labelBold
+        self.labelItalic = labelItalic
         self.enabled = enabled
         self.interactionMode = interactionMode
     }
@@ -67,6 +79,9 @@ struct ButtonConfig: Codable {
         keyCode = try container.decode(Int.self, forKey: .keyCode)
         keyModifiers = try container.decodeIfPresent(Int.self, forKey: .keyModifiers) ?? 0
         label = try container.decode(String.self, forKey: .label)
+        labelFontSize = try container.decodeIfPresent(Double.self, forKey: .labelFontSize) ?? 11
+        labelBold = try container.decodeIfPresent(Bool.self, forKey: .labelBold) ?? true
+        labelItalic = try container.decodeIfPresent(Bool.self, forKey: .labelItalic) ?? false
         enabled = try container.decode(Bool.self, forKey: .enabled)
         interactionMode = try container.decodeIfPresent(ButtonInteractionMode.self, forKey: .interactionMode) ?? .momentary
     }
@@ -213,6 +228,26 @@ extension NSColor {
 }
 
 extension ButtonConfig {
+    var resolvedLabelFont: NSFont {
+        var symbolicTraits: NSFontDescriptor.SymbolicTraits = []
+        if labelBold { symbolicTraits.insert(.bold) }
+        if labelItalic { symbolicTraits.insert(.italic) }
+
+        let clampedSize = CGFloat(min(max(labelFontSize, 6), 36))
+        let descriptor = NSFont.systemFont(ofSize: clampedSize).fontDescriptor.withSymbolicTraits(symbolicTraits)
+        return NSFont(descriptor: descriptor, size: clampedSize) ?? NSFont.systemFont(
+            ofSize: clampedSize,
+            weight: labelBold ? .bold : .regular
+        )
+    }
+
+    var resolvedLabelAttributes: [NSAttributedString.Key: Any] {
+        [
+            .font: resolvedLabelFont,
+            .foregroundColor: NSColor.white,
+        ]
+    }
+
     var resolvedDisplayLabel: String {
         guard label.isEmpty else {
             return label

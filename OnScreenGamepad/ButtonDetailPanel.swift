@@ -11,6 +11,9 @@ final class ButtonDetailPanel: NSView {
     private let labelField = NSTextField()
     private let keyRecorder = KeyRecorderButton()
     private let colorWell = NSColorWell()
+    private let labelSizeField = NSTextField()
+    private let labelBoldCheckbox = NSButton(checkboxWithTitle: "Bold", target: nil, action: nil)
+    private let labelItalicCheckbox = NSButton(checkboxWithTitle: "Italic", target: nil, action: nil)
     private let xField = NSTextField()
     private let yField = NSTextField()
     private let widthLabel = NSTextField(labelWithString: "–")
@@ -32,8 +35,10 @@ final class ButtonDetailPanel: NSView {
         titleLabel.stringValue = "Select a button to edit"
         config = nil
         button = nil
-        [labelField, xField, yField].forEach { $0.stringValue = "" }
+        [labelField, labelSizeField, xField, yField].forEach { $0.stringValue = "" }
         keyRecorder.setKey(code: 49)
+        labelBoldCheckbox.state = .off
+        labelItalicCheckbox.state = .off
         widthLabel.stringValue = "–"
         heightLabel.stringValue = "–"
         interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
@@ -46,6 +51,9 @@ final class ButtonDetailPanel: NSView {
         applyButton.isEnabled = true
         titleLabel.stringValue = "Editing: \(button.rawValue)"
         labelField.stringValue = config.label
+        labelSizeField.stringValue = "\(Int(config.labelFontSize))"
+        labelBoldCheckbox.state = config.labelBold ? .on : .off
+        labelItalicCheckbox.state = config.labelItalic ? .on : .off
         colorWell.color = NSColor(hex: config.colorHex)
         xField.stringValue = String(format: "%.4f", config.x)
         yField.stringValue = String(format: "%.4f", config.y)
@@ -101,6 +109,15 @@ final class ButtonDetailPanel: NSView {
         widthLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         heightLabel.textColor = .secondaryLabelColor
         heightLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        labelSizeField.bezelStyle = .roundedBezel
+        labelSizeField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        labelSizeField.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        labelSizeField.target = self
+        labelSizeField.action = #selector(applyPressed)
+        labelBoldCheckbox.target = self
+        labelBoldCheckbox.action = #selector(applyPressed)
+        labelItalicCheckbox.target = self
+        labelItalicCheckbox.action = #selector(applyPressed)
         interactionModePopup.target = self
         interactionModePopup.action = #selector(applyPressed)
         populateInteractionModes()
@@ -113,6 +130,7 @@ final class ButtonDetailPanel: NSView {
 
         stack.addArrangedSubview(titleLabel)
         stack.addArrangedSubview(makeRow(label: "Label:", control: labelField))
+        stack.addArrangedSubview(makeLabelStyleRow())
         stack.addArrangedSubview(makeRow(label: "Key:", control: keyRecorder))
         stack.addArrangedSubview(makeRow(label: "Color:", control: colorWell))
         stack.addArrangedSubview(makeRow(label: "X (0–1):", control: xField))
@@ -187,6 +205,18 @@ final class ButtonDetailPanel: NSView {
         return row
     }
 
+    private func makeLabelStyleRow() -> NSStackView {
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.spacing = 6
+        row.alignment = .centerY
+        row.addArrangedSubview(makeFieldLabel("Text:"))
+        row.addArrangedSubview(labelSizeField)
+        row.addArrangedSubview(labelBoldCheckbox)
+        row.addArrangedSubview(labelItalicCheckbox)
+        return row
+    }
+
     @objc private func applyPressed() {
         emitChange()
     }
@@ -208,6 +238,10 @@ final class ButtonDetailPanel: NSView {
         }
 
         config.label = labelField.stringValue
+        config.labelFontSize = clampedLabelSize(from: labelSizeField.stringValue, fallback: config.labelFontSize)
+        labelSizeField.stringValue = "\(Int(config.labelFontSize))"
+        config.labelBold = labelBoldCheckbox.state == .on
+        config.labelItalic = labelItalicCheckbox.state == .on
         config.colorHex = colorWell.color.hexString
         config.x = Double(xField.stringValue) ?? config.x
         config.y = Double(yField.stringValue) ?? config.y
@@ -216,6 +250,14 @@ final class ButtonDetailPanel: NSView {
 
         self.config = config
         onChanged?(button, config)
+    }
+
+    private func clampedLabelSize(from stringValue: String, fallback: Double) -> Double {
+        guard let parsedValue = Double(stringValue), parsedValue.isFinite else {
+            return fallback
+        }
+
+        return min(max(parsedValue, 6), 36)
     }
 }
 
