@@ -83,7 +83,7 @@ final class GamepadPreviewView: NSView {
             buttonLayer.cornerRadius = 6
 
             let textLayer = CATextLayer()
-            textLayer.string = config.label
+            textLayer.string = config.resolvedDisplayLabel
             textLayer.fontSize = 10
             textLayer.alignmentMode = .center
             textLayer.foregroundColor = NSColor.white.cgColor
@@ -180,7 +180,7 @@ final class GamepadPreviewView: NSView {
         buttonLayer.backgroundColor = NSColor(hex: config.colorHex).withAlphaComponent(0.85).cgColor
 
         if let textLayer = buttonLayer.sublayers?.first as? CATextLayer {
-            textLayer.string = config.label
+            textLayer.string = config.resolvedDisplayLabel
             textLayer.contentsScale = window?.backingScaleFactor ?? 2
             textLayer.frame = buttonLayer.bounds
         }

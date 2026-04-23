@@ -28,7 +28,7 @@ final class GamepadButtonView: NSView {
         layer?.cornerRadius = 8
         layer?.masksToBounds = true
 
-        label.stringValue = config.label
+        label.stringValue = config.resolvedDisplayLabel
         label.font = NSFont.systemFont(ofSize: 11, weight: .bold)
         label.textColor = .white
         label.alignment = .center
@@ -48,7 +48,7 @@ final class GamepadButtonView: NSView {
         releaseIfNeeded()
         config = newConfig
         self.compatibilityModeEnabled = compatibilityModeEnabled
-        label.stringValue = config.label
+        label.stringValue = config.resolvedDisplayLabel
         updateAppearance(animated: false)
     }
 
