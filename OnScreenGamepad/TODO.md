@@ -46,7 +46,7 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 - [ ] Center text on buttons.
 - [ ] Investigate whether macOS Accessibility dwell actions can be activated.
 - [ ] If a label is empty, use the key as the label.
-- [ ] Add label styling controls for text size, bold, and italic.
+- [x] Add label styling controls for text size, bold, and italic.
 - [ ] Add an option for right-click to activate a button, or to activate a different recorded key.
 
 Implemented:

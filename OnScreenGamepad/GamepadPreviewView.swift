@@ -2,12 +2,6 @@ import Cocoa
 
 final class GamepadPreviewView: NSView {
 
-    private static let buttonLabelFont = NSFont.boldSystemFont(ofSize: 10)
-    private static let buttonLabelAttributes: [NSAttributedString.Key: Any] = [
-        .font: buttonLabelFont,
-        .foregroundColor: NSColor.white,
-    ]
-
     var onButtonSelected: ((GamepadButton) -> Void)?
     var onButtonMoved: ((GamepadButton, Double, Double) -> Void)?
     var onButtonResized: ((GamepadButton, Double, Double) -> Void)?
@@ -91,13 +85,13 @@ final class GamepadPreviewView: NSView {
             let textLayer = CATextLayer()
             textLayer.string = NSAttributedString(
                 string: config.resolvedDisplayLabel,
-                attributes: Self.buttonLabelAttributes
+                attributes: config.resolvedLabelAttributes
             )
-            textLayer.fontSize = 10
+            textLayer.fontSize = config.labelFontSize
             textLayer.alignmentMode = .center
             textLayer.foregroundColor = NSColor.white.cgColor
             textLayer.contentsScale = window?.backingScaleFactor ?? 2
-            textLayer.frame = textFrame(in: buttonLayer.bounds)
+            textLayer.frame = textFrame(in: buttonLayer.bounds, config: config)
             buttonLayer.addSublayer(textLayer)
 
             layer?.addSublayer(buttonLayer)
@@ -151,7 +145,6 @@ final class GamepadPreviewView: NSView {
         buttonLayer.cornerRadius = 6
 
         let textLayer = CATextLayer()
-        textLayer.fontSize = 10
         textLayer.alignmentMode = .center
         textLayer.foregroundColor = NSColor.white.cgColor
         textLayer.contentsScale = window?.backingScaleFactor ?? 2
@@ -191,10 +184,11 @@ final class GamepadPreviewView: NSView {
         if let textLayer = buttonLayer.sublayers?.first as? CATextLayer {
             textLayer.string = NSAttributedString(
                 string: config.resolvedDisplayLabel,
-                attributes: Self.buttonLabelAttributes
+                attributes: config.resolvedLabelAttributes
             )
+            textLayer.fontSize = config.labelFontSize
             textLayer.contentsScale = window?.backingScaleFactor ?? 2
-            textLayer.frame = textFrame(in: buttonLayer.bounds)
+            textLayer.frame = textFrame(in: buttonLayer.bounds, config: config)
         }
 
         handleLayer.frame = CGRect(
@@ -359,8 +353,8 @@ final class GamepadPreviewView: NSView {
         )
     }
 
-    private func textFrame(in bounds: CGRect) -> CGRect {
-        let measuredSize = NSString(string: "Ag").size(withAttributes: Self.buttonLabelAttributes)
+    private func textFrame(in bounds: CGRect, config: ButtonConfig) -> CGRect {
+        let measuredSize = NSString(string: "Ag").size(withAttributes: config.resolvedLabelAttributes)
         let height = ceil(measuredSize.height)
         let y = round((bounds.height - height) / 2) - 1
 
