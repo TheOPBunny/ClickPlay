@@ -207,10 +207,7 @@ final class ButtonDetailPanel: NSView {
             return
         }
 
-        if !labelField.stringValue.isEmpty {
-            config.label = labelField.stringValue
-        }
-
+        config.label = labelField.stringValue
         config.colorHex = colorWell.color.hexString
         config.x = Double(xField.stringValue) ?? config.x
         config.y = Double(yField.stringValue) ?? config.y

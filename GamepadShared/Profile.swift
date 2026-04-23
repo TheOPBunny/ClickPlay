@@ -214,8 +214,7 @@ extension NSColor {
 
 extension ButtonConfig {
     var resolvedDisplayLabel: String {
-        let trimmedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmedLabel.isEmpty else {
+        guard label.isEmpty else {
             return label
         }
 
