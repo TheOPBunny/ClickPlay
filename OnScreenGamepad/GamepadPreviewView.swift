@@ -2,6 +2,12 @@ import Cocoa
 
 final class GamepadPreviewView: NSView {
 
+    private static let buttonLabelFont = NSFont.boldSystemFont(ofSize: 10)
+    private static let buttonLabelAttributes: [NSAttributedString.Key: Any] = [
+        .font: buttonLabelFont,
+        .foregroundColor: NSColor.white,
+    ]
+
     var onButtonSelected: ((GamepadButton) -> Void)?
     var onButtonMoved: ((GamepadButton, Double, Double) -> Void)?
     var onButtonResized: ((GamepadButton, Double, Double) -> Void)?
@@ -83,12 +89,15 @@ final class GamepadPreviewView: NSView {
             buttonLayer.cornerRadius = 6
 
             let textLayer = CATextLayer()
-            textLayer.string = config.resolvedDisplayLabel
+            textLayer.string = NSAttributedString(
+                string: config.resolvedDisplayLabel,
+                attributes: Self.buttonLabelAttributes
+            )
             textLayer.fontSize = 10
             textLayer.alignmentMode = .center
             textLayer.foregroundColor = NSColor.white.cgColor
             textLayer.contentsScale = window?.backingScaleFactor ?? 2
-            textLayer.frame = buttonLayer.bounds
+            textLayer.frame = textFrame(in: buttonLayer.bounds)
             buttonLayer.addSublayer(textLayer)
 
             layer?.addSublayer(buttonLayer)
@@ -180,9 +189,12 @@ final class GamepadPreviewView: NSView {
         buttonLayer.backgroundColor = NSColor(hex: config.colorHex).withAlphaComponent(0.85).cgColor
 
         if let textLayer = buttonLayer.sublayers?.first as? CATextLayer {
-            textLayer.string = config.resolvedDisplayLabel
+            textLayer.string = NSAttributedString(
+                string: config.resolvedDisplayLabel,
+                attributes: Self.buttonLabelAttributes
+            )
             textLayer.contentsScale = window?.backingScaleFactor ?? 2
-            textLayer.frame = buttonLayer.bounds
+            textLayer.frame = textFrame(in: buttonLayer.bounds)
         }
 
         handleLayer.frame = CGRect(
@@ -345,6 +357,14 @@ final class GamepadPreviewView: NSView {
             width: handleSize,
             height: handleSize
         )
+    }
+
+    private func textFrame(in bounds: CGRect) -> CGRect {
+        let measuredSize = NSString(string: "Ag").size(withAttributes: Self.buttonLabelAttributes)
+        let height = ceil(measuredSize.height)
+        let y = round((bounds.height - height) / 2) - 1
+
+        return CGRect(x: 2, y: max(0, y), width: max(0, bounds.width - 4), height: height)
     }
 }
 
