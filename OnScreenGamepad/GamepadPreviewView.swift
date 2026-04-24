@@ -78,7 +78,7 @@ final class GamepadPreviewView: NSView {
         buttonLayers.removeAll()
         handleLayers.removeAll()
 
-        for button in GamepadButton.allCases {
+        for button in profile.orderedButtonIDs {
             guard let config = profile.buttons[button.rawValue], config.enabled else {
                 continue
             }
@@ -128,7 +128,7 @@ final class GamepadPreviewView: NSView {
     }
 
     private func updateExistingLayers() {
-        let activeButtons = Set(GamepadButton.allCases.filter {
+        let activeButtons = Set(profile.orderedButtonIDs.filter {
             guard let config = profile.buttons[$0.rawValue] else {
                 return false
             }
@@ -144,7 +144,7 @@ final class GamepadPreviewView: NSView {
             handleLayers.removeValue(forKey: button)
         }
 
-        for button in GamepadButton.allCases {
+        for button in profile.orderedButtonIDs {
             guard let config = profile.buttons[button.rawValue], config.enabled else {
                 continue
             }
@@ -298,7 +298,7 @@ final class GamepadPreviewView: NSView {
     }
 
     private func button(at point: CGPoint) -> GamepadButton? {
-        for button in GamepadButton.allCases {
+        for button in profile.orderedButtonIDs {
             guard let config = profile.buttons[button.rawValue], config.enabled else {
                 continue
             }
