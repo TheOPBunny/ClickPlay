@@ -167,8 +167,8 @@ final class GamepadContentView: NSView {
     static func windowSize(for profile: Profile, minimized: Bool) -> CGSize {
         if minimized { return minimizedTileSize }
         return CGSize(
-            width: profile.padWidth,
-            height: profile.padHeight + headerHeight + contentGap
+            width: profile.displayPadWidth,
+            height: profile.displayPadHeight + headerHeight + contentGap
         )
     }
 

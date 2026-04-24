@@ -275,7 +275,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
             contentLayoutRect.height - GamepadContentView.headerHeight - GamepadContentView.contentGap
         )
         let padWidth = max(GamepadContentView.minimumPadSize.width, contentLayoutRect.width)
-        ProfileStore.shared.updateActiveProfileSize(width: padWidth, height: padHeight)
+        ProfileStore.shared.updateActiveProfileDisplaySize(width: padWidth, height: padHeight)
         NSLog("[GamepadWindow] Live resize ended width=\(padWidth) height=\(padHeight)")
     }
 

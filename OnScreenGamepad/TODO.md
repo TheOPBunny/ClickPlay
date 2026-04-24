@@ -36,22 +36,24 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 - [ ] Add multi-select for buttons using drag selection or `Cmd`-click.
 - [ ] Add the ability to group, align, and equalize a selected group of buttons.
 - [ ] Add a circle button shape.
-- [ ] Make the editing window larger and scale it with the application window size.
+- [x] Make the editing window larger and scale it with the application window size.
 - [ ] Allow side panels to collapse and be resized horizontally.
 - [ ] Update `KeyRecorder` so left-click starts listening for keys and another left-click stops listening.
 - [ ] Allow a button to be assigned multiple keys, for example `[xxaaa]` or `[abab]`.
 - [ ] If a button has multiple keys, add an option to activate them sequentially or simultaneously.
 - [ ] Add a "sticky" option so pressing a button keeps it held down until pressed again.
 - [ ] Add a "turbo" option so pressing a button repeatedly sends its key until pressed again.
-- [ ] Center text on buttons.
+- [x] Center text on buttons.
 - [ ] Investigate whether macOS Accessibility dwell actions can be activated.
-- [ ] If a label is empty, use the key as the label.
-- [ ] Add label styling controls for text size, bold, and italic.
+- [x] If a label is empty, use the key as the label.
+- [x] Add label styling controls for text size, bold, and italic.
 - [ ] Add an option for right-click to activate a button, or to activate a different recorded key.
 
 Implemented:
 - Button interaction mode control in the configurator with `Momentary` and `Toggle Hold`.
 - Per-profile `Compatibility Mode` toggle in the configurator.
+- Freeform `1000 × 1000` editor workspace with centered-origin support for new profiles.
+- Live gamepad resize now updates runtime display size without changing editor button layout.
 
 ## Joystick Concept
 

@@ -28,8 +28,8 @@ final class GamepadButtonView: NSView {
         layer?.cornerRadius = 8
         layer?.masksToBounds = true
 
-        label.stringValue = config.label
-        label.font = NSFont.systemFont(ofSize: 11, weight: .bold)
+        label.stringValue = config.resolvedDisplayLabel
+        label.font = config.resolvedLabelFont
         label.textColor = .white
         label.alignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -48,7 +48,8 @@ final class GamepadButtonView: NSView {
         releaseIfNeeded()
         config = newConfig
         self.compatibilityModeEnabled = compatibilityModeEnabled
-        label.stringValue = config.label
+        label.stringValue = config.resolvedDisplayLabel
+        label.font = config.resolvedLabelFont
         updateAppearance(animated: false)
     }
 
