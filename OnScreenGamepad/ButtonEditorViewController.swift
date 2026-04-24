@@ -6,6 +6,7 @@ final class ButtonEditorViewController: NSViewController {
 
     private static let minimumPadWidth = 260.0
     private static let minimumPadHeight = 180.0
+    private static let previewAspectRatio = 300.0 / 420.0
 
     private var profile = ProfileStore.shared.activeProfile
 
@@ -17,9 +18,13 @@ final class ButtonEditorViewController: NSViewController {
     private let compatibilityModeCheckbox = NSButton(checkboxWithTitle: "Compatibility Mode", target: nil, action: nil)
     private let previewView = GamepadPreviewView()
     private let detailPanel = ButtonDetailPanel()
+    private let leftColumn = NSStackView()
+    private let hint = NSTextField(
+        labelWithString: "Click a button to select it. Drag the button to move it or the corner handle to resize it."
+    )
 
     override func loadView() {
-        view = NSView(frame: NSRect(x: 0, y: 0, width: 780, height: 580))
+        view = NSView(frame: NSRect(x: 0, y: 0, width: 980, height: 700))
     }
 
     override func viewDidLoad() {
@@ -132,14 +137,21 @@ final class ButtonEditorViewController: NSViewController {
             self.previewView.reload(profile: self.profile, keepSelection: true)
         }
 
-        let hint = NSTextField(
-            labelWithString: "Click a button to select it. Drag the button to move it or the corner handle to resize it."
-        )
         hint.font = .systemFont(ofSize: 10)
         hint.textColor = .secondaryLabelColor
         hint.translatesAutoresizingMaskIntoConstraints = false
 
-        [topBar, previewView, detailPanel, hint].forEach(view.addSubview(_:))
+        leftColumn.orientation = .vertical
+        leftColumn.alignment = .leading
+        leftColumn.spacing = 6
+        leftColumn.translatesAutoresizingMaskIntoConstraints = false
+        leftColumn.addArrangedSubview(previewView)
+        leftColumn.addArrangedSubview(hint)
+
+        let preferredPreviewWidthConstraint = leftColumn.widthAnchor.constraint(equalTo: view.widthAnchor, multiplier: 0.52)
+        preferredPreviewWidthConstraint.priority = .defaultHigh
+
+        [topBar, leftColumn, detailPanel].forEach(view.addSubview(_:))
 
         NSLayoutConstraint.activate([
             topBar.topAnchor.constraint(equalTo: view.topAnchor, constant: 12),
@@ -151,16 +163,20 @@ final class ButtonEditorViewController: NSViewController {
             opacityLabel.widthAnchor.constraint(equalToConstant: 36),
             padWidthField.widthAnchor.constraint(equalToConstant: 52),
             padHeightField.widthAnchor.constraint(equalToConstant: 52),
-            previewView.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: 14),
-            previewView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-            previewView.widthAnchor.constraint(equalToConstant: 420),
-            previewView.heightAnchor.constraint(equalToConstant: 300),
-            hint.topAnchor.constraint(equalTo: previewView.bottomAnchor, constant: 6),
-            hint.leadingAnchor.constraint(equalTo: previewView.leadingAnchor),
+            leftColumn.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: 14),
+            leftColumn.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            leftColumn.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -12),
+            leftColumn.widthAnchor.constraint(greaterThanOrEqualToConstant: 420),
+            leftColumn.widthAnchor.constraint(lessThanOrEqualToConstant: 760),
+            preferredPreviewWidthConstraint,
+            previewView.widthAnchor.constraint(equalTo: leftColumn.widthAnchor),
+            previewView.heightAnchor.constraint(equalTo: previewView.widthAnchor, multiplier: Self.previewAspectRatio),
+            hint.widthAnchor.constraint(equalTo: leftColumn.widthAnchor),
             detailPanel.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: 14),
-            detailPanel.leadingAnchor.constraint(equalTo: previewView.trailingAnchor, constant: 20),
+            detailPanel.leadingAnchor.constraint(equalTo: leftColumn.trailingAnchor, constant: 20),
             detailPanel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
             detailPanel.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -12),
+            detailPanel.widthAnchor.constraint(greaterThanOrEqualToConstant: 280),
         ])
     }
 

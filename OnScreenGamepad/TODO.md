@@ -36,7 +36,7 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 - [ ] Add multi-select for buttons using drag selection or `Cmd`-click.
 - [ ] Add the ability to group, align, and equalize a selected group of buttons.
 - [ ] Add a circle button shape.
-- [ ] Make the editing window larger and scale it with the application window size.
+- [x] Make the editing window larger and scale it with the application window size.
 - [ ] Allow side panels to collapse and be resized horizontally.
 - [ ] Update `KeyRecorder` so left-click starts listening for keys and another left-click stops listening.
 - [ ] Allow a button to be assigned multiple keys, for example `[xxaaa]` or `[abab]`.
