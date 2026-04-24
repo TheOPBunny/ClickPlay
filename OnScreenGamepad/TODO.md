@@ -43,15 +43,17 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 - [ ] If a button has multiple keys, add an option to activate them sequentially or simultaneously.
 - [ ] Add a "sticky" option so pressing a button keeps it held down until pressed again.
 - [ ] Add a "turbo" option so pressing a button repeatedly sends its key until pressed again.
-- [ ] Center text on buttons.
+- [x] Center text on buttons.
 - [ ] Investigate whether macOS Accessibility dwell actions can be activated.
-- [ ] If a label is empty, use the key as the label.
+- [x] If a label is empty, use the key as the label.
 - [x] Add label styling controls for text size, bold, and italic.
 - [ ] Add an option for right-click to activate a button, or to activate a different recorded key.
 
 Implemented:
 - Button interaction mode control in the configurator with `Momentary` and `Toggle Hold`.
 - Per-profile `Compatibility Mode` toggle in the configurator.
+- Freeform `1000 × 1000` editor workspace with centered-origin support for new profiles.
+- Live gamepad resize now updates runtime display size without changing editor button layout.
 
 ## Joystick Concept
 

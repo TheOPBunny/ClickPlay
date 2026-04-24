@@ -5,6 +5,11 @@ enum ButtonInteractionMode: String, Codable {
     case toggleHold
 }
 
+enum EditorCoordinateMode: String, Codable {
+    case legacyTopLeft
+    case centered
+}
+
 // MARK: - ButtonConfig
 // Per-button layout and appearance settings stored in a profile.
 
@@ -13,6 +18,8 @@ struct ButtonConfig: Codable {
     var y: Double           // center Y, as fraction of pad height (0.0–1.0)
     var width: Double       // as fraction of pad width
     var height: Double      // as fraction of pad height
+    var editorWidth: Double
+    var editorHeight: Double
     var colorHex: String    // "#RRGGBB"
     var keyCode: Int        // CGKeyCode raw value
     var keyModifiers: Int   // NSEvent.ModifierFlags raw value
@@ -28,6 +35,8 @@ struct ButtonConfig: Codable {
         case y
         case width
         case height
+        case editorWidth
+        case editorHeight
         case colorHex
         case keyCode
         case keyModifiers
@@ -44,6 +53,8 @@ struct ButtonConfig: Codable {
         y: Double,
         width: Double,
         height: Double,
+        editorWidth: Double = 0,
+        editorHeight: Double = 0,
         colorHex: String,
         keyCode: Int,
         keyModifiers: Int = 0,
@@ -58,6 +69,8 @@ struct ButtonConfig: Codable {
         self.y = y
         self.width = width
         self.height = height
+        self.editorWidth = editorWidth
+        self.editorHeight = editorHeight
         self.colorHex = colorHex
         self.keyCode = keyCode
         self.keyModifiers = keyModifiers
@@ -75,6 +88,8 @@ struct ButtonConfig: Codable {
         y = try container.decode(Double.self, forKey: .y)
         width = try container.decode(Double.self, forKey: .width)
         height = try container.decode(Double.self, forKey: .height)
+        editorWidth = try container.decodeIfPresent(Double.self, forKey: .editorWidth) ?? 0
+        editorHeight = try container.decodeIfPresent(Double.self, forKey: .editorHeight) ?? 0
         colorHex = try container.decode(String.self, forKey: .colorHex)
         keyCode = try container.decode(Int.self, forKey: .keyCode)
         keyModifiers = try container.decodeIfPresent(Int.self, forKey: .keyModifiers) ?? 0
@@ -94,8 +109,11 @@ struct Profile: Codable, Identifiable {
     var name: String
     var opacity: Double                              // 0.25–1.0
     var compatibilityMode: Bool
+    var editorCoordinateMode: EditorCoordinateMode
     var padWidth: Double                             // absolute pts
     var padHeight: Double
+    var displayPadWidth: Double
+    var displayPadHeight: Double
     var buttons: [String: ButtonConfig]              // keyed by GamepadButton.rawValue
 
     private enum CodingKeys: String, CodingKey {
@@ -103,8 +121,11 @@ struct Profile: Codable, Identifiable {
         case name
         case opacity
         case compatibilityMode
+        case editorCoordinateMode
         case padWidth
         case padHeight
+        case displayPadWidth
+        case displayPadHeight
         case buttons
     }
 
@@ -113,16 +134,22 @@ struct Profile: Codable, Identifiable {
         name: String,
         opacity: Double,
         compatibilityMode: Bool = false,
+        editorCoordinateMode: EditorCoordinateMode = .legacyTopLeft,
         padWidth: Double,
         padHeight: Double,
+        displayPadWidth: Double? = nil,
+        displayPadHeight: Double? = nil,
         buttons: [String: ButtonConfig]
     ) {
         self.id = id
         self.name = name
         self.opacity = opacity
         self.compatibilityMode = compatibilityMode
+        self.editorCoordinateMode = editorCoordinateMode
         self.padWidth = padWidth
         self.padHeight = padHeight
+        self.displayPadWidth = displayPadWidth ?? padWidth
+        self.displayPadHeight = displayPadHeight ?? padHeight
         self.buttons = buttons
     }
 
@@ -132,8 +159,11 @@ struct Profile: Codable, Identifiable {
         name = try container.decode(String.self, forKey: .name)
         opacity = try container.decode(Double.self, forKey: .opacity)
         compatibilityMode = try container.decodeIfPresent(Bool.self, forKey: .compatibilityMode) ?? false
+        editorCoordinateMode = try container.decodeIfPresent(EditorCoordinateMode.self, forKey: .editorCoordinateMode) ?? .legacyTopLeft
         padWidth = try container.decode(Double.self, forKey: .padWidth)
         padHeight = try container.decode(Double.self, forKey: .padHeight)
+        displayPadWidth = try container.decodeIfPresent(Double.self, forKey: .displayPadWidth) ?? padWidth
+        displayPadHeight = try container.decodeIfPresent(Double.self, forKey: .displayPadHeight) ?? padHeight
         buttons = try container.decode([String: ButtonConfig].self, forKey: .buttons)
     }
 
@@ -154,6 +184,8 @@ struct Profile: Codable, Identifiable {
             btns[btn.rawValue] = ButtonConfig(
                 x: cx(x), y: cy(y),
                 width: bw(w), height: bh(h),
+                editorWidth: w,
+                editorHeight: h,
                 colorHex: hex,
                 keyCode: key,
                 keyModifiers: 0,
@@ -193,8 +225,11 @@ struct Profile: Codable, Identifiable {
             name: name,
             opacity: 0.90,
             compatibilityMode: false,
+            editorCoordinateMode: .centered,
             padWidth: W,
             padHeight: H,
+            displayPadWidth: W,
+            displayPadHeight: H,
             buttons: btns
         )
     }

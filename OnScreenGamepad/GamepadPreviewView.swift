@@ -5,6 +5,8 @@ final class GamepadPreviewView: NSView {
     var onButtonSelected: ((GamepadButton) -> Void)?
     var onButtonMoved: ((GamepadButton, Double, Double) -> Void)?
     var onButtonResized: ((GamepadButton, Double, Double) -> Void)?
+    var maximumWorkspaceSize = CGSize(width: 1000, height: 1000)
+    var usesCenteredOrigin = false
 
     private var buttonLayers: [GamepadButton: CALayer] = [:]
     private var handleLayers: [GamepadButton: CALayer] = [:]
@@ -50,29 +52,29 @@ final class GamepadPreviewView: NSView {
         highlight(previousSelection)
     }
 
+    func syncConfig(_ config: ButtonConfig, for button: GamepadButton) {
+        profile.buttons[button.rawValue] = config
+    }
+
     private func rebuildLayers() {
         buttonLayers.values.forEach { $0.removeFromSuperlayer() }
         handleLayers.values.forEach { $0.removeFromSuperlayer() }
         buttonLayers.removeAll()
         handleLayers.removeAll()
 
-        let width = bounds.width
-        let height = bounds.height
-
         for button in GamepadButton.allCases {
             guard let config = profile.buttons[button.rawValue], config.enabled else {
                 continue
             }
 
-            let centerX = CGFloat(config.x) * width
-            let centerY = CGFloat(config.y) * height
-            let buttonWidth = CGFloat(config.width) * width
-            let buttonHeight = CGFloat(config.height) * height
+            let center = canvasPoint(forModelPoint: CGPoint(x: config.x, y: config.y))
+            let buttonWidth = CGFloat(config.editorWidth > 0 ? config.editorWidth : config.width)
+            let buttonHeight = CGFloat(config.editorHeight > 0 ? config.editorHeight : config.height)
 
             let buttonLayer = CALayer()
             buttonLayer.frame = CGRect(
-                x: centerX - (buttonWidth / 2),
-                y: centerY - (buttonHeight / 2),
+                x: center.x - (buttonWidth / 2),
+                y: center.y - (buttonHeight / 2),
                 width: buttonWidth,
                 height: buttonHeight
             )
@@ -163,16 +165,13 @@ final class GamepadPreviewView: NSView {
     }
 
     private func update(buttonLayer: CALayer, handleLayer: CALayer, with config: ButtonConfig) {
-        let width = bounds.width
-        let height = bounds.height
-        let centerX = CGFloat(config.x) * width
-        let centerY = CGFloat(config.y) * height
-        let buttonWidth = CGFloat(config.width) * width
-        let buttonHeight = CGFloat(config.height) * height
+        let center = canvasPoint(forModelPoint: CGPoint(x: config.x, y: config.y))
+        let buttonWidth = CGFloat(config.editorWidth > 0 ? config.editorWidth : config.width)
+        let buttonHeight = CGFloat(config.editorHeight > 0 ? config.editorHeight : config.height)
 
         buttonLayer.frame = CGRect(
-            x: centerX - (buttonWidth / 2),
-            y: centerY - (buttonHeight / 2),
+            x: center.x - (buttonWidth / 2),
+            y: center.y - (buttonHeight / 2),
             width: buttonWidth,
             height: buttonHeight
         )
@@ -206,7 +205,8 @@ final class GamepadPreviewView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
+        let canvasPoint = convert(event.locationInWindow, from: nil)
+        let point = modelPoint(forCanvasPoint: canvasPoint)
         guard let button = button(at: point), let config = profile.buttons[button.rawValue] else {
             highlight(nil)
             return
@@ -217,11 +217,12 @@ final class GamepadPreviewView: NSView {
         dragButton = button
         dragStartMouse = point
 
-        let width = bounds.width
-        let height = bounds.height
-        dragStartButtonCenter = CGPoint(x: CGFloat(config.x) * width, y: CGFloat(config.y) * height)
-        dragStartButtonSize = CGSize(width: CGFloat(config.width) * width, height: CGFloat(config.height) * height)
-        dragMode = isOnHandle(point, for: button) ? .resizeBottomRight : .move
+        dragStartButtonCenter = CGPoint(x: CGFloat(config.x), y: CGFloat(config.y))
+        dragStartButtonSize = CGSize(
+            width: CGFloat(config.editorWidth > 0 ? config.editorWidth : config.width),
+            height: CGFloat(config.editorHeight > 0 ? config.editorHeight : config.height)
+        )
+        dragMode = isOnHandle(canvasPoint, for: button) ? .resizeBottomRight : .move
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -229,47 +230,48 @@ final class GamepadPreviewView: NSView {
             return
         }
 
-        let point = convert(event.locationInWindow, from: nil)
+        let point = modelPoint(forCanvasPoint: convert(event.locationInWindow, from: nil))
         let deltaX = point.x - dragStartMouse.x
         let deltaY = point.y - dragStartMouse.y
-        let width = bounds.width
-        let height = bounds.height
-
         CATransaction.begin()
         CATransaction.setDisableActions(true)
 
         switch dragMode {
         case .move:
-            let nextX = (dragStartButtonCenter.x + deltaX).clamped(to: 0 ... width)
-            let nextY = (dragStartButtonCenter.y + deltaY).clamped(to: 0 ... height)
+            let halfWidth = dragStartButtonSize.width / 2
+            let halfHeight = dragStartButtonSize.height / 2
+            let nextX = (dragStartButtonCenter.x + deltaX).clamped(to: permittedCenterXRange(halfWidth: halfWidth))
+            let nextY = (dragStartButtonCenter.y + deltaY).clamped(to: permittedCenterYRange(halfHeight: halfHeight))
 
             if let buttonLayer = buttonLayers[button] {
-                buttonLayer.position = CGPoint(x: nextX, y: nextY)
+                buttonLayer.position = canvasPoint(forModelPoint: CGPoint(x: nextX, y: nextY))
                 updateHandleFrame(for: button, buttonLayer: buttonLayer)
             }
 
-            onButtonMoved?(button, nextX / width, nextY / height)
+            onButtonMoved?(button, nextX, nextY)
 
         case .resizeBottomRight:
-            let resizeCenter = dragStartButtonCenter
-            let maxWidth = min(resizeCenter.x * 2, (width - resizeCenter.x) * 2)
-            let maxHeight = min(resizeCenter.y * 2, (height - resizeCenter.y) * 2)
-            let newWidth = (dragStartButtonSize.width + deltaX).clamped(to: 20 ... max(20, maxWidth))
-            let newHeight = (dragStartButtonSize.height - deltaY).clamped(to: 14 ... max(14, maxHeight))
+            let maxWidth = max(20, maximumWidth(forCenterX: dragStartButtonCenter.x))
+            let maxHeight = max(14, maximumHeight(forCenterY: dragStartButtonCenter.y))
+            let newWidth = (dragStartButtonSize.width + deltaX).clamped(to: 20 ... maxWidth)
+            let newHeight = (dragStartButtonSize.height - deltaY).clamped(to: 14 ... maxHeight)
 
             if let buttonLayer = buttonLayers[button] {
                 let center = buttonLayer.position
                 buttonLayer.bounds = CGRect(origin: .zero, size: CGSize(width: newWidth, height: newHeight))
                 buttonLayer.position = center
 
-                if let textLayer = buttonLayer.sublayers?.first {
-                    textLayer.frame = buttonLayer.bounds
+                if
+                    let config = profile.buttons[button.rawValue],
+                    let textLayer = buttonLayer.sublayers?.first
+                {
+                    textLayer.frame = textFrame(in: buttonLayer.bounds, config: config)
                 }
 
                 updateHandleFrame(for: button, buttonLayer: buttonLayer)
             }
 
-            onButtonResized?(button, newWidth / width, newHeight / height)
+            onButtonResized?(button, newWidth, newHeight)
         }
 
         CATransaction.commit()
@@ -280,18 +282,15 @@ final class GamepadPreviewView: NSView {
     }
 
     private func button(at point: CGPoint) -> GamepadButton? {
-        let width = bounds.width
-        let height = bounds.height
-
         for button in GamepadButton.allCases {
             guard let config = profile.buttons[button.rawValue], config.enabled else {
                 continue
             }
 
-            let centerX = CGFloat(config.x) * width
-            let centerY = CGFloat(config.y) * height
-            let buttonWidth = CGFloat(config.width) * width
-            let buttonHeight = CGFloat(config.height) * height
+            let centerX = CGFloat(config.x)
+            let centerY = CGFloat(config.y)
+            let buttonWidth = CGFloat(config.editorWidth > 0 ? config.editorWidth : config.width)
+            let buttonHeight = CGFloat(config.editorHeight > 0 ? config.editorHeight : config.height)
             let frame = CGRect(
                 x: centerX - (buttonWidth / 2),
                 y: centerY - (buttonHeight / 2),
@@ -356,6 +355,64 @@ final class GamepadPreviewView: NSView {
         let y = round((bounds.height - height) / 2) - 1
 
         return CGRect(x: 2, y: max(0, y), width: max(0, bounds.width - 4), height: height)
+    }
+
+    private func canvasPoint(forModelPoint point: CGPoint) -> CGPoint {
+        guard usesCenteredOrigin else {
+            return point
+        }
+
+        return CGPoint(
+            x: point.x + (maximumWorkspaceSize.width / 2),
+            y: point.y + (maximumWorkspaceSize.height / 2)
+        )
+    }
+
+    private func modelPoint(forCanvasPoint point: CGPoint) -> CGPoint {
+        guard usesCenteredOrigin else {
+            return point
+        }
+
+        return CGPoint(
+            x: point.x - (maximumWorkspaceSize.width / 2),
+            y: point.y - (maximumWorkspaceSize.height / 2)
+        )
+    }
+
+    private func permittedCenterXRange(halfWidth: CGFloat) -> ClosedRange<CGFloat> {
+        if usesCenteredOrigin {
+            let halfWorkspaceWidth = maximumWorkspaceSize.width / 2
+            return (-halfWorkspaceWidth + halfWidth) ... (halfWorkspaceWidth - halfWidth)
+        }
+
+        return halfWidth ... (maximumWorkspaceSize.width - halfWidth)
+    }
+
+    private func permittedCenterYRange(halfHeight: CGFloat) -> ClosedRange<CGFloat> {
+        if usesCenteredOrigin {
+            let halfWorkspaceHeight = maximumWorkspaceSize.height / 2
+            return (-halfWorkspaceHeight + halfHeight) ... (halfWorkspaceHeight - halfHeight)
+        }
+
+        return halfHeight ... (maximumWorkspaceSize.height - halfHeight)
+    }
+
+    private func maximumWidth(forCenterX centerX: CGFloat) -> CGFloat {
+        if usesCenteredOrigin {
+            let halfWorkspaceWidth = maximumWorkspaceSize.width / 2
+            return min(halfWorkspaceWidth - centerX, halfWorkspaceWidth + centerX) * 2
+        }
+
+        return (maximumWorkspaceSize.width - centerX) * 2
+    }
+
+    private func maximumHeight(forCenterY centerY: CGFloat) -> CGFloat {
+        if usesCenteredOrigin {
+            let halfWorkspaceHeight = maximumWorkspaceSize.height / 2
+            return min(halfWorkspaceHeight - centerY, halfWorkspaceHeight + centerY) * 2
+        }
+
+        return centerY * 2
     }
 }
 
