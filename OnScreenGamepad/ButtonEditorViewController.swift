@@ -216,14 +216,18 @@ final class ButtonEditorViewController: NSViewController {
             self.profile.buttons[button.rawValue]?.y = y
             self.syncWorkspaceAfterGeometryChange(selectedButton: button)
         }
-        previewView.onButtonResized = { [weak self] button, width, height in
+        previewView.onButtonResized = { [weak self] button, proposedGeometry in
             guard let self else {
-                return
+                return proposedGeometry
             }
 
-            self.profile.buttons[button.rawValue]?.editorWidth = width
-            self.profile.buttons[button.rawValue]?.editorHeight = height
+            let appliedGeometry = self.clampedGeometry(proposedGeometry)
+            self.profile.buttons[button.rawValue]?.x = appliedGeometry.centerX
+            self.profile.buttons[button.rawValue]?.y = appliedGeometry.centerY
+            self.profile.buttons[button.rawValue]?.editorWidth = appliedGeometry.width
+            self.profile.buttons[button.rawValue]?.editorHeight = appliedGeometry.height
             self.syncWorkspaceAfterGeometryChange(selectedButton: button)
+            return appliedGeometry
         }
 
         detailPanel.translatesAutoresizingMaskIntoConstraints = false
@@ -232,7 +236,7 @@ final class ButtonEditorViewController: NSViewController {
                 return
             }
 
-            self.profile.buttons[button.rawValue] = config
+            self.profile.buttons[button.rawValue] = self.configByApplyingGeometryClamp(config)
             self.syncWorkspaceAfterGeometryChange(selectedButton: button)
             self.previewView.reload(profile: self.profile, keepSelection: true)
         }
@@ -549,31 +553,109 @@ final class ButtonEditorViewController: NSViewController {
     }
 
     private func clampEditableProfileToWorkspace() {
-        let maxWidth = Self.maximumWorkspaceSize.width
-        let maxHeight = Self.maximumWorkspaceSize.height
-
         for button in profile.orderedButtonIDs {
             guard var config = profile.buttons[button.rawValue] else {
                 continue
             }
 
-            let width = min(max(config.editorWidth > 0 ? config.editorWidth : config.width, 20), maxWidth)
-            let height = min(max(config.editorHeight > 0 ? config.editorHeight : config.height, 14), maxHeight)
-            let halfWidth = width / 2
-            let halfHeight = height / 2
-
-            config.editorWidth = width
-            config.editorHeight = height
-            switch profile.editorCoordinateMode {
-            case .legacyTopLeft:
-                config.x = min(max(config.x, halfWidth), maxWidth - halfWidth)
-                config.y = min(max(config.y, halfHeight), maxHeight - halfHeight)
-            case .centered:
-                config.x = min(max(config.x, -maxWidth / 2 + halfWidth), maxWidth / 2 - halfWidth)
-                config.y = min(max(config.y, -maxHeight / 2 + halfHeight), maxHeight / 2 - halfHeight)
-            }
+            config = configByApplyingGeometryClamp(config)
             profile.buttons[button.rawValue] = config
         }
+    }
+
+    private func configByApplyingGeometryClamp(_ config: ButtonConfig) -> ButtonConfig {
+        var config = config
+        let geometry = ButtonEditorGeometry(
+            centerX: config.x,
+            centerY: config.y,
+            width: config.editorWidth > 0 ? config.editorWidth : config.width,
+            height: config.editorHeight > 0 ? config.editorHeight : config.height,
+            anchoredResize: nil
+        )
+        let clamped = clampedGeometry(geometry)
+        config.x = clamped.centerX
+        config.y = clamped.centerY
+        config.editorWidth = clamped.width
+        config.editorHeight = clamped.height
+        return config
+    }
+
+    private func clampedGeometry(_ geometry: ButtonEditorGeometry) -> ButtonEditorGeometry {
+        if let anchoredResize = geometry.anchoredResize {
+            return clampedAnchoredGeometry(geometry, anchoredResize: anchoredResize)
+        }
+
+        let maxWidth = Self.maximumWorkspaceSize.width
+        let maxHeight = Self.maximumWorkspaceSize.height
+        let width = min(max(geometry.width, 20), maxWidth)
+        let height = min(max(geometry.height, 14), maxHeight)
+        let halfWidth = width / 2
+        let halfHeight = height / 2
+
+        switch profile.editorCoordinateMode {
+        case .legacyTopLeft:
+            return ButtonEditorGeometry(
+                centerX: min(max(geometry.centerX, halfWidth), maxWidth - halfWidth),
+                centerY: min(max(geometry.centerY, halfHeight), maxHeight - halfHeight),
+                width: width,
+                height: height,
+                anchoredResize: geometry.anchoredResize
+            )
+        case .centered:
+            return ButtonEditorGeometry(
+                centerX: min(max(geometry.centerX, -maxWidth / 2 + halfWidth), maxWidth / 2 - halfWidth),
+                centerY: min(max(geometry.centerY, -maxHeight / 2 + halfHeight), maxHeight / 2 - halfHeight),
+                width: width,
+                height: height,
+                anchoredResize: geometry.anchoredResize
+            )
+        }
+    }
+
+    private func clampedAnchoredGeometry(
+        _ geometry: ButtonEditorGeometry,
+        anchoredResize: AnchoredButtonResize
+    ) -> ButtonEditorGeometry {
+        let workspaceMinX: Double
+        let workspaceMaxX: Double
+        let workspaceMinY: Double
+        let workspaceMaxY: Double
+
+        switch profile.editorCoordinateMode {
+        case .legacyTopLeft:
+            workspaceMinX = 0
+            workspaceMaxX = Self.maximumWorkspaceSize.width
+            workspaceMinY = 0
+            workspaceMaxY = Self.maximumWorkspaceSize.height
+        case .centered:
+            workspaceMinX = -Self.maximumWorkspaceSize.width / 2
+            workspaceMaxX = Self.maximumWorkspaceSize.width / 2
+            workspaceMinY = -Self.maximumWorkspaceSize.height / 2
+            workspaceMaxY = Self.maximumWorkspaceSize.height / 2
+        }
+
+        let maxWidth = anchoredResize.resizesFromLeft
+            ? anchoredResize.anchorX - workspaceMinX
+            : workspaceMaxX - anchoredResize.anchorX
+        let maxHeight = anchoredResize.resizesFromBottom
+            ? anchoredResize.anchorY - workspaceMinY
+            : workspaceMaxY - anchoredResize.anchorY
+        let width = min(max(geometry.width, 20), max(20, maxWidth))
+        let height = min(max(geometry.height, 14), max(14, maxHeight))
+        let centerX = anchoredResize.resizesFromLeft
+            ? anchoredResize.anchorX - (width / 2)
+            : anchoredResize.anchorX + (width / 2)
+        let centerY = anchoredResize.resizesFromBottom
+            ? anchoredResize.anchorY - (height / 2)
+            : anchoredResize.anchorY + (height / 2)
+
+        return ButtonEditorGeometry(
+            centerX: centerX,
+            centerY: centerY,
+            width: width,
+            height: height,
+            anchoredResize: anchoredResize
+        )
     }
 
     private func fittedPadSize(for profile: Profile) -> CGSize? {

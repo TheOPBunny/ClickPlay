@@ -18,8 +18,8 @@ final class ButtonDetailPanel: NSView {
     private let labelItalicCheckbox = NSButton(checkboxWithTitle: "Italic", target: nil, action: nil)
     private let xField = NSTextField()
     private let yField = NSTextField()
-    private let widthLabel = NSTextField(labelWithString: "–")
-    private let heightLabel = NSTextField(labelWithString: "–")
+    private let widthField = NSTextField()
+    private let heightField = NSTextField()
     private let interactionModePopup = NSPopUpButton()
     private let enabledCheckbox = NSButton(checkboxWithTitle: "Enabled", target: nil, action: nil)
     private let applyButton = NSButton(title: "Apply Changes", target: nil, action: nil)
@@ -38,12 +38,10 @@ final class ButtonDetailPanel: NSView {
         titleLabel.stringValue = "Select a button to edit"
         config = nil
         button = nil
-        [labelField, labelSizeField, xField, yField].forEach { $0.stringValue = "" }
+        [labelField, labelSizeField, xField, yField, widthField, heightField].forEach { $0.stringValue = "" }
         keyRecorder.setKey(code: 49)
         labelBoldCheckbox.state = .off
         labelItalicCheckbox.state = .off
-        widthLabel.stringValue = "–"
-        heightLabel.stringValue = "–"
         interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
         applyButton.isEnabled = false
         deleteButton.isEnabled = false
@@ -62,14 +60,14 @@ final class ButtonDetailPanel: NSView {
         colorWell.color = NSColor(hex: config.colorHex)
         xField.stringValue = String(format: "%.1f", config.x)
         yField.stringValue = String(format: "%.1f", config.y)
+        widthField.stringValue = String(format: "%.1f", config.editorWidth > 0 ? config.editorWidth : config.width)
+        heightField.stringValue = String(format: "%.1f", config.editorHeight > 0 ? config.editorHeight : config.height)
         enabledCheckbox.state = config.enabled ? .on : .off
         interactionModePopup.selectItem(withTag: config.interactionMode.tag)
         keyRecorder.setKey(
             code: config.keyCode,
             modifiers: NSEvent.ModifierFlags(rawValue: UInt(config.keyModifiers))
         )
-        widthLabel.stringValue = String(format: "%.1f px", config.editorWidth > 0 ? config.editorWidth : config.width)
-        heightLabel.stringValue = String(format: "%.1f px", config.editorHeight > 0 ? config.editorHeight : config.height)
     }
 
     func refreshPosition(x: Double, y: Double, config: ButtonConfig) {
@@ -89,8 +87,8 @@ final class ButtonDetailPanel: NSView {
 
         config?.editorWidth = width
         config?.editorHeight = height
-        widthLabel.stringValue = String(format: "%.1f px", width)
-        heightLabel.stringValue = String(format: "%.1f px", height)
+        widthField.stringValue = String(format: "%.1f", width)
+        heightField.stringValue = String(format: "%.1f", height)
     }
 
     private func setup() {
@@ -114,10 +112,16 @@ final class ButtonDetailPanel: NSView {
         deleteButton.action = #selector(deletePressed)
         deleteButton.isEnabled = false
 
-        widthLabel.textColor = .secondaryLabelColor
-        widthLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        heightLabel.textColor = .secondaryLabelColor
-        heightLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        widthField.bezelStyle = .roundedBezel
+        widthField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        widthField.widthAnchor.constraint(equalToConstant: 58).isActive = true
+        widthField.target = self
+        widthField.action = #selector(applyPressed)
+        heightField.bezelStyle = .roundedBezel
+        heightField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        heightField.widthAnchor.constraint(equalToConstant: 58).isActive = true
+        heightField.target = self
+        heightField.action = #selector(applyPressed)
         labelSizeField.bezelStyle = .roundedBezel
         labelSizeField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         labelSizeField.widthAnchor.constraint(equalToConstant: 44).isActive = true
@@ -206,14 +210,14 @@ final class ButtonDetailPanel: NSView {
         row.orientation = .horizontal
         row.spacing = 4
         row.addArrangedSubview(makeFieldLabel("Size:"))
-        row.addArrangedSubview(widthLabel)
+        row.addArrangedSubview(widthField)
 
         let separator = NSTextField(labelWithString: "×")
         separator.font = .systemFont(ofSize: 12)
         row.addArrangedSubview(separator)
-        row.addArrangedSubview(heightLabel)
+        row.addArrangedSubview(heightField)
 
-        let note = NSTextField(labelWithString: "(drag corner in preview)")
+        let note = NSTextField(labelWithString: "px")
         note.font = .systemFont(ofSize: 10)
         note.textColor = .tertiaryLabelColor
         row.addArrangedSubview(note)
@@ -274,6 +278,8 @@ final class ButtonDetailPanel: NSView {
         config.colorHex = colorWell.color.hexString
         config.x = Double(xField.stringValue) ?? config.x
         config.y = Double(yField.stringValue) ?? config.y
+        config.editorWidth = sizeValue(from: widthField.stringValue, fallback: config.editorWidth > 0 ? config.editorWidth : config.width)
+        config.editorHeight = sizeValue(from: heightField.stringValue, fallback: config.editorHeight > 0 ? config.editorHeight : config.height)
         config.enabled = enabledCheckbox.state == .on
         config.interactionMode = ButtonInteractionMode(tag: interactionModePopup.selectedTag()) ?? .momentary
 
@@ -287,6 +293,14 @@ final class ButtonDetailPanel: NSView {
         }
 
         return min(max(parsedValue, 6), 36)
+    }
+
+    private func sizeValue(from stringValue: String, fallback: Double) -> Double {
+        guard let parsedValue = Double(stringValue), parsedValue.isFinite else {
+            return fallback
+        }
+
+        return parsedValue
     }
 
     private func syncLabelSizeControls(to size: Double) {

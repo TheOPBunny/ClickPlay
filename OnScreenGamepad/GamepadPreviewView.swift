@@ -1,22 +1,53 @@
 import Cocoa
 
+struct ButtonEditorGeometry {
+    var centerX: Double
+    var centerY: Double
+    var width: Double
+    var height: Double
+    var anchoredResize: AnchoredButtonResize?
+}
+
+struct AnchoredButtonResize {
+    var anchorX: Double
+    var anchorY: Double
+    var resizesFromLeft: Bool
+    var resizesFromBottom: Bool
+}
+
 final class GamepadPreviewView: NSView {
 
     var onButtonSelected: ((GamepadButton) -> Void)?
     var onButtonMoved: ((GamepadButton, Double, Double) -> Void)?
-    var onButtonResized: ((GamepadButton, Double, Double) -> Void)?
+    var onButtonResized: ((GamepadButton, ButtonEditorGeometry) -> ButtonEditorGeometry)?
     var maximumWorkspaceSize = CGSize(width: 1000, height: 1000)
     var usesCenteredOrigin = false
 
     private var buttonLayers: [GamepadButton: CALayer] = [:]
-    private var handleLayers: [GamepadButton: CALayer] = [:]
+    private var handleLayers: [GamepadButton: [ResizeCorner: CALayer]] = [:]
     private var selectedButton: GamepadButton?
     private var profile = ProfileStore.shared.activeProfile
     private var lastRenderedSize: CGSize = .zero
 
+    private enum ResizeCorner: CaseIterable {
+        case topLeft
+        case topRight
+        case bottomLeft
+        case bottomRight
+
+        var cursor: NSCursor {
+            switch self {
+            case .topLeft, .bottomRight:
+                return .diagonalResizeNorthWestSouthEast
+            case .topRight, .bottomLeft:
+                return .diagonalResizeNorthEastSouthWest
+            }
+        }
+    }
+
     private enum DragMode {
         case move
-        case resizeBottomRight
+        case resize(ResizeCorner)
     }
 
     private var dragMode: DragMode = .move
@@ -64,8 +95,8 @@ final class GamepadPreviewView: NSView {
 
         if buttonLayers[button] == nil {
             let buttonLayer = makeButtonLayer(for: button)
-            let handleLayer = makeHandleLayer(for: button)
-            update(buttonLayer: buttonLayer, handleLayer: handleLayer, with: config)
+            let handles = makeHandleLayers(for: button)
+            update(buttonLayer: buttonLayer, handleLayers: handles, with: config)
         }
 
         highlight(button)
@@ -74,7 +105,7 @@ final class GamepadPreviewView: NSView {
 
     private func rebuildLayers() {
         buttonLayers.values.forEach { $0.removeFromSuperlayer() }
-        handleLayers.values.forEach { $0.removeFromSuperlayer() }
+        handleLayers.values.flatMap(\.values).forEach { $0.removeFromSuperlayer() }
         buttonLayers.removeAll()
         handleLayers.removeAll()
 
@@ -112,18 +143,8 @@ final class GamepadPreviewView: NSView {
             layer?.addSublayer(buttonLayer)
             buttonLayers[button] = buttonLayer
 
-            let handleLayer = CALayer()
-            handleLayer.frame = CGRect(
-                x: buttonLayer.frame.maxX - handleSize,
-                y: buttonLayer.frame.minY,
-                width: handleSize,
-                height: handleSize
-            )
-            handleLayer.backgroundColor = NSColor.white.withAlphaComponent(0.7).cgColor
-            handleLayer.cornerRadius = 2
-            handleLayer.isHidden = true
-            layer?.addSublayer(handleLayer)
-            handleLayers[button] = handleLayer
+            let handles = makeHandleLayers(for: button)
+            update(buttonLayer: buttonLayer, handleLayers: handles, with: config)
         }
     }
 
@@ -140,7 +161,7 @@ final class GamepadPreviewView: NSView {
             buttonLayers[button]?.removeFromSuperlayer()
             buttonLayers.removeValue(forKey: button)
 
-            handleLayers[button]?.removeFromSuperlayer()
+            handleLayers[button]?.values.forEach { $0.removeFromSuperlayer() }
             handleLayers.removeValue(forKey: button)
         }
 
@@ -150,8 +171,8 @@ final class GamepadPreviewView: NSView {
             }
 
             let buttonLayer = buttonLayers[button] ?? makeButtonLayer(for: button)
-            let handleLayer = handleLayers[button] ?? makeHandleLayer(for: button)
-            update(buttonLayer: buttonLayer, handleLayer: handleLayer, with: config)
+            let handles = handleLayers[button] ?? makeHandleLayers(for: button)
+            update(buttonLayer: buttonLayer, handleLayers: handles, with: config)
         }
     }
 
@@ -170,17 +191,22 @@ final class GamepadPreviewView: NSView {
         return buttonLayer
     }
 
-    private func makeHandleLayer(for button: GamepadButton) -> CALayer {
-        let handleLayer = CALayer()
-        handleLayer.backgroundColor = NSColor.white.withAlphaComponent(0.7).cgColor
-        handleLayer.cornerRadius = 2
-        handleLayer.isHidden = true
-        layer?.addSublayer(handleLayer)
-        handleLayers[button] = handleLayer
-        return handleLayer
+    private func makeHandleLayers(for button: GamepadButton) -> [ResizeCorner: CALayer] {
+        let handles = Dictionary(uniqueKeysWithValues: ResizeCorner.allCases.map { corner in
+            let handleLayer = CALayer()
+            handleLayer.backgroundColor = NSColor.white.withAlphaComponent(0.7).cgColor
+            handleLayer.borderColor = NSColor.black.withAlphaComponent(0.35).cgColor
+            handleLayer.borderWidth = 0.5
+            handleLayer.cornerRadius = 2
+            handleLayer.isHidden = true
+            layer?.addSublayer(handleLayer)
+            return (corner, handleLayer)
+        })
+        handleLayers[button] = handles
+        return handles
     }
 
-    private func update(buttonLayer: CALayer, handleLayer: CALayer, with config: ButtonConfig) {
+    private func update(buttonLayer: CALayer, handleLayers: [ResizeCorner: CALayer], with config: ButtonConfig) {
         let center = canvasPoint(forModelPoint: CGPoint(x: config.x, y: config.y))
         let buttonWidth = CGFloat(config.editorWidth > 0 ? config.editorWidth : config.width)
         let buttonHeight = CGFloat(config.editorHeight > 0 ? config.editorHeight : config.height)
@@ -203,12 +229,7 @@ final class GamepadPreviewView: NSView {
             textLayer.frame = textFrame(in: buttonLayer.bounds, config: config)
         }
 
-        handleLayer.frame = CGRect(
-            x: buttonLayer.frame.maxX - handleSize,
-            y: buttonLayer.frame.minY,
-            width: handleSize,
-            height: handleSize
-        )
+        updateHandleFrames(handleLayers, buttonLayer: buttonLayer)
     }
 
     override func layout() {
@@ -220,10 +241,23 @@ final class GamepadPreviewView: NSView {
         reload(profile: profile, keepSelection: true)
     }
 
+    override func resetCursorRects() {
+        super.resetCursorRects()
+
+        guard let selectedButton, let handles = handleLayers[selectedButton] else {
+            return
+        }
+
+        for (corner, handleLayer) in handles where !handleLayer.isHidden {
+            addCursorRect(handleLayer.frame, cursor: corner.cursor)
+        }
+    }
+
     override func mouseDown(with event: NSEvent) {
         let canvasPoint = convert(event.locationInWindow, from: nil)
         let point = modelPoint(forCanvasPoint: canvasPoint)
-        guard let button = button(at: point), let config = profile.buttons[button.rawValue] else {
+        let handleHit = resizeHandle(at: canvasPoint)
+        guard let button = handleHit?.button ?? button(at: point), let config = profile.buttons[button.rawValue] else {
             highlight(nil)
             return
         }
@@ -238,7 +272,11 @@ final class GamepadPreviewView: NSView {
             width: CGFloat(config.editorWidth > 0 ? config.editorWidth : config.width),
             height: CGFloat(config.editorHeight > 0 ? config.editorHeight : config.height)
         )
-        dragMode = isOnHandle(canvasPoint, for: button) ? .resizeBottomRight : .move
+        if let corner = handleHit?.corner {
+            dragMode = .resize(corner)
+        } else {
+            dragMode = .move
+        }
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -266,16 +304,18 @@ final class GamepadPreviewView: NSView {
 
             onButtonMoved?(button, nextX, nextY)
 
-        case .resizeBottomRight:
-            let maxWidth = max(20, maximumWidth(forCenterX: dragStartButtonCenter.x))
-            let maxHeight = max(14, maximumHeight(forCenterY: dragStartButtonCenter.y))
-            let newWidth = (dragStartButtonSize.width + deltaX).clamped(to: 20 ... maxWidth)
-            let newHeight = (dragStartButtonSize.height - deltaY).clamped(to: 14 ... maxHeight)
+        case .resize(let corner):
+            let proposedGeometry = resizedGeometry(corner: corner, deltaX: deltaX, deltaY: deltaY)
+            let appliedGeometry = onButtonResized?(button, proposedGeometry) ?? proposedGeometry
 
             if let buttonLayer = buttonLayers[button] {
-                let center = buttonLayer.position
-                buttonLayer.bounds = CGRect(origin: .zero, size: CGSize(width: newWidth, height: newHeight))
-                buttonLayer.position = center
+                buttonLayer.bounds = CGRect(
+                    origin: .zero,
+                    size: CGSize(width: appliedGeometry.width, height: appliedGeometry.height)
+                )
+                buttonLayer.position = canvasPoint(
+                    forModelPoint: CGPoint(x: appliedGeometry.centerX, y: appliedGeometry.centerY)
+                )
 
                 if
                     let config = profile.buttons[button.rawValue],
@@ -284,10 +324,8 @@ final class GamepadPreviewView: NSView {
                     textLayer.frame = textFrame(in: buttonLayer.bounds, config: config)
                 }
 
-                updateHandleFrame(for: button, buttonLayer: buttonLayer)
+                updateHandleFrames(for: button, buttonLayer: buttonLayer)
             }
-
-            onButtonResized?(button, newWidth, newHeight)
         }
 
         CATransaction.commit()
@@ -295,6 +333,15 @@ final class GamepadPreviewView: NSView {
 
     override func mouseUp(with event: NSEvent) {
         dragButton = nil
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        let canvasPoint = convert(event.locationInWindow, from: nil)
+        if let hit = resizeHandle(at: canvasPoint) {
+            hit.corner.cursor.set()
+        } else {
+            NSCursor.arrow.set()
+        }
     }
 
     private func button(at point: CGPoint) -> GamepadButton? {
@@ -322,12 +369,20 @@ final class GamepadPreviewView: NSView {
         return nil
     }
 
-    private func isOnHandle(_ point: CGPoint, for button: GamepadButton) -> Bool {
-        guard let handleLayer = handleLayers[button] else {
-            return false
+    private func resizeHandle(at point: CGPoint) -> (button: GamepadButton, corner: ResizeCorner)? {
+        guard let selectedButton, let handles = handleLayers[selectedButton] else {
+            return nil
         }
 
-        return !handleLayer.isHidden && handleLayer.frame.contains(point)
+        for corner in ResizeCorner.allCases {
+            guard let handleLayer = handles[corner], !handleLayer.isHidden, handleLayer.frame.contains(point) else {
+                continue
+            }
+
+            return (selectedButton, corner)
+        }
+
+        return nil
     }
 
     private func highlight(_ button: GamepadButton?) {
@@ -335,10 +390,11 @@ final class GamepadPreviewView: NSView {
             $0.borderWidth = 0
             $0.shadowOpacity = 0
         }
-        handleLayers.values.forEach { $0.isHidden = true }
+        handleLayers.values.flatMap(\.values).forEach { $0.isHidden = true }
 
         guard let button, let buttonLayer = buttonLayers[button] else {
             selectedButton = nil
+            window?.invalidateCursorRects(for: self)
             return
         }
 
@@ -348,21 +404,130 @@ final class GamepadPreviewView: NSView {
         buttonLayer.shadowColor = NSColor.white.cgColor
         buttonLayer.shadowRadius = 4
         buttonLayer.shadowOffset = .zero
-        handleLayers[button]?.isHidden = false
+        handleLayers[button]?.values.forEach { $0.isHidden = false }
         selectedButton = button
+        window?.invalidateCursorRects(for: self)
     }
 
     private func updateHandleFrame(for button: GamepadButton, buttonLayer: CALayer) {
-        guard let handleLayer = handleLayers[button] else {
+        guard let handles = handleLayers[button] else {
             return
         }
 
-        handleLayer.frame = CGRect(
-            x: buttonLayer.frame.maxX - handleSize,
-            y: buttonLayer.frame.minY,
+        updateHandleFrames(handles, buttonLayer: buttonLayer)
+    }
+
+    private func updateHandleFrames(for button: GamepadButton, buttonLayer: CALayer) {
+        guard let handles = handleLayers[button] else {
+            return
+        }
+
+        updateHandleFrames(handles, buttonLayer: buttonLayer)
+    }
+
+    private func updateHandleFrames(_ handles: [ResizeCorner: CALayer], buttonLayer: CALayer) {
+        let halfHandle = handleSize / 2
+        let frame = buttonLayer.frame
+
+        handles[.topLeft]?.frame = CGRect(
+            x: frame.minX - halfHandle,
+            y: frame.maxY - halfHandle,
             width: handleSize,
             height: handleSize
         )
+        handles[.topRight]?.frame = CGRect(
+            x: frame.maxX - halfHandle,
+            y: frame.maxY - halfHandle,
+            width: handleSize,
+            height: handleSize
+        )
+        handles[.bottomLeft]?.frame = CGRect(
+            x: frame.minX - halfHandle,
+            y: frame.minY - halfHandle,
+            width: handleSize,
+            height: handleSize
+        )
+        handles[.bottomRight]?.frame = CGRect(
+            x: frame.maxX - halfHandle,
+            y: frame.minY - halfHandle,
+            width: handleSize,
+            height: handleSize
+        )
+
+        window?.invalidateCursorRects(for: self)
+    }
+
+    private func resizedGeometry(corner: ResizeCorner, deltaX: CGFloat, deltaY: CGFloat) -> ButtonEditorGeometry {
+        let startMinX = dragStartButtonCenter.x - (dragStartButtonSize.width / 2)
+        let startMaxX = dragStartButtonCenter.x + (dragStartButtonSize.width / 2)
+        let startMinY = dragStartButtonCenter.y - (dragStartButtonSize.height / 2)
+        let startMaxY = dragStartButtonCenter.y + (dragStartButtonSize.height / 2)
+
+        let minWidth: CGFloat = 20
+        let minHeight: CGFloat = 14
+
+        switch corner {
+        case .topLeft:
+            let width = max(minWidth, dragStartButtonSize.width - deltaX)
+            let height = max(minHeight, dragStartButtonSize.height + deltaY)
+            return ButtonEditorGeometry(
+                centerX: startMaxX - (width / 2),
+                centerY: startMinY + (height / 2),
+                width: width,
+                height: height,
+                anchoredResize: AnchoredButtonResize(
+                    anchorX: startMaxX,
+                    anchorY: startMinY,
+                    resizesFromLeft: true,
+                    resizesFromBottom: false
+                )
+            )
+        case .topRight:
+            let width = max(minWidth, dragStartButtonSize.width + deltaX)
+            let height = max(minHeight, dragStartButtonSize.height + deltaY)
+            return ButtonEditorGeometry(
+                centerX: startMinX + (width / 2),
+                centerY: startMinY + (height / 2),
+                width: width,
+                height: height,
+                anchoredResize: AnchoredButtonResize(
+                    anchorX: startMinX,
+                    anchorY: startMinY,
+                    resizesFromLeft: false,
+                    resizesFromBottom: false
+                )
+            )
+        case .bottomLeft:
+            let width = max(minWidth, dragStartButtonSize.width - deltaX)
+            let height = max(minHeight, dragStartButtonSize.height - deltaY)
+            return ButtonEditorGeometry(
+                centerX: startMaxX - (width / 2),
+                centerY: startMaxY - (height / 2),
+                width: width,
+                height: height,
+                anchoredResize: AnchoredButtonResize(
+                    anchorX: startMaxX,
+                    anchorY: startMaxY,
+                    resizesFromLeft: true,
+                    resizesFromBottom: true
+                )
+            )
+        case .bottomRight:
+            let width = max(minWidth, dragStartButtonSize.width + deltaX)
+            let height = max(minHeight, dragStartButtonSize.height - deltaY)
+            return ButtonEditorGeometry(
+                centerX: startMinX + (width / 2),
+                centerY: startMaxY - (height / 2),
+                width: width,
+                height: height,
+                anchoredResize: AnchoredButtonResize(
+                    anchorX: startMinX,
+                    anchorY: startMaxY,
+                    resizesFromLeft: false,
+                    resizesFromBottom: true
+                )
+            )
+        }
     }
 
     private func textFrame(in bounds: CGRect, config: ButtonConfig) -> CGRect {
@@ -412,28 +577,52 @@ final class GamepadPreviewView: NSView {
 
         return halfHeight ... (maximumWorkspaceSize.height - halfHeight)
     }
-
-    private func maximumWidth(forCenterX centerX: CGFloat) -> CGFloat {
-        if usesCenteredOrigin {
-            let halfWorkspaceWidth = maximumWorkspaceSize.width / 2
-            return min(halfWorkspaceWidth - centerX, halfWorkspaceWidth + centerX) * 2
-        }
-
-        return (maximumWorkspaceSize.width - centerX) * 2
-    }
-
-    private func maximumHeight(forCenterY centerY: CGFloat) -> CGFloat {
-        if usesCenteredOrigin {
-            let halfWorkspaceHeight = maximumWorkspaceSize.height / 2
-            return min(halfWorkspaceHeight - centerY, halfWorkspaceHeight + centerY) * 2
-        }
-
-        return centerY * 2
-    }
 }
 
 private extension Comparable {
     func clamped(to range: ClosedRange<Self>) -> Self {
         min(max(self, range.lowerBound), range.upperBound)
+    }
+}
+
+private extension NSCursor {
+    static var diagonalResizeNorthWestSouthEast: NSCursor {
+        NSCursor.diagonalResizeCursor(angleDegrees: -45)
+    }
+
+    static var diagonalResizeNorthEastSouthWest: NSCursor {
+        NSCursor.diagonalResizeCursor(angleDegrees: 45)
+    }
+
+    static func diagonalResizeCursor(angleDegrees: CGFloat) -> NSCursor {
+        let size = NSSize(width: 18, height: 18)
+        let image = NSImage(size: size)
+        image.lockFocus()
+
+        NSGraphicsContext.current?.imageInterpolation = .high
+        let transform = NSAffineTransform()
+        transform.translateX(by: size.width / 2, yBy: size.height / 2)
+        transform.rotate(byDegrees: angleDegrees)
+        transform.translateX(by: -size.width / 2, yBy: -size.height / 2)
+        transform.concat()
+
+        let path = NSBezierPath()
+        path.lineWidth = 1.8
+        path.lineCapStyle = .round
+        path.move(to: CGPoint(x: 3, y: 9))
+        path.line(to: CGPoint(x: 15, y: 9))
+        path.move(to: CGPoint(x: 3, y: 9))
+        path.line(to: CGPoint(x: 7, y: 5))
+        path.move(to: CGPoint(x: 3, y: 9))
+        path.line(to: CGPoint(x: 7, y: 13))
+        path.move(to: CGPoint(x: 15, y: 9))
+        path.line(to: CGPoint(x: 11, y: 5))
+        path.move(to: CGPoint(x: 15, y: 9))
+        path.line(to: CGPoint(x: 11, y: 13))
+        NSColor.white.setStroke()
+        path.stroke()
+
+        image.unlockFocus()
+        return NSCursor(image: image, hotSpot: CGPoint(x: size.width / 2, y: size.height / 2))
     }
 }
