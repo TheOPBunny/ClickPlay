@@ -31,4 +31,18 @@ enum GamepadButton: String, CaseIterable, Codable {
     // Stick clicks
     case leftStick  = "LS"
     case rightStick = "RS"
+
+    // User-added buttons
+    case custom1 = "Custom 1"
+    case custom2 = "Custom 2"
+    case custom3 = "Custom 3"
+    case custom4 = "Custom 4"
+    case custom5 = "Custom 5"
+    case custom6 = "Custom 6"
+    case custom7 = "Custom 7"
+    case custom8 = "Custom 8"
+
+    static var customSlots: [GamepadButton] {
+        [.custom1, .custom2, .custom3, .custom4, .custom5, .custom6, .custom7, .custom8]
+    }
 }
