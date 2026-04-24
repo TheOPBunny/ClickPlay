@@ -299,7 +299,7 @@ final class GamepadContentView: NSView {
             return
         }
 
-        let activeButtons = Set(GamepadButton.allCases.filter {
+        let activeButtons = Set(profile.orderedButtonIDs.filter {
             guard let cfg = profile.buttons[$0.rawValue] else { return false }
             return cfg.enabled
         })
@@ -314,7 +314,7 @@ final class GamepadContentView: NSView {
         let height = padSurface.bounds.height
         NSLog("[ContentView] buildButtons W=\(width) H=\(height) count=\(profile.buttons.count)")
 
-        for button in GamepadButton.allCases {
+        for button in profile.orderedButtonIDs {
             guard let cfg = profile.buttons[button.rawValue], cfg.enabled else { continue }
             let cx = CGFloat(cfg.x) * width
             let cy = CGFloat(cfg.y) * height

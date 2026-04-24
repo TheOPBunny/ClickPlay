@@ -167,8 +167,71 @@ struct Profile: Codable, Identifiable {
         buttons = try container.decode([String: ButtonConfig].self, forKey: .buttons)
     }
 
-    // Default profile matching the original hardcoded layout
+    var orderedButtonIDs: [GamepadButton] {
+        buttons.keys
+            .map { GamepadButton($0) }
+            .sorted { lhs, rhs in
+                let lhsLegacyIndex = Self.legacyButtonOrder[lhs.rawValue]
+                let rhsLegacyIndex = Self.legacyButtonOrder[rhs.rawValue]
+
+                switch (lhsLegacyIndex, rhsLegacyIndex) {
+                case let (lhsIndex?, rhsIndex?):
+                    return lhsIndex < rhsIndex
+                case (_?, nil):
+                    return true
+                case (nil, _?):
+                    return false
+                case (nil, nil):
+                    let lhsLabel = buttons[lhs.rawValue]?.resolvedSortLabel ?? lhs.rawValue
+                    let rhsLabel = buttons[rhs.rawValue]?.resolvedSortLabel ?? rhs.rawValue
+                    let labelOrder = lhsLabel.localizedStandardCompare(rhsLabel)
+                    if labelOrder != .orderedSame {
+                        return labelOrder == .orderedAscending
+                    }
+
+                    return lhs.rawValue < rhs.rawValue
+                }
+            }
+    }
+
+    func normalizedForSaving() -> Profile {
+        var normalizedProfile = self
+        var normalizedButtons: [String: ButtonConfig] = [:]
+
+        for button in orderedButtonIDs {
+            guard let config = buttons[button.rawValue] else {
+                continue
+            }
+
+            let key = button.isGenerated ? button.rawValue : GamepadButton.generated().rawValue
+            normalizedButtons[key] = config
+        }
+
+        normalizedProfile.buttons = normalizedButtons
+        return normalizedProfile
+    }
+
+    static func makeBlank(name: String = "Blank Profile") -> Profile {
+        Profile(
+            id: UUID(),
+            name: name,
+            opacity: 0.90,
+            compatibilityMode: false,
+            editorCoordinateMode: .centered,
+            padWidth: 420,
+            padHeight: 300,
+            displayPadWidth: 420,
+            displayPadHeight: 300,
+            buttons: [:]
+        )
+    }
+
     static func makeDefault(name: String = "Default") -> Profile {
+        makeStarterTemplate(name: name)
+    }
+
+    // Starter template matching the original hardcoded layout.
+    static func makeStarterTemplate(name: String = "Default") -> Profile {
         let W: Double = 420
         let H: Double = 300
 
@@ -179,9 +242,9 @@ struct Profile: Codable, Identifiable {
 
         var btns: [String: ButtonConfig] = [:]
 
-        func add(_ btn: GamepadButton, x: Double, y: Double,
+        func add(label: String, x: Double, y: Double,
                  w: Double, h: Double, hex: String, key: Int) {
-            btns[btn.rawValue] = ButtonConfig(
+            btns[GamepadButton.generated().rawValue] = ButtonConfig(
                 x: cx(x), y: cy(y),
                 width: bw(w), height: bh(h),
                 editorWidth: w,
@@ -189,36 +252,36 @@ struct Profile: Codable, Identifiable {
                 colorHex: hex,
                 keyCode: key,
                 keyModifiers: 0,
-                label: btn.rawValue,
+                label: label,
                 enabled: true
             )
         }
 
         // Shoulders / triggers
-        add(.triggerL,  x: 38,    y: H - 24,  w: 52, h: 32, hex: "#8844DD", key: 14)  // E
-        add(.shoulderL, x: 38,    y: H - 60,  w: 52, h: 32, hex: "#8844DD", key: 12)  // Q
-        add(.triggerZR, x: W - 38, y: H - 24, w: 52, h: 32, hex: "#8844DD", key: 15)  // R
-        add(.shoulderR, x: W - 38, y: H - 60, w: 52, h: 32, hex: "#8844DD", key: 13)  // W
+        add(label: "ZL", x: 38,    y: H - 24,  w: 52, h: 32, hex: "#8844DD", key: 14)  // E
+        add(label: "L",  x: 38,    y: H - 60,  w: 52, h: 32, hex: "#8844DD", key: 12)  // Q
+        add(label: "ZR", x: W - 38, y: H - 24, w: 52, h: 32, hex: "#8844DD", key: 15)  // R
+        add(label: "R",  x: W - 38, y: H - 60, w: 52, h: 32, hex: "#8844DD", key: 13)  // W
 
         // D-pad
-        add(.dpadUp,    x: 82,    y: H - 111, w: 40, h: 40, hex: "#666666", key: 126)
-        add(.dpadDown,  x: 82,    y: H - 199, w: 40, h: 40, hex: "#666666", key: 125)
-        add(.dpadLeft,  x: 38,    y: H - 155, w: 40, h: 40, hex: "#666666", key: 123)
-        add(.dpadRight, x: 126,   y: H - 155, w: 40, h: 40, hex: "#666666", key: 124)
+        add(label: "D↑", x: 82,  y: H - 111, w: 40, h: 40, hex: "#666666", key: 126)
+        add(label: "D↓", x: 82,  y: H - 199, w: 40, h: 40, hex: "#666666", key: 125)
+        add(label: "D←", x: 38,  y: H - 155, w: 40, h: 40, hex: "#666666", key: 123)
+        add(label: "D→", x: 126, y: H - 155, w: 40, h: 40, hex: "#666666", key: 124)
 
         // Start / Select
-        add(.select,    x: W / 2 - 36, y: H - 91, w: 52, h: 28, hex: "#333333", key: 49)  // Space
-        add(.start,     x: W / 2 + 36, y: H - 91, w: 52, h: 28, hex: "#333333", key: 36)  // Return
+        add(label: "SELECT", x: W / 2 - 36, y: H - 91, w: 52, h: 28, hex: "#333333", key: 49)  // Space
+        add(label: "START",  x: W / 2 + 36, y: H - 91, w: 52, h: 28, hex: "#333333", key: 36)  // Return
 
         // Face buttons
-        add(.faceY,     x: W - 82,  y: H - 111, w: 44, h: 44, hex: "#CCAA00", key: 1)   // S
-        add(.faceA,     x: W - 82,  y: H - 199, w: 44, h: 44, hex: "#229933", key: 6)   // Z
-        add(.faceX,     x: W - 126, y: H - 155, w: 44, h: 44, hex: "#2255CC", key: 0)   // A
-        add(.faceB,     x: W - 38,  y: H - 155, w: 44, h: 44, hex: "#CC2222", key: 7)   // X
+        add(label: "Y", x: W - 82,  y: H - 111, w: 44, h: 44, hex: "#CCAA00", key: 1)   // S
+        add(label: "A", x: W - 82,  y: H - 199, w: 44, h: 44, hex: "#229933", key: 6)   // Z
+        add(label: "X", x: W - 126, y: H - 155, w: 44, h: 44, hex: "#2255CC", key: 0)   // A
+        add(label: "B", x: W - 38,  y: H - 155, w: 44, h: 44, hex: "#CC2222", key: 7)   // X
 
         // Stick clicks
-        add(.leftStick,  x: 82,    y: H - 240, w: 40, h: 40, hex: "#2a2a2a", key: 8)   // C
-        add(.rightStick, x: W - 82, y: H - 240, w: 40, h: 40, hex: "#2a2a2a", key: 9)  // V
+        add(label: "LS", x: 82,     y: H - 240, w: 40, h: 40, hex: "#2a2a2a", key: 8)   // C
+        add(label: "RS", x: W - 82, y: H - 240, w: 40, h: 40, hex: "#2a2a2a", key: 9)  // V
 
         return Profile(
             id: UUID(),
@@ -233,6 +296,12 @@ struct Profile: Codable, Identifiable {
             buttons: btns
         )
     }
+
+    private static let legacyButtonOrder: [String: Int] = Dictionary(
+        uniqueKeysWithValues: GamepadButton.legacyButtons.enumerated().map { index, button in
+            (button.rawValue, index)
+        }
+    )
 }
 
 // MARK: - Hex color helpers
@@ -263,6 +332,14 @@ extension NSColor {
 }
 
 extension ButtonConfig {
+    var resolvedSortLabel: String {
+        let displayLabel = resolvedDisplayLabel
+        return displayLabel.isEmpty ? Self.keyDisplayName(
+            code: keyCode,
+            modifiers: NSEvent.ModifierFlags(rawValue: UInt(keyModifiers))
+        ) : displayLabel
+    }
+
     var resolvedLabelFont: NSFont {
         var symbolicTraits: NSFontDescriptor.SymbolicTraits = []
         if labelBold { symbolicTraits.insert(.bold) }

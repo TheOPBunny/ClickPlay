@@ -3,6 +3,7 @@ import Cocoa
 final class ButtonDetailPanel: NSView {
 
     var onChanged: ((GamepadButton, ButtonConfig) -> Void)?
+    var onDelete: ((GamepadButton) -> Void)?
 
     private var config: ButtonConfig?
     private var button: GamepadButton?
@@ -22,6 +23,7 @@ final class ButtonDetailPanel: NSView {
     private let interactionModePopup = NSPopUpButton()
     private let enabledCheckbox = NSButton(checkboxWithTitle: "Enabled", target: nil, action: nil)
     private let applyButton = NSButton(title: "Apply Changes", target: nil, action: nil)
+    private let deleteButton = NSButton(title: "Delete Button", target: nil, action: nil)
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -44,13 +46,15 @@ final class ButtonDetailPanel: NSView {
         heightLabel.stringValue = "–"
         interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
         applyButton.isEnabled = false
+        deleteButton.isEnabled = false
     }
 
     func load(button: GamepadButton, config: ButtonConfig) {
         self.button = button
         self.config = config
         applyButton.isEnabled = true
-        titleLabel.stringValue = "Editing: \(button.rawValue)"
+        deleteButton.isEnabled = true
+        titleLabel.stringValue = "Editing: \(config.resolvedDisplayLabel)"
         labelField.stringValue = config.label
         syncLabelSizeControls(to: config.labelFontSize)
         labelBoldCheckbox.state = config.labelBold ? .on : .off
@@ -105,6 +109,10 @@ final class ButtonDetailPanel: NSView {
         applyButton.target = self
         applyButton.action = #selector(applyPressed)
         applyButton.isEnabled = false
+        deleteButton.bezelStyle = .rounded
+        deleteButton.target = self
+        deleteButton.action = #selector(deletePressed)
+        deleteButton.isEnabled = false
 
         widthLabel.textColor = .secondaryLabelColor
         widthLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
@@ -145,6 +153,7 @@ final class ButtonDetailPanel: NSView {
         stack.addArrangedSubview(enabledCheckbox)
         stack.addArrangedSubview(makeSizeRow())
         stack.addArrangedSubview(applyButton)
+        stack.addArrangedSubview(deleteButton)
 
         addSubview(stack)
 
@@ -231,6 +240,14 @@ final class ButtonDetailPanel: NSView {
     @objc private func labelSizeStepperChanged() {
         labelSizeField.stringValue = "\(Int(labelSizeStepper.doubleValue))"
         emitChange()
+    }
+
+    @objc private func deletePressed() {
+        guard let button else {
+            return
+        }
+
+        onDelete?(button)
     }
 
     private func populateInteractionModes() {

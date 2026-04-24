@@ -34,7 +34,7 @@ final class ProfileListViewController: NSViewController, NSTableViewDataSource, 
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
         let bar = NSStackView(views: [
-            makeButton(title: "+", action: #selector(addProfile)),
+            makeButton(title: "+", action: #selector(showAddProfileMenu(_:))),
             makeButton(title: "⎘", action: #selector(duplicateProfile)),
             makeButton(title: "−", action: #selector(deleteProfile)),
             NSView(),
@@ -115,8 +115,31 @@ final class ProfileListViewController: NSViewController, NSTableViewDataSource, 
         return button
     }
 
-    @objc private func addProfile() {
-        let profile = Profile.makeDefault(name: "Profile \(profiles.count + 1)")
+    @objc private func showAddProfileMenu(_ sender: NSButton) {
+        let menu = NSMenu()
+
+        let templateItem = NSMenuItem(title: "New from Template", action: #selector(addProfileFromTemplate), keyEquivalent: "")
+        templateItem.target = self
+        menu.addItem(templateItem)
+
+        let blankItem = NSMenuItem(title: "New Blank", action: #selector(addBlankProfile), keyEquivalent: "")
+        blankItem.target = self
+        menu.addItem(blankItem)
+
+        menu.popUp(positioning: nil, at: CGPoint(x: 0, y: sender.bounds.maxY + 2), in: sender)
+    }
+
+    @objc private func addProfileFromTemplate() {
+        let profile = Profile.makeStarterTemplate(name: "Profile \(profiles.count + 1)")
+        add(profile: profile)
+    }
+
+    @objc private func addBlankProfile() {
+        let profile = Profile.makeBlank(name: "Profile \(profiles.count + 1)")
+        add(profile: profile)
+    }
+
+    private func add(profile: Profile) {
         ProfileStore.shared.upsert(profile)
         ProfileStore.shared.setActive(profile.id)
         onProfileSelected?(profile)

@@ -77,8 +77,10 @@ final class ButtonEditorViewController: NSViewController {
     var onProfileSaved: ((Profile) -> Void)?
 
     private static let maximumWorkspaceSize = CGSize(width: 1000, height: 1000)
+    private static let buttonCountWarningThreshold = 100
 
     private var profile = ProfileStore.shared.activeProfile
+    private var profileIDsWarnedForHighButtonCount = Set<UUID>()
 
     private let nameField = NSTextField()
     private let opacitySlider = NSSlider()
@@ -234,6 +236,9 @@ final class ButtonEditorViewController: NSViewController {
             self.syncWorkspaceAfterGeometryChange(selectedButton: button)
             self.previewView.reload(profile: self.profile, keepSelection: true)
         }
+        detailPanel.onDelete = { [weak self] button in
+            self?.deleteButton(button)
+        }
 
         hint.font = .systemFont(ofSize: 10)
         hint.textColor = .secondaryLabelColor
@@ -284,17 +289,7 @@ final class ButtonEditorViewController: NSViewController {
         return label
     }
 
-    private func nextAvailableCustomButton() -> GamepadButton? {
-        GamepadButton.customSlots.first { button in
-            guard let config = profile.buttons[button.rawValue] else {
-                return true
-            }
-
-            return !config.enabled
-        }
-    }
-
-    private func makeNewButtonConfig(for button: GamepadButton) -> ButtonConfig {
+    private func makeNewButtonConfig() -> ButtonConfig {
         let width = 80.0
         let height = 44.0
 
@@ -308,9 +303,27 @@ final class ButtonEditorViewController: NSViewController {
             colorHex: "#4C8DFF",
             keyCode: 49,
             keyModifiers: 0,
-            label: button.rawValue,
+            label: nextCustomButtonLabel(),
             enabled: true
         )
+    }
+
+    private func nextCustomButtonLabel() -> String {
+        let nextNumber = profile.buttons.values.reduce(0) { currentMax, config in
+            let label = config.label.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard label.hasPrefix("Custom ") else {
+                return currentMax
+            }
+
+            let suffix = label.dropFirst("Custom ".count)
+            return max(currentMax, Int(suffix) ?? 0)
+        } + 1
+
+        return "Custom \(nextNumber)"
+    }
+
+    private var enabledButtonCount: Int {
+        profile.buttons.values.filter(\.enabled).count
     }
 
     @objc private func opacityMoved() {
@@ -328,15 +341,46 @@ final class ButtonEditorViewController: NSViewController {
     }
 
     @objc private func addButtonPressed() {
-        guard let button = nextAvailableCustomButton() else {
-            NSSound.beep()
+        guard confirmAddingButtonIfNeeded() else {
             return
         }
 
-        profile.buttons[button.rawValue] = makeNewButtonConfig(for: button)
+        let button = GamepadButton.generated()
+        profile.buttons[button.rawValue] = makeNewButtonConfig()
         syncWorkspaceAfterGeometryChange(selectedButton: button)
         previewView.reload(profile: profile, keepSelection: false)
         previewView.select(button: button)
+    }
+
+    private func confirmAddingButtonIfNeeded() -> Bool {
+        guard enabledButtonCount >= Self.buttonCountWarningThreshold else {
+            return true
+        }
+
+        guard !profileIDsWarnedForHighButtonCount.contains(profile.id) else {
+            return true
+        }
+
+        let alert = NSAlert()
+        alert.messageText = "Add more than \(Self.buttonCountWarningThreshold) buttons?"
+        alert.informativeText = "Large layouts can become harder to manage. You can keep adding buttons if this profile needs them."
+        alert.addButton(withTitle: "Add Anyway")
+        alert.addButton(withTitle: "Cancel")
+
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            return false
+        }
+
+        profileIDsWarnedForHighButtonCount.insert(profile.id)
+        return true
+    }
+
+    private func deleteButton(_ button: GamepadButton) {
+        profile.buttons.removeValue(forKey: button.rawValue)
+        refreshFittedPadSizeFields()
+        updatePreviewCanvasLayout()
+        previewView.reload(profile: profile, keepSelection: false)
+        detailPanel.clear()
     }
 
     @objc private func saveProfile() {
@@ -346,7 +390,7 @@ final class ButtonEditorViewController: NSViewController {
 
         profile.compatibilityMode = compatibilityModeCheckbox.state == .on
         clampEditableProfileToWorkspace()
-        let savedProfile = makeSavedProfile(from: profile)
+        let savedProfile = makeSavedProfile(from: profile).normalizedForSaving()
         profile = makeEditableProfile(from: savedProfile)
         previewView.usesCenteredOrigin = savedProfile.editorCoordinateMode == .centered
         clampEditableProfileToWorkspace()
@@ -401,7 +445,7 @@ final class ButtonEditorViewController: NSViewController {
     private func makeEditableProfile(from savedProfile: Profile) -> Profile {
         var editableProfile = savedProfile
 
-        for button in GamepadButton.allCases {
+        for button in editableProfile.orderedButtonIDs {
             guard var config = editableProfile.buttons[button.rawValue] else {
                 continue
             }
@@ -435,8 +479,6 @@ final class ButtonEditorViewController: NSViewController {
     private func makeSavedProfile(from editableProfile: Profile) -> Profile {
         var savedProfile = editableProfile
         guard let fittedSize = fittedPadSize(for: editableProfile) else {
-            savedProfile.padWidth = 1
-            savedProfile.padHeight = 1
             return savedProfile
         }
 
@@ -446,7 +488,7 @@ final class ButtonEditorViewController: NSViewController {
         savedProfile.padHeight = fittedHeight
         let contentBounds = buttonContentBounds(for: editableProfile)
 
-        for button in GamepadButton.allCases {
+        for button in savedProfile.orderedButtonIDs {
             guard var config = savedProfile.buttons[button.rawValue] else {
                 continue
             }
@@ -488,7 +530,7 @@ final class ButtonEditorViewController: NSViewController {
     private func buttonContentBounds(for profile: Profile) -> CGRect? {
         var contentBounds: CGRect?
 
-        for button in GamepadButton.allCases {
+        for button in profile.orderedButtonIDs {
             guard let config = profile.buttons[button.rawValue] else {
                 continue
             }
@@ -510,7 +552,7 @@ final class ButtonEditorViewController: NSViewController {
         let maxWidth = Self.maximumWorkspaceSize.width
         let maxHeight = Self.maximumWorkspaceSize.height
 
-        for button in GamepadButton.allCases {
+        for button in profile.orderedButtonIDs {
             guard var config = profile.buttons[button.rawValue] else {
                 continue
             }
