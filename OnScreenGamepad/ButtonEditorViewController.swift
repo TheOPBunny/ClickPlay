@@ -7,13 +7,7 @@ final class ButtonEditorViewController: NSViewController {
         var showsGrid = true {
             didSet { needsDisplay = true }
         }
-        var previewSize = CGSize(width: 420, height: 300) {
-            didSet {
-                needsLayout = true
-            }
-        }
-
-        private let canvasPadding: CGFloat = 100
+        private let workspaceSize = CGSize(width: 1000, height: 1000)
 
         init(previewView: GamepadPreviewView) {
             self.previewView = previewView
@@ -36,28 +30,21 @@ final class ButtonEditorViewController: NSViewController {
 
             drawGrid(spacing: 10, color: NSColor.white.withAlphaComponent(0.05))
             drawGrid(spacing: 50, color: NSColor.white.withAlphaComponent(0.10))
+
+            let workspaceBorder = NSBezierPath(rect: bounds.insetBy(dx: 0.5, dy: 0.5))
+            NSColor.white.withAlphaComponent(0.18).setStroke()
+            workspaceBorder.lineWidth = 1
+            workspaceBorder.stroke()
         }
 
         override func layout() {
             super.layout()
-
-            let previewFrame = CGRect(
-                x: round((bounds.width - previewSize.width) / 2),
-                y: round((bounds.height - previewSize.height) / 2),
-                width: previewSize.width,
-                height: previewSize.height
-            )
-            previewView.frame = previewFrame
+            previewView.frame = bounds
         }
 
-        func updateCanvasSize(visibleSize: CGSize) {
-            let nextSize = CGSize(
-                width: max(visibleSize.width, previewSize.width + canvasPadding * 2),
-                height: max(visibleSize.height, previewSize.height + canvasPadding * 2)
-            )
-
-            if frame.size != nextSize {
-                frame = CGRect(origin: .zero, size: nextSize)
+        func updateCanvasSize() {
+            if frame.size != workspaceSize {
+                frame = CGRect(origin: .zero, size: workspaceSize)
             }
 
             needsLayout = true
@@ -89,8 +76,7 @@ final class ButtonEditorViewController: NSViewController {
 
     var onProfileSaved: ((Profile) -> Void)?
 
-    private static let minimumPadWidth = 260.0
-    private static let minimumPadHeight = 180.0
+    private static let maximumWorkspaceSize = CGSize(width: 1000, height: 1000)
 
     private var profile = ProfileStore.shared.activeProfile
 
@@ -107,7 +93,7 @@ final class ButtonEditorViewController: NSViewController {
     private let detailPanel = ButtonDetailPanel()
     private let leftColumn = NSStackView()
     private let hint = NSTextField(
-        labelWithString: "Click a button to select it. Drag the button to move it or the corner handle to resize it."
+        labelWithString: "Drag buttons freely inside a 1000 × 1000 workspace. Saving fits the gamepad to the outermost button bounds."
     )
 
     override func loadView() {
@@ -126,16 +112,18 @@ final class ButtonEditorViewController: NSViewController {
     }
 
     func load(profile: Profile) {
-        self.profile = profile
-        nameField.stringValue = profile.name
-        opacitySlider.doubleValue = profile.opacity
-        opacityLabel.stringValue = "\(Int(profile.opacity * 100))%"
-        padWidthField.stringValue = "\(Int(profile.padWidth))"
-        padHeightField.stringValue = "\(Int(profile.padHeight))"
-        compatibilityModeCheckbox.state = profile.compatibilityMode ? .on : .off
+        self.profile = makeEditableProfile(from: profile)
+        previewView.usesCenteredOrigin = profile.editorCoordinateMode == .centered
+        clampEditableProfileToWorkspace()
+        nameField.stringValue = self.profile.name
+        opacitySlider.doubleValue = self.profile.opacity
+        opacityLabel.stringValue = "\(Int(self.profile.opacity * 100))%"
+        compatibilityModeCheckbox.state = self.profile.compatibilityMode ? .on : .off
+        refreshFittedPadSizeFields()
         updatePreviewCanvasLayout()
-        previewView.reload(profile: profile, keepSelection: false)
+        previewView.reload(profile: self.profile, keepSelection: false)
         detailPanel.clear()
+        scrollPreviewToProfileContent()
     }
 
     func refreshFromStoreIfNeeded() {
@@ -147,6 +135,7 @@ final class ButtonEditorViewController: NSViewController {
     }
 
     private func buildLayout() {
+        previewView.maximumWorkspaceSize = Self.maximumWorkspaceSize
         nameField.placeholderString = "Profile name"
         nameField.bezelStyle = .roundedBezel
         nameField.font = .systemFont(ofSize: 12)
@@ -159,8 +148,12 @@ final class ButtonEditorViewController: NSViewController {
 
         padWidthField.bezelStyle = .roundedBezel
         padWidthField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        padWidthField.isEditable = false
+        padWidthField.isSelectable = false
         padHeightField.bezelStyle = .roundedBezel
         padHeightField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        padHeightField.isEditable = false
+        padHeightField.isSelectable = false
         compatibilityModeCheckbox.target = self
         compatibilityModeCheckbox.action = #selector(compatibilityModeChanged)
         showGridCheckbox.state = .on
@@ -177,7 +170,7 @@ final class ButtonEditorViewController: NSViewController {
             makeLabel("  Opacity:"),
             opacitySlider,
             opacityLabel,
-            makeLabel("  Size:"),
+            makeLabel("  Fit:"),
             padWidthField,
             makeLabel("×"),
             padHeightField,
@@ -215,19 +208,16 @@ final class ButtonEditorViewController: NSViewController {
 
             self.profile.buttons[button.rawValue]?.x = x
             self.profile.buttons[button.rawValue]?.y = y
-
-            if let config = self.profile.buttons[button.rawValue] {
-                self.detailPanel.refreshPosition(x: x, y: y, config: config)
-            }
+            self.syncWorkspaceAfterGeometryChange(selectedButton: button)
         }
         previewView.onButtonResized = { [weak self] button, width, height in
             guard let self else {
                 return
             }
 
-            self.profile.buttons[button.rawValue]?.width = width
-            self.profile.buttons[button.rawValue]?.height = height
-            self.detailPanel.refreshSize(width: width, height: height)
+            self.profile.buttons[button.rawValue]?.editorWidth = width
+            self.profile.buttons[button.rawValue]?.editorHeight = height
+            self.syncWorkspaceAfterGeometryChange(selectedButton: button)
         }
 
         detailPanel.translatesAutoresizingMaskIntoConstraints = false
@@ -237,6 +227,7 @@ final class ButtonEditorViewController: NSViewController {
             }
 
             self.profile.buttons[button.rawValue] = config
+            self.syncWorkspaceAfterGeometryChange(selectedButton: button)
             self.previewView.reload(profile: self.profile, keepSelection: true)
         }
 
@@ -308,32 +299,18 @@ final class ButtonEditorViewController: NSViewController {
             profile.name = nameField.stringValue
         }
 
-        profile.padWidth = clampedPadDimension(
-            from: padWidthField.stringValue,
-            fallback: profile.padWidth,
-            minimum: Self.minimumPadWidth
-        )
-        profile.padHeight = clampedPadDimension(
-            from: padHeightField.stringValue,
-            fallback: profile.padHeight,
-            minimum: Self.minimumPadHeight
-        )
-        padWidthField.stringValue = "\(Int(profile.padWidth))"
-        padHeightField.stringValue = "\(Int(profile.padHeight))"
         profile.compatibilityMode = compatibilityModeCheckbox.state == .on
+        clampEditableProfileToWorkspace()
+        let savedProfile = makeSavedProfile(from: profile)
+        profile = makeEditableProfile(from: savedProfile)
+        previewView.usesCenteredOrigin = savedProfile.editorCoordinateMode == .centered
+        clampEditableProfileToWorkspace()
+        refreshFittedPadSizeFields()
         updatePreviewCanvasLayout()
         previewView.reload(profile: profile, keepSelection: true)
 
-        onProfileSaved?(profile)
+        onProfileSaved?(savedProfile)
         showSavedIndicator()
-    }
-
-    private func clampedPadDimension(from stringValue: String, fallback: Double, minimum: Double) -> Double {
-        guard let parsedValue = Double(stringValue), parsedValue.isFinite else {
-            return fallback
-        }
-
-        return max(minimum, parsedValue)
     }
 
     private func showSavedIndicator() {
@@ -354,10 +331,226 @@ final class ButtonEditorViewController: NSViewController {
     }
 
     private func updatePreviewCanvasLayout() {
-        let previewSize = CGSize(width: profile.padWidth, height: profile.padHeight)
-        previewCanvasView.previewSize = previewSize
         previewCanvasView.showsGrid = showGridCheckbox.state == .on
-        previewCanvasView.updateCanvasSize(visibleSize: previewScrollView.contentView.bounds.size)
+        previewCanvasView.updateCanvasSize()
         previewCanvasView.layoutSubtreeIfNeeded()
+    }
+
+    private func syncWorkspaceAfterGeometryChange(selectedButton: GamepadButton) {
+        clampEditableProfileToWorkspace()
+        refreshFittedPadSizeFields()
+        updatePreviewCanvasLayout()
+
+        guard let config = profile.buttons[selectedButton.rawValue] else {
+            return
+        }
+
+        previewView.syncConfig(config, for: selectedButton)
+        detailPanel.refreshPosition(x: config.x, y: config.y, config: config)
+        detailPanel.refreshSize(
+            width: config.editorWidth > 0 ? config.editorWidth : config.width,
+            height: config.editorHeight > 0 ? config.editorHeight : config.height
+        )
+    }
+
+    private func makeEditableProfile(from savedProfile: Profile) -> Profile {
+        var editableProfile = savedProfile
+
+        for button in GamepadButton.allCases {
+            guard var config = editableProfile.buttons[button.rawValue] else {
+                continue
+            }
+
+            let fallbackWidth = config.width * savedProfile.padWidth
+            let fallbackHeight = config.height * savedProfile.padHeight
+
+            switch savedProfile.editorCoordinateMode {
+            case .legacyTopLeft:
+                config.x *= savedProfile.padWidth
+                config.y *= savedProfile.padHeight
+            case .centered:
+                config.x = (config.x * savedProfile.padWidth) - (savedProfile.padWidth / 2)
+                config.y = (config.y * savedProfile.padHeight) - (savedProfile.padHeight / 2)
+            }
+            if config.editorWidth <= 0 {
+                config.editorWidth = fallbackWidth
+            }
+            if config.editorHeight <= 0 {
+                config.editorHeight = fallbackHeight
+            }
+
+            config.editorWidth = max(config.editorWidth, 20)
+            config.editorHeight = max(config.editorHeight, 14)
+            editableProfile.buttons[button.rawValue] = config
+        }
+
+        return editableProfile
+    }
+
+    private func makeSavedProfile(from editableProfile: Profile) -> Profile {
+        var savedProfile = editableProfile
+        guard let fittedSize = fittedPadSize(for: editableProfile) else {
+            savedProfile.padWidth = 1
+            savedProfile.padHeight = 1
+            return savedProfile
+        }
+
+        let fittedWidth = max(1, fittedSize.width)
+        let fittedHeight = max(1, fittedSize.height)
+        savedProfile.padWidth = fittedWidth
+        savedProfile.padHeight = fittedHeight
+        let contentBounds = buttonContentBounds(for: editableProfile)
+
+        for button in GamepadButton.allCases {
+            guard var config = savedProfile.buttons[button.rawValue] else {
+                continue
+            }
+
+            switch editableProfile.editorCoordinateMode {
+            case .legacyTopLeft:
+                guard let contentBounds else {
+                    continue
+                }
+                config.x = (config.x - contentBounds.minX) / fittedWidth
+                config.y = (config.y - contentBounds.minY) / fittedHeight
+            case .centered:
+                config.x = (config.x + fittedWidth / 2) / fittedWidth
+                config.y = (config.y + fittedHeight / 2) / fittedHeight
+            }
+            let editorWidth = config.editorWidth > 0 ? config.editorWidth : config.width
+            let editorHeight = config.editorHeight > 0 ? config.editorHeight : config.height
+            config.editorWidth = editorWidth
+            config.editorHeight = editorHeight
+            config.width = editorWidth / fittedWidth
+            config.height = editorHeight / fittedHeight
+            savedProfile.buttons[button.rawValue] = config
+        }
+
+        return savedProfile
+    }
+
+    private func refreshFittedPadSizeFields() {
+        guard let fittedSize = fittedPadSize(for: profile) else {
+            padWidthField.stringValue = "0"
+            padHeightField.stringValue = "0"
+            return
+        }
+
+        padWidthField.stringValue = "\(Int(ceil(fittedSize.width)))"
+        padHeightField.stringValue = "\(Int(ceil(fittedSize.height)))"
+    }
+
+    private func buttonContentBounds(for profile: Profile) -> CGRect? {
+        var contentBounds: CGRect?
+
+        for button in GamepadButton.allCases {
+            guard let config = profile.buttons[button.rawValue] else {
+                continue
+            }
+
+            let buttonFrame = CGRect(
+                x: config.x - ((config.editorWidth > 0 ? config.editorWidth : config.width) / 2),
+                y: config.y - ((config.editorHeight > 0 ? config.editorHeight : config.height) / 2),
+                width: config.editorWidth > 0 ? config.editorWidth : config.width,
+                height: config.editorHeight > 0 ? config.editorHeight : config.height
+            )
+
+            contentBounds = contentBounds?.union(buttonFrame) ?? buttonFrame
+        }
+
+        return contentBounds
+    }
+
+    private func clampEditableProfileToWorkspace() {
+        let maxWidth = Self.maximumWorkspaceSize.width
+        let maxHeight = Self.maximumWorkspaceSize.height
+
+        for button in GamepadButton.allCases {
+            guard var config = profile.buttons[button.rawValue] else {
+                continue
+            }
+
+            let width = min(max(config.editorWidth > 0 ? config.editorWidth : config.width, 20), maxWidth)
+            let height = min(max(config.editorHeight > 0 ? config.editorHeight : config.height, 14), maxHeight)
+            let halfWidth = width / 2
+            let halfHeight = height / 2
+
+            config.editorWidth = width
+            config.editorHeight = height
+            switch profile.editorCoordinateMode {
+            case .legacyTopLeft:
+                config.x = min(max(config.x, halfWidth), maxWidth - halfWidth)
+                config.y = min(max(config.y, halfHeight), maxHeight - halfHeight)
+            case .centered:
+                config.x = min(max(config.x, -maxWidth / 2 + halfWidth), maxWidth / 2 - halfWidth)
+                config.y = min(max(config.y, -maxHeight / 2 + halfHeight), maxHeight / 2 - halfHeight)
+            }
+            profile.buttons[button.rawValue] = config
+        }
+    }
+
+    private func fittedPadSize(for profile: Profile) -> CGSize? {
+        guard let contentBounds = buttonContentBounds(for: profile) else {
+            return nil
+        }
+
+        switch profile.editorCoordinateMode {
+        case .legacyTopLeft:
+            return contentBounds.size
+        case .centered:
+            return CGSize(
+                width: max(abs(contentBounds.minX), abs(contentBounds.maxX)) * 2,
+                height: max(abs(contentBounds.minY), abs(contentBounds.maxY)) * 2
+            )
+        }
+    }
+
+    private func scrollPreviewToProfileContent() {
+        guard let contentBounds = canvasContentBounds(for: profile) else {
+            let origin = CGPoint(
+                x: max(0, (Self.maximumWorkspaceSize.width - previewScrollView.contentView.bounds.width) / 2),
+                y: max(0, (Self.maximumWorkspaceSize.height - previewScrollView.contentView.bounds.height) / 2)
+            )
+            previewScrollView.contentView.scroll(to: origin)
+            previewScrollView.reflectScrolledClipView(previewScrollView.contentView)
+            return
+        }
+
+        let visibleSize = previewScrollView.contentView.bounds.size
+        let documentSize = previewCanvasView.frame.size
+        let targetOrigin = CGPoint(
+            x: clamp(
+                contentBounds.midX - visibleSize.width / 2,
+                min: 0,
+                max: max(0, documentSize.width - visibleSize.width)
+            ),
+            y: clamp(
+                contentBounds.midY - visibleSize.height / 2,
+                min: 0,
+                max: max(0, documentSize.height - visibleSize.height)
+            )
+        )
+
+        previewScrollView.contentView.scroll(to: targetOrigin)
+        previewScrollView.reflectScrolledClipView(previewScrollView.contentView)
+    }
+
+    private func canvasContentBounds(for profile: Profile) -> CGRect? {
+        guard let contentBounds = buttonContentBounds(for: profile) else {
+            return nil
+        }
+
+        guard profile.editorCoordinateMode == .centered else {
+            return contentBounds
+        }
+
+        return contentBounds.offsetBy(
+            dx: Self.maximumWorkspaceSize.width / 2,
+            dy: Self.maximumWorkspaceSize.height / 2
+        )
+    }
+
+    private func clamp(_ value: CGFloat, min minimum: CGFloat, max maximum: CGFloat) -> CGFloat {
+        Swift.min(Swift.max(value, minimum), maximum)
     }
 }

@@ -90,10 +90,10 @@ final class ProfileStore {
         return src
     }
 
-    func updateActiveProfileSize(width: Double, height: Double) {
+    func updateActiveProfileDisplaySize(width: Double, height: Double) {
         guard let idx = profiles.firstIndex(where: { $0.id == activeProfileID }) else { return }
-        profiles[idx].padWidth = width
-        profiles[idx].padHeight = height
+        profiles[idx].displayPadWidth = width
+        profiles[idx].displayPadHeight = height
         save()
     }
 

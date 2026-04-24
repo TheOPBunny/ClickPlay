@@ -56,16 +56,16 @@ final class ButtonDetailPanel: NSView {
         labelBoldCheckbox.state = config.labelBold ? .on : .off
         labelItalicCheckbox.state = config.labelItalic ? .on : .off
         colorWell.color = NSColor(hex: config.colorHex)
-        xField.stringValue = String(format: "%.4f", config.x)
-        yField.stringValue = String(format: "%.4f", config.y)
+        xField.stringValue = String(format: "%.1f", config.x)
+        yField.stringValue = String(format: "%.1f", config.y)
         enabledCheckbox.state = config.enabled ? .on : .off
         interactionModePopup.selectItem(withTag: config.interactionMode.tag)
         keyRecorder.setKey(
             code: config.keyCode,
             modifiers: NSEvent.ModifierFlags(rawValue: UInt(config.keyModifiers))
         )
-        widthLabel.stringValue = String(format: "%.3f", config.width)
-        heightLabel.stringValue = String(format: "%.3f", config.height)
+        widthLabel.stringValue = String(format: "%.1f px", config.editorWidth > 0 ? config.editorWidth : config.width)
+        heightLabel.stringValue = String(format: "%.1f px", config.editorHeight > 0 ? config.editorHeight : config.height)
     }
 
     func refreshPosition(x: Double, y: Double, config: ButtonConfig) {
@@ -74,8 +74,8 @@ final class ButtonDetailPanel: NSView {
         }
 
         self.config = config
-        xField.stringValue = String(format: "%.4f", x)
-        yField.stringValue = String(format: "%.4f", y)
+        xField.stringValue = String(format: "%.1f", x)
+        yField.stringValue = String(format: "%.1f", y)
     }
 
     func refreshSize(width: Double, height: Double) {
@@ -83,10 +83,10 @@ final class ButtonDetailPanel: NSView {
             return
         }
 
-        config?.width = width
-        config?.height = height
-        widthLabel.stringValue = String(format: "%.3f", width)
-        heightLabel.stringValue = String(format: "%.3f", height)
+        config?.editorWidth = width
+        config?.editorHeight = height
+        widthLabel.stringValue = String(format: "%.1f px", width)
+        heightLabel.stringValue = String(format: "%.1f px", height)
     }
 
     private func setup() {
@@ -139,8 +139,8 @@ final class ButtonDetailPanel: NSView {
         stack.addArrangedSubview(makeLabelStyleRow())
         stack.addArrangedSubview(makeRow(label: "Key:", control: keyRecorder))
         stack.addArrangedSubview(makeRow(label: "Color:", control: colorWell))
-        stack.addArrangedSubview(makeRow(label: "X (0–1):", control: xField))
-        stack.addArrangedSubview(makeRow(label: "Y (0–1):", control: yField))
+        stack.addArrangedSubview(makeRow(label: "X (px):", control: xField))
+        stack.addArrangedSubview(makeRow(label: "Y (px):", control: yField))
         stack.addArrangedSubview(makeRow(label: "Mode:", control: interactionModePopup))
         stack.addArrangedSubview(enabledCheckbox)
         stack.addArrangedSubview(makeSizeRow())
