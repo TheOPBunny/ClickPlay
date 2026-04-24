@@ -28,10 +28,7 @@ final class GamepadPreviewView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layer?.backgroundColor = NSColor(white: 0.10, alpha: 1).cgColor
-        layer?.cornerRadius = 14
-        layer?.borderWidth = 1
-        layer?.borderColor = NSColor.white.withAlphaComponent(0.08).cgColor
+        layer?.backgroundColor = NSColor.clear.cgColor
     }
 
     required init?(coder: NSCoder) {
