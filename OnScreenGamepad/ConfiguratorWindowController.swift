@@ -5,7 +5,7 @@ final class ConfiguratorWindowController: NSWindowController, NSWindowDelegate {
     convenience init() {
         let viewController = ConfiguratorViewController()
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 860, height: 620),
+            contentRect: NSRect(x: 0, y: 0, width: 1180, height: 780),
             styleMask: [.titled, .closable, .resizable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -18,6 +18,7 @@ final class ConfiguratorWindowController: NSWindowController, NSWindowDelegate {
         window.collectionBehavior = [.moveToActiveSpace]
         window.tabbingMode = .disallowed
         window.setFrameAutosaveName("ConfiguratorWindow")
+        window.contentMinSize = NSSize(width: 980, height: 680)
 
         self.init(window: window)
         window.delegate = self
