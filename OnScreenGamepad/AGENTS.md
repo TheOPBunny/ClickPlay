@@ -52,6 +52,7 @@ This is currently a functional prototype. Prefer improving the existing architec
 - Avoid changing public behavior outside the requested task.
 - Keep debug logging unless removing or reducing it is part of the task.
 - Use AppKit-native patterns already present in the codebase.
+- Default to native macOS and industry-standard UI/UX elements and interaction patterns unless the user explicitly requests something custom.
 - Unless the user explicitly says otherwise, always do active development on the `dev` branch.
 - If work begins on another branch by mistake, stop and resolve branch state before continuing.
 - Make a commit after every discrete change unless the user explicitly says not to.
