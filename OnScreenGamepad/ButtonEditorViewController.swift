@@ -2,11 +2,95 @@ import Cocoa
 
 final class ButtonEditorViewController: NSViewController {
 
+    private final class PreviewCanvasView: NSView {
+        let previewView: GamepadPreviewView
+        var showsGrid = true {
+            didSet { needsDisplay = true }
+        }
+        var previewSize = CGSize(width: 420, height: 300) {
+            didSet {
+                needsLayout = true
+            }
+        }
+
+        private let canvasPadding: CGFloat = 100
+
+        init(previewView: GamepadPreviewView) {
+            self.previewView = previewView
+            super.init(frame: .zero)
+            wantsLayer = true
+            addSubview(previewView)
+        }
+
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        override func draw(_ dirtyRect: NSRect) {
+            super.draw(dirtyRect)
+
+            NSColor(white: 0.13, alpha: 1).setFill()
+            dirtyRect.fill()
+
+            guard showsGrid else { return }
+
+            drawGrid(spacing: 10, color: NSColor.white.withAlphaComponent(0.05))
+            drawGrid(spacing: 50, color: NSColor.white.withAlphaComponent(0.10))
+        }
+
+        override func layout() {
+            super.layout()
+
+            let previewFrame = CGRect(
+                x: round((bounds.width - previewSize.width) / 2),
+                y: round((bounds.height - previewSize.height) / 2),
+                width: previewSize.width,
+                height: previewSize.height
+            )
+            previewView.frame = previewFrame
+        }
+
+        func updateCanvasSize(visibleSize: CGSize) {
+            let nextSize = CGSize(
+                width: max(visibleSize.width, previewSize.width + canvasPadding * 2),
+                height: max(visibleSize.height, previewSize.height + canvasPadding * 2)
+            )
+
+            if frame.size != nextSize {
+                frame = CGRect(origin: .zero, size: nextSize)
+            }
+
+            needsLayout = true
+            needsDisplay = true
+        }
+
+        private func drawGrid(spacing: CGFloat, color: NSColor) {
+            let path = NSBezierPath()
+
+            var x: CGFloat = 0
+            while x <= bounds.width {
+                path.move(to: CGPoint(x: x, y: 0))
+                path.line(to: CGPoint(x: x, y: bounds.height))
+                x += spacing
+            }
+
+            var y: CGFloat = 0
+            while y <= bounds.height {
+                path.move(to: CGPoint(x: 0, y: y))
+                path.line(to: CGPoint(x: bounds.width, y: y))
+                y += spacing
+            }
+
+            color.setStroke()
+            path.lineWidth = 1
+            path.stroke()
+        }
+    }
+
     var onProfileSaved: ((Profile) -> Void)?
 
     private static let minimumPadWidth = 260.0
     private static let minimumPadHeight = 180.0
-    private static let previewAspectRatio = 300.0 / 420.0
 
     private var profile = ProfileStore.shared.activeProfile
 
@@ -16,7 +100,10 @@ final class ButtonEditorViewController: NSViewController {
     private let padWidthField = NSTextField()
     private let padHeightField = NSTextField()
     private let compatibilityModeCheckbox = NSButton(checkboxWithTitle: "Compatibility Mode", target: nil, action: nil)
+    private let showGridCheckbox = NSButton(checkboxWithTitle: "Show Grid", target: nil, action: nil)
     private let previewView = GamepadPreviewView()
+    private lazy var previewCanvasView = PreviewCanvasView(previewView: previewView)
+    private let previewScrollView = NSScrollView()
     private let detailPanel = ButtonDetailPanel()
     private let leftColumn = NSStackView()
     private let hint = NSTextField(
@@ -33,6 +120,11 @@ final class ButtonEditorViewController: NSViewController {
         load(profile: ProfileStore.shared.activeProfile)
     }
 
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        updatePreviewCanvasLayout()
+    }
+
     func load(profile: Profile) {
         self.profile = profile
         nameField.stringValue = profile.name
@@ -41,6 +133,7 @@ final class ButtonEditorViewController: NSViewController {
         padWidthField.stringValue = "\(Int(profile.padWidth))"
         padHeightField.stringValue = "\(Int(profile.padHeight))"
         compatibilityModeCheckbox.state = profile.compatibilityMode ? .on : .off
+        updatePreviewCanvasLayout()
         previewView.reload(profile: profile, keepSelection: false)
         detailPanel.clear()
     }
@@ -70,6 +163,9 @@ final class ButtonEditorViewController: NSViewController {
         padHeightField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         compatibilityModeCheckbox.target = self
         compatibilityModeCheckbox.action = #selector(compatibilityModeChanged)
+        showGridCheckbox.state = .on
+        showGridCheckbox.target = self
+        showGridCheckbox.action = #selector(showGridChanged)
 
         let saveButton = NSButton(title: "Save & Apply", target: self, action: #selector(saveProfile))
         saveButton.bezelStyle = .rounded
@@ -86,6 +182,7 @@ final class ButtonEditorViewController: NSViewController {
             makeLabel("×"),
             padHeightField,
             compatibilityModeCheckbox,
+            showGridCheckbox,
             NSView(),
             saveButton,
         ])
@@ -94,7 +191,13 @@ final class ButtonEditorViewController: NSViewController {
         topBar.spacing = 6
         topBar.translatesAutoresizingMaskIntoConstraints = false
 
-        previewView.translatesAutoresizingMaskIntoConstraints = false
+        previewScrollView.translatesAutoresizingMaskIntoConstraints = false
+        previewScrollView.hasVerticalScroller = true
+        previewScrollView.hasHorizontalScroller = true
+        previewScrollView.borderType = .bezelBorder
+        previewScrollView.drawsBackground = false
+        previewScrollView.documentView = previewCanvasView
+
         previewView.onButtonSelected = { [weak self] button in
             guard
                 let self,
@@ -145,10 +248,10 @@ final class ButtonEditorViewController: NSViewController {
         leftColumn.alignment = .leading
         leftColumn.spacing = 6
         leftColumn.translatesAutoresizingMaskIntoConstraints = false
-        leftColumn.addArrangedSubview(previewView)
+        leftColumn.addArrangedSubview(previewScrollView)
         leftColumn.addArrangedSubview(hint)
 
-        let preferredPreviewWidthConstraint = leftColumn.widthAnchor.constraint(equalTo: view.widthAnchor, multiplier: 0.52)
+        let preferredPreviewWidthConstraint = leftColumn.widthAnchor.constraint(equalTo: view.widthAnchor, multiplier: 0.60)
         preferredPreviewWidthConstraint.priority = .defaultHigh
 
         [topBar, leftColumn, detailPanel].forEach(view.addSubview(_:))
@@ -165,18 +268,18 @@ final class ButtonEditorViewController: NSViewController {
             padHeightField.widthAnchor.constraint(equalToConstant: 52),
             leftColumn.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: 14),
             leftColumn.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-            leftColumn.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -12),
-            leftColumn.widthAnchor.constraint(greaterThanOrEqualToConstant: 420),
-            leftColumn.widthAnchor.constraint(lessThanOrEqualToConstant: 760),
+            leftColumn.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -12),
+            leftColumn.widthAnchor.constraint(greaterThanOrEqualToConstant: 520),
+            leftColumn.widthAnchor.constraint(lessThanOrEqualToConstant: 900),
             preferredPreviewWidthConstraint,
-            previewView.widthAnchor.constraint(equalTo: leftColumn.widthAnchor),
-            previewView.heightAnchor.constraint(equalTo: previewView.widthAnchor, multiplier: Self.previewAspectRatio),
+            previewScrollView.widthAnchor.constraint(equalTo: leftColumn.widthAnchor),
+            previewScrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 420),
             hint.widthAnchor.constraint(equalTo: leftColumn.widthAnchor),
             detailPanel.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: 14),
             detailPanel.leadingAnchor.constraint(equalTo: leftColumn.trailingAnchor, constant: 20),
             detailPanel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
             detailPanel.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -12),
-            detailPanel.widthAnchor.constraint(greaterThanOrEqualToConstant: 280),
+            detailPanel.widthAnchor.constraint(greaterThanOrEqualToConstant: 300),
         ])
     }
 
@@ -194,6 +297,10 @@ final class ButtonEditorViewController: NSViewController {
     @objc private func compatibilityModeChanged() {
         profile.compatibilityMode = compatibilityModeCheckbox.state == .on
         previewView.reload(profile: profile, keepSelection: true)
+    }
+
+    @objc private func showGridChanged() {
+        previewCanvasView.showsGrid = showGridCheckbox.state == .on
     }
 
     @objc private func saveProfile() {
@@ -214,6 +321,8 @@ final class ButtonEditorViewController: NSViewController {
         padWidthField.stringValue = "\(Int(profile.padWidth))"
         padHeightField.stringValue = "\(Int(profile.padHeight))"
         profile.compatibilityMode = compatibilityModeCheckbox.state == .on
+        updatePreviewCanvasLayout()
+        previewView.reload(profile: profile, keepSelection: true)
 
         onProfileSaved?(profile)
         showSavedIndicator()
@@ -242,5 +351,13 @@ final class ButtonEditorViewController: NSViewController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
             savedLabel.removeFromSuperview()
         }
+    }
+
+    private func updatePreviewCanvasLayout() {
+        let previewSize = CGSize(width: profile.padWidth, height: profile.padHeight)
+        previewCanvasView.previewSize = previewSize
+        previewCanvasView.showsGrid = showGridCheckbox.state == .on
+        previewCanvasView.updateCanvasSize(visibleSize: previewScrollView.contentView.bounds.size)
+        previewCanvasView.layoutSubtreeIfNeeded()
     }
 }
