@@ -164,6 +164,9 @@ final class ButtonEditorViewController: NSViewController {
         saveButton.bezelStyle = .rounded
         saveButton.keyEquivalent = "\r"
 
+        let addButton = NSButton(title: "Add Button", target: self, action: #selector(addButtonPressed))
+        addButton.bezelStyle = .rounded
+
         let topBar = NSStackView(views: [
             makeLabel("Name:"),
             nameField,
@@ -177,6 +180,7 @@ final class ButtonEditorViewController: NSViewController {
             compatibilityModeCheckbox,
             showGridCheckbox,
             NSView(),
+            addButton,
             saveButton,
         ])
         topBar.orientation = .horizontal
@@ -280,6 +284,35 @@ final class ButtonEditorViewController: NSViewController {
         return label
     }
 
+    private func nextAvailableCustomButton() -> GamepadButton? {
+        GamepadButton.customSlots.first { button in
+            guard let config = profile.buttons[button.rawValue] else {
+                return true
+            }
+
+            return !config.enabled
+        }
+    }
+
+    private func makeNewButtonConfig(for button: GamepadButton) -> ButtonConfig {
+        let width = 80.0
+        let height = 44.0
+
+        return ButtonConfig(
+            x: 0,
+            y: 0,
+            width: width,
+            height: height,
+            editorWidth: width,
+            editorHeight: height,
+            colorHex: "#4C8DFF",
+            keyCode: 49,
+            keyModifiers: 0,
+            label: button.rawValue,
+            enabled: true
+        )
+    }
+
     @objc private func opacityMoved() {
         profile.opacity = opacitySlider.doubleValue
         opacityLabel.stringValue = "\(Int(profile.opacity * 100))%"
@@ -292,6 +325,18 @@ final class ButtonEditorViewController: NSViewController {
 
     @objc private func showGridChanged() {
         previewCanvasView.showsGrid = showGridCheckbox.state == .on
+    }
+
+    @objc private func addButtonPressed() {
+        guard let button = nextAvailableCustomButton() else {
+            NSSound.beep()
+            return
+        }
+
+        profile.buttons[button.rawValue] = makeNewButtonConfig(for: button)
+        syncWorkspaceAfterGeometryChange(selectedButton: button)
+        previewView.reload(profile: profile, keepSelection: false)
+        previewView.select(button: button)
     }
 
     @objc private func saveProfile() {

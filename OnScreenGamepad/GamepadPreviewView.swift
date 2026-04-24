@@ -56,6 +56,22 @@ final class GamepadPreviewView: NSView {
         profile.buttons[button.rawValue] = config
     }
 
+    func select(button: GamepadButton) {
+        guard let config = profile.buttons[button.rawValue], config.enabled else {
+            highlight(nil)
+            return
+        }
+
+        if buttonLayers[button] == nil {
+            let buttonLayer = makeButtonLayer(for: button)
+            let handleLayer = makeHandleLayer(for: button)
+            update(buttonLayer: buttonLayer, handleLayer: handleLayer, with: config)
+        }
+
+        highlight(button)
+        onButtonSelected?(button)
+    }
+
     private func rebuildLayers() {
         buttonLayers.values.forEach { $0.removeFromSuperlayer() }
         handleLayers.values.forEach { $0.removeFromSuperlayer() }
