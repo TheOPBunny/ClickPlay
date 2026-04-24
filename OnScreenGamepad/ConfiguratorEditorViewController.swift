@@ -10,8 +10,8 @@ final class ConfiguratorViewController: NSSplitViewController {
         super.viewDidLoad()
 
         let sidebarItem = NSSplitViewItem(sidebarWithViewController: profileListViewController)
-        sidebarItem.minimumThickness = 180
-        sidebarItem.maximumThickness = 220
+        sidebarItem.minimumThickness = 200
+        sidebarItem.maximumThickness = 260
 
         addSplitViewItem(sidebarItem)
         addSplitViewItem(NSSplitViewItem(viewController: editorViewController))
