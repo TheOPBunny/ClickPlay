@@ -31,7 +31,7 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 
 - [x] Remove size section because we can resize the gamepad manually.
 - [x] Add an option to add a button.
-- [ ] Use system corner dragging to resize buttons, or allow entering dimensions in `px x px`.
+- [x] Use system corner dragging to resize buttons, or allow entering dimensions in `px x px`.
 - [ ] Add cut, copy, paste, undo, and redo support for buttons.
 - [ ] Add multi-select for buttons using drag selection or `Cmd`-click.
 - [ ] Add the ability to group, align, and equalize a selected group of buttons.
