@@ -32,7 +32,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func setupMainMenu() {
+    func setupMainMenu() {
         let mainMenu = NSMenu()
         let appItem = NSMenuItem()
         let editItem = NSMenuItem()
@@ -253,6 +253,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func showConfigurator() {
         DispatchQueue.main.async { [weak self] in
+            NSApp.setActivationPolicy(.regular)
+            self?.setupMainMenu()
             self?.configuratorWindowController.showEditorWindow()
         }
     }

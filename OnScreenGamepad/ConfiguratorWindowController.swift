@@ -25,8 +25,6 @@ final class ConfiguratorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func showEditorWindow() {
-        NSApp.setActivationPolicy(.regular)
-
         if let window {
             if window.isMiniaturized {
                 window.deminiaturize(nil)
@@ -47,6 +45,6 @@ final class ConfiguratorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func activateEditorApp() {
-        NSRunningApplication.current.activate(options: [.activateIgnoringOtherApps])
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
