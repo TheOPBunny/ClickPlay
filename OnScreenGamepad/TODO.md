@@ -34,10 +34,10 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 - [x] Use system corner dragging to resize buttons, or allow entering dimensions in `px x px`.
 - [x] Refactor configurator preview into a custom canvas editor model.
 - [x] Add undo and redo support for button edits.
-- [ ] Add cut, copy, and paste support for buttons.
-- [ ] Add multi-select for buttons using drag selection or `Cmd`-click.
-- [ ] Add snapping and alignment guides.
-- [ ] Add the ability to group, align, and equalize a selected group of buttons.
+- [x] Add cut, copy, and paste support for buttons.
+- [x] Add multi-select for buttons using drag selection or `Cmd`-click.
+- [x] Add snapping and alignment guides.
+- [x] Add the ability to group, align, and equalize a selected group of buttons.
 - [ ] Add a circle button shape.
 - [x] Make the editing window larger and scale it with the application window size.
 - [ ] Allow side panels to collapse and be resized horizontally.

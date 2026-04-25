@@ -2,6 +2,25 @@ import Cocoa
 
 final class ButtonEditorViewController: NSViewController, NSMenuItemValidation {
 
+    private struct ClipboardButton: Codable {
+        var config: ButtonConfig
+    }
+
+    private enum AlignmentAction {
+        case left
+        case centerX
+        case right
+        case top
+        case centerY
+        case bottom
+    }
+
+    private enum EqualizeAction {
+        case width
+        case height
+        case both
+    }
+
     private final class PreviewCanvasView: NSView {
         let previewView: GamepadPreviewView
         var showsGrid = true {
@@ -78,9 +97,15 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation {
 
     private static let maximumWorkspaceSize = CGSize(width: 1000, height: 1000)
     private static let buttonCountWarningThreshold = 100
+    private static let pasteOffset: Double = 18
+    private static let snapThreshold: CGFloat = 5
+    private static let pasteboardType = NSPasteboard.PasteboardType("com.onscreengamepad.canvas-buttons")
 
     private var profile = ProfileStore.shared.activeProfile
     private var canvasObjects: [CanvasButtonObject] = []
+    private var selectedIDs = Set<GamepadButton>()
+    private var localClipboard: [ClipboardButton] = []
+    private var pasteCount = 0
     private var profileIDsWarnedForHighButtonCount = Set<UUID>()
     private let editorUndoManager = UndoManager()
 
@@ -121,6 +146,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation {
 
     func load(profile: Profile) {
         editorUndoManager.removeAllActions()
+        selectedIDs = []
         self.profile = makeEditableProfile(from: profile)
         previewView.usesCenteredOrigin = profile.editorCoordinateMode == .centered
         clampEditableProfileToWorkspace()
@@ -210,6 +236,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation {
                 return
             }
 
+            self.selectedIDs = selectedIDs
             guard selectedIDs.count == 1, let button = selectedIDs.first, let config = self.profile.buttons[button.rawValue] else {
                 self.detailPanel.clear()
                 return
@@ -219,7 +246,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation {
         }
         previewView.onGeometryChanged = { [weak self] proposedGeometries in
             guard let self else {
-                return proposedGeometries
+                return CanvasGeometryChangeResult(geometries: proposedGeometries, guides: [])
             }
 
             return self.applyCanvasGeometries(proposedGeometries)
@@ -352,9 +379,113 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation {
         case #selector(redo(_:)):
             menuItem.title = editorUndoManager.redoMenuItemTitle
             return editorUndoManager.canRedo
+        case #selector(cut(_:)), #selector(copy(_:)), #selector(delete(_:)):
+            return !selectedIDs.isEmpty && !isTextInputFirstResponder
+        case #selector(paste(_:)):
+            return canPasteButtons && !isTextInputFirstResponder
+        case #selector(alignLeft(_:)), #selector(alignCenterX(_:)), #selector(alignRight(_:)),
+             #selector(alignTop(_:)), #selector(alignCenterY(_:)), #selector(alignBottom(_:)),
+             #selector(equalizeWidths(_:)), #selector(equalizeHeights(_:)), #selector(equalizeBoth(_:)):
+            return selectedIDs.count >= 2 && !isTextInputFirstResponder
+        case #selector(distributeHorizontally(_:)), #selector(distributeVertically(_:)):
+            return selectedIDs.count >= 3 && !isTextInputFirstResponder
         default:
             return true
         }
+    }
+
+    @objc func cut(_ sender: Any?) {
+        guard !isTextInputFirstResponder, copySelectedButtonsToPasteboard() else {
+            return
+        }
+
+        deleteSelectedButtons(actionName: "Cut Buttons")
+    }
+
+    @objc func copy(_ sender: Any?) {
+        guard !isTextInputFirstResponder else {
+            return
+        }
+
+        _ = copySelectedButtonsToPasteboard()
+    }
+
+    @objc func paste(_ sender: Any?) {
+        guard !isTextInputFirstResponder, let clipboardButtons = readClipboardButtons(), !clipboardButtons.isEmpty else {
+            return
+        }
+
+        pasteCount += 1
+        let offset = Double(pasteCount) * Self.pasteOffset
+        var insertedStates: [GamepadButton: ButtonConfig?] = [:]
+        var nextSelection = Set<GamepadButton>()
+
+        for clipboardButton in clipboardButtons {
+            let button = GamepadButton.generated()
+            var config = clipboardButton.config
+            config.x += offset
+            config.y -= offset
+            config.enabled = true
+            config = configByApplyingGeometryClamp(config)
+            profile.buttons[button.rawValue] = config
+            insertedStates[button] = config
+            nextSelection.insert(button)
+        }
+
+        refreshEditorAfterButtonSetChange(selection: nextSelection)
+        registerButtonSetUndo(before: Dictionary(uniqueKeysWithValues: insertedStates.keys.map { ($0, nil) }), after: insertedStates, actionName: "Paste Buttons")
+    }
+
+    @objc func delete(_ sender: Any?) {
+        guard !isTextInputFirstResponder else {
+            return
+        }
+
+        deleteSelectedButtons(actionName: "Delete Buttons")
+    }
+
+    @objc func alignLeft(_ sender: Any?) {
+        alignSelectedButtons(.left)
+    }
+
+    @objc func alignCenterX(_ sender: Any?) {
+        alignSelectedButtons(.centerX)
+    }
+
+    @objc func alignRight(_ sender: Any?) {
+        alignSelectedButtons(.right)
+    }
+
+    @objc func alignTop(_ sender: Any?) {
+        alignSelectedButtons(.top)
+    }
+
+    @objc func alignCenterY(_ sender: Any?) {
+        alignSelectedButtons(.centerY)
+    }
+
+    @objc func alignBottom(_ sender: Any?) {
+        alignSelectedButtons(.bottom)
+    }
+
+    @objc func distributeHorizontally(_ sender: Any?) {
+        distributeSelectedButtons(horizontal: true)
+    }
+
+    @objc func distributeVertically(_ sender: Any?) {
+        distributeSelectedButtons(horizontal: false)
+    }
+
+    @objc func equalizeWidths(_ sender: Any?) {
+        equalizeSelectedButtons(.width)
+    }
+
+    @objc func equalizeHeights(_ sender: Any?) {
+        equalizeSelectedButtons(.height)
+    }
+
+    @objc func equalizeBoth(_ sender: Any?) {
+        equalizeSelectedButtons(.both)
     }
 
     @objc private func opacityMoved() {
@@ -417,6 +548,93 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation {
         canvasObjects = makeCanvasObjects(from: profile)
         previewView.reload(objects: canvasObjects, keepSelection: false)
         detailPanel.clear()
+    }
+
+    private var isTextInputFirstResponder: Bool {
+        guard let firstResponder = view.window?.firstResponder else {
+            return false
+        }
+
+        if firstResponder is NSTextView {
+            return true
+        }
+
+        if let control = firstResponder as? NSControl {
+            return control.currentEditor() != nil
+        }
+
+        return false
+    }
+
+    private var canPasteButtons: Bool {
+        !localClipboard.isEmpty || NSPasteboard.general.availableType(from: [Self.pasteboardType]) != nil
+    }
+
+    private func copySelectedButtonsToPasteboard() -> Bool {
+        let clipboardButtons = profile.orderedButtonIDs.compactMap { button -> ClipboardButton? in
+            guard selectedIDs.contains(button), let config = profile.buttons[button.rawValue] else {
+                return nil
+            }
+
+            return ClipboardButton(config: config)
+        }
+
+        guard !clipboardButtons.isEmpty else {
+            return false
+        }
+
+        localClipboard = clipboardButtons
+        if let data = try? JSONEncoder().encode(clipboardButtons) {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setData(data, forType: Self.pasteboardType)
+        }
+
+        return true
+    }
+
+    private func readClipboardButtons() -> [ClipboardButton]? {
+        if let data = NSPasteboard.general.data(forType: Self.pasteboardType),
+           let decodedButtons = try? JSONDecoder().decode([ClipboardButton].self, from: data) {
+            localClipboard = decodedButtons
+            return decodedButtons
+        }
+
+        return localClipboard.isEmpty ? nil : localClipboard
+    }
+
+    private func deleteSelectedButtons(actionName: String) {
+        let buttonsToDelete = selectedIDs
+        guard !buttonsToDelete.isEmpty else {
+            return
+        }
+
+        var beforeStates: [GamepadButton: ButtonConfig?] = [:]
+        var afterStates: [GamepadButton: ButtonConfig?] = [:]
+
+        for button in buttonsToDelete {
+            beforeStates[button] = profile.buttons[button.rawValue]
+            afterStates[button] = nil
+            profile.buttons.removeValue(forKey: button.rawValue)
+        }
+
+        refreshEditorAfterButtonSetChange(selection: [])
+        registerButtonSetUndo(before: beforeStates, after: afterStates, actionName: actionName)
+    }
+
+    private func refreshEditorAfterButtonSetChange(selection: Set<GamepadButton>) {
+        clampEditableProfileToWorkspace()
+        refreshFittedPadSizeFields()
+        updatePreviewCanvasLayout()
+        canvasObjects = makeCanvasObjects(from: profile)
+        selectedIDs = selection
+        previewView.reload(objects: canvasObjects, keepSelection: false)
+        previewView.select(buttons: selection)
+
+        if selection.count == 1, let button = selection.first, let config = profile.buttons[button.rawValue] {
+            detailPanel.load(button: button, config: config)
+        } else {
+            detailPanel.clear()
+        }
     }
 
     @objc private func saveProfile() {
@@ -501,10 +719,12 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation {
 
     private func applyCanvasGeometries(
         _ proposedGeometries: [GamepadButton: ButtonEditorGeometry]
-    ) -> [GamepadButton: ButtonEditorGeometry] {
+    ) -> CanvasGeometryChangeResult {
+        let snapResult = snappedGeometries(proposedGeometries)
+        let geometriesToApply = snapResult.geometries
         var appliedGeometries: [GamepadButton: ButtonEditorGeometry] = [:]
 
-        for (button, proposedGeometry) in proposedGeometries {
+        for (button, proposedGeometry) in geometriesToApply {
             guard var config = profile.buttons[button.rawValue] else {
                 continue
             }
@@ -530,7 +750,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation {
             )
         }
 
-        return appliedGeometries
+        return CanvasGeometryChangeResult(geometries: appliedGeometries, guides: snapResult.guides)
     }
 
     private func syncCanvasObject(for button: GamepadButton, config: ButtonConfig) {
@@ -580,6 +800,21 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation {
         editorUndoManager.setActionName(actionName)
     }
 
+    private func registerButtonSetUndo(
+        before: [GamepadButton: ButtonConfig?],
+        after: [GamepadButton: ButtonConfig?],
+        actionName: String
+    ) {
+        guard before.keys.contains(where: { button in buttonStateChanged(before[button] ?? nil, after[button] ?? nil) }) else {
+            return
+        }
+
+        editorUndoManager.registerUndo(withTarget: self) { target in
+            target.applyButtonSetState(states: before, oppositeStates: after, actionName: actionName)
+        }
+        editorUndoManager.setActionName(actionName)
+    }
+
     private func applyButtonState(
         button: GamepadButton,
         state: ButtonConfig?,
@@ -607,6 +842,28 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation {
 
         editorUndoManager.registerUndo(withTarget: self) { target in
             target.applyButtonState(button: button, state: oppositeState, oppositeState: state, actionName: actionName)
+        }
+        editorUndoManager.setActionName(actionName)
+    }
+
+    private func applyButtonSetState(
+        states: [GamepadButton: ButtonConfig?],
+        oppositeStates: [GamepadButton: ButtonConfig?],
+        actionName: String
+    ) {
+        for (button, state) in states {
+            if let state {
+                profile.buttons[button.rawValue] = configByApplyingGeometryClamp(state)
+            } else {
+                profile.buttons.removeValue(forKey: button.rawValue)
+            }
+        }
+
+        let nextSelection = Set(states.keys.filter { profile.buttons[$0.rawValue] != nil })
+        refreshEditorAfterButtonSetChange(selection: nextSelection)
+
+        editorUndoManager.registerUndo(withTarget: self) { target in
+            target.applyButtonSetState(states: oppositeStates, oppositeStates: states, actionName: actionName)
         }
         editorUndoManager.setActionName(actionName)
     }
@@ -667,6 +924,148 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation {
             target.applyCanvasFrames(oppositeFrames, oppositeFrames: frames)
         }
         editorUndoManager.setActionName("Move/Resize Button")
+    }
+
+    private func alignSelectedButtons(_ action: AlignmentAction) {
+        let frames = selectedFrames()
+        guard frames.count >= 2 else {
+            return
+        }
+
+        let before = frames
+        let targetFrame = frames.values.reduce(frames.values.first!) { $0.union($1) }
+        var after: [GamepadButton: CGRect] = [:]
+
+        for (button, frame) in frames {
+            var nextFrame = frame
+            switch action {
+            case .left:
+                nextFrame.origin.x = targetFrame.minX
+            case .centerX:
+                nextFrame.origin.x = targetFrame.midX - (frame.width / 2)
+            case .right:
+                nextFrame.origin.x = targetFrame.maxX - frame.width
+            case .top:
+                nextFrame.origin.y = targetFrame.maxY - frame.height
+            case .centerY:
+                nextFrame.origin.y = targetFrame.midY - (frame.height / 2)
+            case .bottom:
+                nextFrame.origin.y = targetFrame.minY
+            }
+            after[button] = nextFrame
+        }
+
+        applyCanvasFramesWithoutUndo(after)
+        registerGeometryUndo(before: before, after: selectedFrames())
+    }
+
+    private func distributeSelectedButtons(horizontal: Bool) {
+        let frames = selectedFrames()
+        guard frames.count >= 3 else {
+            return
+        }
+
+        let before = frames
+        let sortedButtons = frames.keys.sorted { lhs, rhs in
+            let lhsFrame = frames[lhs] ?? .zero
+            let rhsFrame = frames[rhs] ?? .zero
+            return horizontal ? lhsFrame.midX < rhsFrame.midX : lhsFrame.midY < rhsFrame.midY
+        }
+        guard let first = sortedButtons.first, let last = sortedButtons.last,
+              let firstFrame = frames[first], let lastFrame = frames[last] else {
+            return
+        }
+
+        let start = horizontal ? firstFrame.midX : firstFrame.midY
+        let end = horizontal ? lastFrame.midX : lastFrame.midY
+        let spacing = (end - start) / CGFloat(sortedButtons.count - 1)
+        var after: [GamepadButton: CGRect] = [:]
+
+        for (index, button) in sortedButtons.enumerated() {
+            guard var frame = frames[button] else {
+                continue
+            }
+
+            let center = start + (CGFloat(index) * spacing)
+            if horizontal {
+                frame.origin.x = center - (frame.width / 2)
+            } else {
+                frame.origin.y = center - (frame.height / 2)
+            }
+            after[button] = frame
+        }
+
+        applyCanvasFramesWithoutUndo(after)
+        registerGeometryUndo(before: before, after: selectedFrames())
+    }
+
+    private func equalizeSelectedButtons(_ action: EqualizeAction) {
+        let frames = selectedFrames()
+        guard frames.count >= 2, let referenceButton = selectedIDs.sorted(by: { $0.rawValue < $1.rawValue }).first,
+              let referenceFrame = frames[referenceButton] else {
+            return
+        }
+
+        let before = frames
+        var after: [GamepadButton: CGRect] = [:]
+
+        for (button, frame) in frames {
+            var nextFrame = frame
+            switch action {
+            case .width:
+                nextFrame.size.width = referenceFrame.width
+            case .height:
+                nextFrame.size.height = referenceFrame.height
+            case .both:
+                nextFrame.size = referenceFrame.size
+            }
+            nextFrame.origin.x = frame.midX - (nextFrame.width / 2)
+            nextFrame.origin.y = frame.midY - (nextFrame.height / 2)
+            after[button] = nextFrame
+        }
+
+        applyCanvasFramesWithoutUndo(after)
+        registerGeometryUndo(before: before, after: selectedFrames())
+    }
+
+    private func applyCanvasFramesWithoutUndo(_ frames: [GamepadButton: CGRect]) {
+        for (button, frame) in frames {
+            guard var config = profile.buttons[button.rawValue] else {
+                continue
+            }
+
+            config.x = frame.midX
+            config.y = frame.midY
+            config.editorWidth = frame.width
+            config.editorHeight = frame.height
+            profile.buttons[button.rawValue] = configByApplyingGeometryClamp(config)
+        }
+
+        clampEditableProfileToWorkspace()
+        canvasObjects = makeCanvasObjects(from: profile)
+        refreshFittedPadSizeFields()
+        updatePreviewCanvasLayout()
+        previewView.reload(objects: canvasObjects, keepSelection: true)
+
+        if selectedIDs.count == 1, let button = selectedIDs.first, let config = profile.buttons[button.rawValue] {
+            detailPanel.refreshPosition(x: config.x, y: config.y, config: config)
+            detailPanel.refreshSize(
+                width: config.editorWidth > 0 ? config.editorWidth : config.width,
+                height: config.editorHeight > 0 ? config.editorHeight : config.height
+            )
+        } else {
+            detailPanel.clear()
+        }
+    }
+
+    private func selectedFrames() -> [GamepadButton: CGRect] {
+        selectedIDs.reduce(into: [GamepadButton: CGRect]()) { result, button in
+            guard let config = profile.buttons[button.rawValue] else {
+                return
+            }
+
+            result[button] = editorFrame(for: config)
+        }
     }
 
     private func editorFrame(for config: ButtonConfig) -> CGRect {
@@ -813,6 +1212,212 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation {
         config.editorWidth = clamped.width
         config.editorHeight = clamped.height
         return config
+    }
+
+    private func snappedGeometries(
+        _ proposedGeometries: [GamepadButton: ButtonEditorGeometry]
+    ) -> CanvasGeometryChangeResult {
+        guard !proposedGeometries.isEmpty else {
+            return CanvasGeometryChangeResult(geometries: proposedGeometries, guides: [])
+        }
+
+        if proposedGeometries.count > 1 {
+            return snappedGroupMove(proposedGeometries)
+        }
+
+        guard let button = proposedGeometries.keys.first,
+              let geometry = proposedGeometries[button] else {
+            return CanvasGeometryChangeResult(geometries: proposedGeometries, guides: [])
+        }
+
+        if let anchoredResize = geometry.anchoredResize {
+            return snappedAnchoredResize(button: button, geometry: geometry, anchoredResize: anchoredResize)
+        }
+
+        return snappedSingleMove(button: button, geometry: geometry)
+    }
+
+    private func snappedGroupMove(
+        _ proposedGeometries: [GamepadButton: ButtonEditorGeometry]
+    ) -> CanvasGeometryChangeResult {
+        let proposedFrames = proposedGeometries.mapValues(frameForGeometry)
+        guard let bounds = proposedFrames.values.reduce(nil, { partial, frame in
+            partial?.union(frame) ?? frame
+        } as (CGRect?, CGRect) -> CGRect?) else {
+            return CanvasGeometryChangeResult(geometries: proposedGeometries, guides: [])
+        }
+
+        let snap = snapOffset(forMovingFrame: bounds, excluding: Set(proposedGeometries.keys))
+        guard snap.offset != .zero else {
+            return CanvasGeometryChangeResult(geometries: proposedGeometries, guides: snap.guides)
+        }
+
+        let snappedGeometries = proposedGeometries.mapValues { geometry in
+            ButtonEditorGeometry(
+                centerX: geometry.centerX + snap.offset.x,
+                centerY: geometry.centerY + snap.offset.y,
+                width: geometry.width,
+                height: geometry.height,
+                anchoredResize: geometry.anchoredResize
+            )
+        }
+        return CanvasGeometryChangeResult(geometries: snappedGeometries, guides: snap.guides)
+    }
+
+    private func snappedSingleMove(button: GamepadButton, geometry: ButtonEditorGeometry) -> CanvasGeometryChangeResult {
+        let frame = frameForGeometry(geometry)
+        let snap = snapOffset(forMovingFrame: frame, excluding: [button])
+        guard snap.offset != .zero else {
+            return CanvasGeometryChangeResult(geometries: [button: geometry], guides: snap.guides)
+        }
+
+        let snappedGeometry = ButtonEditorGeometry(
+            centerX: geometry.centerX + snap.offset.x,
+            centerY: geometry.centerY + snap.offset.y,
+            width: geometry.width,
+            height: geometry.height,
+            anchoredResize: geometry.anchoredResize
+        )
+        return CanvasGeometryChangeResult(geometries: [button: snappedGeometry], guides: snap.guides)
+    }
+
+    private func snappedAnchoredResize(
+        button: GamepadButton,
+        geometry: ButtonEditorGeometry,
+        anchoredResize: AnchoredButtonResize
+    ) -> CanvasGeometryChangeResult {
+        let frame = frameForGeometry(geometry)
+        let activeX = anchoredResize.resizesFromLeft ? frame.minX : frame.maxX
+        let activeY = anchoredResize.resizesFromBottom ? frame.minY : frame.maxY
+        let xSnap = nearestSnap(to: activeX, candidates: verticalSnapCandidates(excluding: [button]))
+        let ySnap = nearestSnap(to: activeY, candidates: horizontalSnapCandidates(excluding: [button]))
+        var snappedGeometry = geometry
+        var guides: [CanvasAlignmentGuide] = []
+
+        if let xSnap {
+            let width = anchoredResize.resizesFromLeft
+                ? anchoredResize.anchorX - xSnap
+                : xSnap - anchoredResize.anchorX
+            snappedGeometry.width = max(width, 20)
+            snappedGeometry.centerX = anchoredResize.resizesFromLeft
+                ? anchoredResize.anchorX - (snappedGeometry.width / 2)
+                : anchoredResize.anchorX + (snappedGeometry.width / 2)
+            guides.append(CanvasAlignmentGuide(orientation: .vertical, position: xSnap))
+        }
+
+        if let ySnap {
+            let height = anchoredResize.resizesFromBottom
+                ? anchoredResize.anchorY - ySnap
+                : ySnap - anchoredResize.anchorY
+            snappedGeometry.height = max(height, 14)
+            snappedGeometry.centerY = anchoredResize.resizesFromBottom
+                ? anchoredResize.anchorY - (snappedGeometry.height / 2)
+                : anchoredResize.anchorY + (snappedGeometry.height / 2)
+            guides.append(CanvasAlignmentGuide(orientation: .horizontal, position: ySnap))
+        }
+
+        return CanvasGeometryChangeResult(geometries: [button: snappedGeometry], guides: guides)
+    }
+
+    private func snapOffset(
+        forMovingFrame frame: CGRect,
+        excluding excludedButtons: Set<GamepadButton>
+    ) -> (offset: CGPoint, guides: [CanvasAlignmentGuide]) {
+        let xCandidates = verticalSnapCandidates(excluding: excludedButtons)
+        let yCandidates = horizontalSnapCandidates(excluding: excludedButtons)
+        let xValues = [frame.minX, frame.midX, frame.maxX]
+        let yValues = [frame.minY, frame.midY, frame.maxY]
+        let xSnap = bestSnapDelta(values: xValues, candidates: xCandidates)
+        let ySnap = bestSnapDelta(values: yValues, candidates: yCandidates)
+        var guides: [CanvasAlignmentGuide] = []
+
+        if let xSnap {
+            guides.append(CanvasAlignmentGuide(orientation: .vertical, position: xSnap.position))
+        }
+        if let ySnap {
+            guides.append(CanvasAlignmentGuide(orientation: .horizontal, position: ySnap.position))
+        }
+
+        return (
+            CGPoint(x: xSnap?.delta ?? 0, y: ySnap?.delta ?? 0),
+            guides
+        )
+    }
+
+    private func bestSnapDelta(
+        values: [CGFloat],
+        candidates: [CGFloat]
+    ) -> (delta: CGFloat, position: CGFloat)? {
+        var best: (delta: CGFloat, position: CGFloat, distance: CGFloat)?
+
+        for value in values {
+            for candidate in candidates {
+                let delta = candidate - value
+                let distance = abs(delta)
+                guard distance <= Self.snapThreshold else {
+                    continue
+                }
+
+                if best == nil || distance < best!.distance {
+                    best = (delta, candidate, distance)
+                }
+            }
+        }
+
+        guard let best else {
+            return nil
+        }
+
+        return (best.delta, best.position)
+    }
+
+    private func nearestSnap(to value: CGFloat, candidates: [CGFloat]) -> CGFloat? {
+        bestSnapDelta(values: [value], candidates: candidates)?.position
+    }
+
+    private func verticalSnapCandidates(excluding excludedButtons: Set<GamepadButton>) -> [CGFloat] {
+        workspaceVerticalSnapCandidates + canvasObjects.compactMap { object -> [CGFloat]? in
+            guard !excludedButtons.contains(object.id), object.isEnabled else {
+                return nil
+            }
+            return [object.frame.minX, object.frame.midX, object.frame.maxX]
+        }.flatMap { $0 }
+    }
+
+    private func horizontalSnapCandidates(excluding excludedButtons: Set<GamepadButton>) -> [CGFloat] {
+        workspaceHorizontalSnapCandidates + canvasObjects.compactMap { object -> [CGFloat]? in
+            guard !excludedButtons.contains(object.id), object.isEnabled else {
+                return nil
+            }
+            return [object.frame.minY, object.frame.midY, object.frame.maxY]
+        }.flatMap { $0 }
+    }
+
+    private var workspaceVerticalSnapCandidates: [CGFloat] {
+        switch profile.editorCoordinateMode {
+        case .legacyTopLeft:
+            return [0, Self.maximumWorkspaceSize.width / 2, Self.maximumWorkspaceSize.width]
+        case .centered:
+            return [-Self.maximumWorkspaceSize.width / 2, 0, Self.maximumWorkspaceSize.width / 2]
+        }
+    }
+
+    private var workspaceHorizontalSnapCandidates: [CGFloat] {
+        switch profile.editorCoordinateMode {
+        case .legacyTopLeft:
+            return [0, Self.maximumWorkspaceSize.height / 2, Self.maximumWorkspaceSize.height]
+        case .centered:
+            return [-Self.maximumWorkspaceSize.height / 2, 0, Self.maximumWorkspaceSize.height / 2]
+        }
+    }
+
+    private func frameForGeometry(_ geometry: ButtonEditorGeometry) -> CGRect {
+        CGRect(
+            x: geometry.centerX - (geometry.width / 2),
+            y: geometry.centerY - (geometry.height / 2),
+            width: geometry.width,
+            height: geometry.height
+        )
     }
 
     private func clampedGeometry(_ geometry: ButtonEditorGeometry) -> ButtonEditorGeometry {

@@ -54,6 +54,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let redoItem = NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
         redoItem.keyEquivalentModifierMask = [.command, .shift]
         editMenu.addItem(redoItem)
+        editMenu.addItem(NSMenuItem.separator())
+        editMenu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(NSMenuItem(title: "Delete", action: NSSelectorFromString("delete:"), keyEquivalent: "\u{8}"))
+        editMenu.addItem(NSMenuItem.separator())
+        editMenu.addItem(NSMenuItem(title: "Align Left", action: NSSelectorFromString("alignLeft:"), keyEquivalent: ""))
+        editMenu.addItem(NSMenuItem(title: "Align Center X", action: NSSelectorFromString("alignCenterX:"), keyEquivalent: ""))
+        editMenu.addItem(NSMenuItem(title: "Align Right", action: NSSelectorFromString("alignRight:"), keyEquivalent: ""))
+        editMenu.addItem(NSMenuItem(title: "Align Top", action: NSSelectorFromString("alignTop:"), keyEquivalent: ""))
+        editMenu.addItem(NSMenuItem(title: "Align Center Y", action: NSSelectorFromString("alignCenterY:"), keyEquivalent: ""))
+        editMenu.addItem(NSMenuItem(title: "Align Bottom", action: NSSelectorFromString("alignBottom:"), keyEquivalent: ""))
+        editMenu.addItem(NSMenuItem.separator())
+        editMenu.addItem(NSMenuItem(title: "Distribute Horizontally", action: NSSelectorFromString("distributeHorizontally:"), keyEquivalent: ""))
+        editMenu.addItem(NSMenuItem(title: "Distribute Vertically", action: NSSelectorFromString("distributeVertically:"), keyEquivalent: ""))
+        editMenu.addItem(NSMenuItem.separator())
+        editMenu.addItem(NSMenuItem(title: "Equalize Widths", action: NSSelectorFromString("equalizeWidths:"), keyEquivalent: ""))
+        editMenu.addItem(NSMenuItem(title: "Equalize Heights", action: NSSelectorFromString("equalizeHeights:"), keyEquivalent: ""))
+        editMenu.addItem(NSMenuItem(title: "Equalize Both", action: NSSelectorFromString("equalizeBoth:"), keyEquivalent: ""))
         editItem.submenu = editMenu
 
         NSApp.mainMenu = mainMenu
