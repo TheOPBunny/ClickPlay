@@ -276,11 +276,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
 
+            let configuratorWindowController = self.configuratorWindowController
+            configuratorWindowController.prepareEditorWindow()
             NSApp.setActivationPolicy(.regular)
-            self.setupMainMenu()
 
-            DispatchQueue.main.async {
-                self.configuratorWindowController.showEditorWindow()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                self.setupMainMenu()
+                configuratorWindowController.showEditorWindow()
             }
         }
     }
