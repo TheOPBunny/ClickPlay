@@ -5,6 +5,7 @@ final class ConfiguratorViewController: NSSplitViewController {
     private let profileListViewController = ProfileListViewController()
     private let editorViewController = ButtonEditorViewController()
     private var profilesDidChangeObserver: NSObjectProtocol?
+    private var shouldSkipNextEditorRefresh = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -20,7 +21,8 @@ final class ConfiguratorViewController: NSSplitViewController {
             self?.editorViewController.load(profile: profile)
         }
 
-        editorViewController.onProfileSaved = { profile in
+        editorViewController.onProfileSaved = { [weak self] profile in
+            self?.shouldSkipNextEditorRefresh = true
             ProfileStore.shared.upsert(profile)
         }
 
@@ -29,8 +31,18 @@ final class ConfiguratorViewController: NSSplitViewController {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.profileListViewController.reload()
-            self?.editorViewController.refreshFromStoreIfNeeded()
+            guard let self else {
+                return
+            }
+
+            self.profileListViewController.reload()
+
+            if self.shouldSkipNextEditorRefresh {
+                self.shouldSkipNextEditorRefresh = false
+                return
+            }
+
+            self.editorViewController.refreshFromStoreIfNeeded()
         }
 
         editorViewController.load(profile: ProfileStore.shared.activeProfile)
