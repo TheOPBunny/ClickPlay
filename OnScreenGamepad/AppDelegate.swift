@@ -8,7 +8,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let supportedOpacityValues: [Double] = [0.25, 0.4, 0.55, 0.7, 0.85, 1.0]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
+        NSApp.setActivationPolicy(.regular)
         setupMainMenu()
         setupStatusBar()
 
@@ -272,7 +272,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func showConfigurator() {
         DispatchQueue.main.async { [weak self] in
-            NSApp.setActivationPolicy(.regular)
             self?.setupMainMenu()
             self?.configuratorWindowController.showEditorWindow()
         }
