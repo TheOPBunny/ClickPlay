@@ -24,6 +24,10 @@ final class ConfiguratorWindowController: NSWindowController, NSWindowDelegate {
         window.delegate = self
     }
 
+    func prepareEditorWindow() {
+        _ = window
+    }
+
     func showEditorWindow() {
         if let window {
             if window.isMiniaturized {
