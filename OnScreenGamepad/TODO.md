@@ -32,8 +32,10 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 - [x] Remove size section because we can resize the gamepad manually.
 - [x] Add an option to add a button.
 - [x] Use system corner dragging to resize buttons, or allow entering dimensions in `px x px`.
+- [x] Refactor configurator preview into a custom canvas editor model.
 - [ ] Add cut, copy, paste, undo, and redo support for buttons.
 - [ ] Add multi-select for buttons using drag selection or `Cmd`-click.
+- [ ] Add snapping and alignment guides.
 - [ ] Add the ability to group, align, and equalize a selected group of buttons.
 - [ ] Add a circle button shape.
 - [x] Make the editing window larger and scale it with the application window size.

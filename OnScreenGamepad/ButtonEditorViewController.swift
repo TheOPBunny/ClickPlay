@@ -80,6 +80,7 @@ final class ButtonEditorViewController: NSViewController {
     private static let buttonCountWarningThreshold = 100
 
     private var profile = ProfileStore.shared.activeProfile
+    private var canvasObjects: [CanvasButtonObject] = []
     private var profileIDsWarnedForHighButtonCount = Set<UUID>()
 
     private let nameField = NSTextField()
@@ -117,13 +118,14 @@ final class ButtonEditorViewController: NSViewController {
         self.profile = makeEditableProfile(from: profile)
         previewView.usesCenteredOrigin = profile.editorCoordinateMode == .centered
         clampEditableProfileToWorkspace()
+        canvasObjects = makeCanvasObjects(from: self.profile)
         nameField.stringValue = self.profile.name
         opacitySlider.doubleValue = self.profile.opacity
         opacityLabel.stringValue = "\(Int(self.profile.opacity * 100))%"
         compatibilityModeCheckbox.state = self.profile.compatibilityMode ? .on : .off
         refreshFittedPadSizeFields()
         updatePreviewCanvasLayout()
-        previewView.reload(profile: self.profile, keepSelection: false)
+        previewView.reload(objects: canvasObjects, keepSelection: false)
         detailPanel.clear()
         scrollPreviewToProfileContent()
     }
@@ -197,37 +199,27 @@ final class ButtonEditorViewController: NSViewController {
         previewScrollView.drawsBackground = false
         previewScrollView.documentView = previewCanvasView
 
-        previewView.onButtonSelected = { [weak self] button in
-            guard
-                let self,
-                let config = self.profile.buttons[button.rawValue]
-            else {
+        previewView.onSelectionChanged = { [weak self] selectedIDs in
+            guard let self else {
+                return
+            }
+
+            guard selectedIDs.count == 1, let button = selectedIDs.first, let config = self.profile.buttons[button.rawValue] else {
+                self.detailPanel.clear()
                 return
             }
 
             self.detailPanel.load(button: button, config: config)
         }
-        previewView.onButtonMoved = { [weak self] button, x, y in
+        previewView.onGeometryChanged = { [weak self] proposedGeometries in
             guard let self else {
-                return
+                return proposedGeometries
             }
 
-            self.profile.buttons[button.rawValue]?.x = x
-            self.profile.buttons[button.rawValue]?.y = y
-            self.syncWorkspaceAfterGeometryChange(selectedButton: button)
+            return self.applyCanvasGeometries(proposedGeometries)
         }
-        previewView.onButtonResized = { [weak self] button, proposedGeometry in
-            guard let self else {
-                return proposedGeometry
-            }
-
-            let appliedGeometry = self.clampedGeometry(proposedGeometry)
-            self.profile.buttons[button.rawValue]?.x = appliedGeometry.centerX
-            self.profile.buttons[button.rawValue]?.y = appliedGeometry.centerY
-            self.profile.buttons[button.rawValue]?.editorWidth = appliedGeometry.width
-            self.profile.buttons[button.rawValue]?.editorHeight = appliedGeometry.height
-            self.syncWorkspaceAfterGeometryChange(selectedButton: button)
-            return appliedGeometry
+        previewView.onGeometryChangeCompleted = { [weak self] beforeFrames, afterFrames in
+            self?.registerGeometryUndo(before: beforeFrames, after: afterFrames)
         }
 
         detailPanel.translatesAutoresizingMaskIntoConstraints = false
@@ -238,7 +230,7 @@ final class ButtonEditorViewController: NSViewController {
 
             self.profile.buttons[button.rawValue] = self.configByApplyingGeometryClamp(config)
             self.syncWorkspaceAfterGeometryChange(selectedButton: button)
-            self.previewView.reload(profile: self.profile, keepSelection: true)
+            self.previewView.reload(objects: self.canvasObjects, keepSelection: true)
         }
         detailPanel.onDelete = { [weak self] button in
             self?.deleteButton(button)
@@ -337,7 +329,7 @@ final class ButtonEditorViewController: NSViewController {
 
     @objc private func compatibilityModeChanged() {
         profile.compatibilityMode = compatibilityModeCheckbox.state == .on
-        previewView.reload(profile: profile, keepSelection: true)
+        previewView.reload(objects: canvasObjects, keepSelection: true)
     }
 
     @objc private func showGridChanged() {
@@ -352,7 +344,7 @@ final class ButtonEditorViewController: NSViewController {
         let button = GamepadButton.generated()
         profile.buttons[button.rawValue] = makeNewButtonConfig()
         syncWorkspaceAfterGeometryChange(selectedButton: button)
-        previewView.reload(profile: profile, keepSelection: false)
+        previewView.reload(objects: canvasObjects, keepSelection: false)
         previewView.select(button: button)
     }
 
@@ -383,7 +375,8 @@ final class ButtonEditorViewController: NSViewController {
         profile.buttons.removeValue(forKey: button.rawValue)
         refreshFittedPadSizeFields()
         updatePreviewCanvasLayout()
-        previewView.reload(profile: profile, keepSelection: false)
+        canvasObjects = makeCanvasObjects(from: profile)
+        previewView.reload(objects: canvasObjects, keepSelection: false)
         detailPanel.clear()
     }
 
@@ -398,9 +391,10 @@ final class ButtonEditorViewController: NSViewController {
         profile = makeEditableProfile(from: savedProfile)
         previewView.usesCenteredOrigin = savedProfile.editorCoordinateMode == .centered
         clampEditableProfileToWorkspace()
+        canvasObjects = makeCanvasObjects(from: profile)
         refreshFittedPadSizeFields()
         updatePreviewCanvasLayout()
-        previewView.reload(profile: profile, keepSelection: true)
+        previewView.reload(objects: canvasObjects, keepSelection: true)
 
         onProfileSaved?(savedProfile)
         showSavedIndicator()
@@ -433,16 +427,149 @@ final class ButtonEditorViewController: NSViewController {
         clampEditableProfileToWorkspace()
         refreshFittedPadSizeFields()
         updatePreviewCanvasLayout()
+        canvasObjects = makeCanvasObjects(from: profile)
 
         guard let config = profile.buttons[selectedButton.rawValue] else {
             return
         }
 
-        previewView.syncConfig(config, for: selectedButton)
+        if let object = canvasObjects.first(where: { $0.id == selectedButton }) {
+            previewView.syncObject(object)
+        }
         detailPanel.refreshPosition(x: config.x, y: config.y, config: config)
         detailPanel.refreshSize(
             width: config.editorWidth > 0 ? config.editorWidth : config.width,
             height: config.editorHeight > 0 ? config.editorHeight : config.height
+        )
+    }
+
+    private func makeCanvasObjects(from profile: Profile) -> [CanvasButtonObject] {
+        profile.orderedButtonIDs.compactMap { button in
+            guard let config = profile.buttons[button.rawValue], config.enabled else {
+                return nil
+            }
+
+            return CanvasButtonObject(
+                id: button,
+                frame: editorFrame(for: config),
+                label: config.resolvedDisplayLabel,
+                colorHex: config.colorHex,
+                labelFontSize: config.labelFontSize,
+                labelBold: config.labelBold,
+                labelItalic: config.labelItalic,
+                isEnabled: config.enabled,
+                isSelected: false
+            )
+        }
+    }
+
+    private func applyCanvasGeometries(
+        _ proposedGeometries: [GamepadButton: ButtonEditorGeometry]
+    ) -> [GamepadButton: ButtonEditorGeometry] {
+        var appliedGeometries: [GamepadButton: ButtonEditorGeometry] = [:]
+
+        for (button, proposedGeometry) in proposedGeometries {
+            guard var config = profile.buttons[button.rawValue] else {
+                continue
+            }
+
+            let appliedGeometry = clampedGeometry(proposedGeometry)
+            config.x = appliedGeometry.centerX
+            config.y = appliedGeometry.centerY
+            config.editorWidth = appliedGeometry.width
+            config.editorHeight = appliedGeometry.height
+            profile.buttons[button.rawValue] = config
+            appliedGeometries[button] = appliedGeometry
+            syncCanvasObject(for: button, config: config)
+        }
+
+        refreshFittedPadSizeFields()
+        updatePreviewCanvasLayout()
+
+        if proposedGeometries.count == 1, let button = proposedGeometries.keys.first, let config = profile.buttons[button.rawValue] {
+            detailPanel.refreshPosition(x: config.x, y: config.y, config: config)
+            detailPanel.refreshSize(
+                width: config.editorWidth > 0 ? config.editorWidth : config.width,
+                height: config.editorHeight > 0 ? config.editorHeight : config.height
+            )
+        }
+
+        return appliedGeometries
+    }
+
+    private func syncCanvasObject(for button: GamepadButton, config: ButtonConfig) {
+        let object = CanvasButtonObject(
+            id: button,
+            frame: editorFrame(for: config),
+            label: config.resolvedDisplayLabel,
+            colorHex: config.colorHex,
+            labelFontSize: config.labelFontSize,
+            labelBold: config.labelBold,
+            labelItalic: config.labelItalic,
+            isEnabled: config.enabled,
+            isSelected: false
+        )
+
+        if let index = canvasObjects.firstIndex(where: { $0.id == button }) {
+            canvasObjects[index] = object
+        } else if config.enabled {
+            canvasObjects.append(object)
+        }
+    }
+
+    private func registerGeometryUndo(before: [GamepadButton: CGRect], after: [GamepadButton: CGRect]) {
+        guard !before.isEmpty, before != after else {
+            return
+        }
+
+        view.window?.undoManager?.registerUndo(withTarget: self) { target in
+            target.applyCanvasFrames(before, oppositeFrames: after)
+        }
+        view.window?.undoManager?.setActionName("Move/Resize Button")
+    }
+
+    private func applyCanvasFrames(_ frames: [GamepadButton: CGRect], oppositeFrames: [GamepadButton: CGRect]) {
+        for (button, frame) in frames {
+            guard var config = profile.buttons[button.rawValue] else {
+                continue
+            }
+
+            config.x = frame.midX
+            config.y = frame.midY
+            config.editorWidth = frame.width
+            config.editorHeight = frame.height
+            profile.buttons[button.rawValue] = configByApplyingGeometryClamp(config)
+        }
+
+        clampEditableProfileToWorkspace()
+        canvasObjects = makeCanvasObjects(from: profile)
+        refreshFittedPadSizeFields()
+        updatePreviewCanvasLayout()
+        previewView.reload(objects: canvasObjects, keepSelection: true)
+
+        if frames.count == 1, let button = frames.keys.first, let config = profile.buttons[button.rawValue] {
+            detailPanel.refreshPosition(x: config.x, y: config.y, config: config)
+            detailPanel.refreshSize(
+                width: config.editorWidth > 0 ? config.editorWidth : config.width,
+                height: config.editorHeight > 0 ? config.editorHeight : config.height
+            )
+        }
+
+        view.window?.undoManager?.registerUndo(withTarget: self) { target in
+            target.applyCanvasFrames(oppositeFrames, oppositeFrames: frames)
+        }
+        view.window?.undoManager?.setActionName("Move/Resize Button")
+    }
+
+    private func editorFrame(for config: ButtonConfig) -> CGRect {
+        let width = config.editorWidth > 0 ? config.editorWidth : config.width
+        let height = config.editorHeight > 0 ? config.editorHeight : config.height
+
+        return CGRect(
+            x: config.x - (width / 2),
+            y: config.y - (height / 2),
+            width: width,
+            height: height
         )
     }
 
