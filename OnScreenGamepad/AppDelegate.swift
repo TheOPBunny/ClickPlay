@@ -8,12 +8,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let supportedOpacityValues: [Double] = [0.25, 0.4, 0.55, 0.7, 0.85, 1.0]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.regular)
+        NSApp.setActivationPolicy(.accessory)
         setupMainMenu()
         setupStatusBar()
-        DispatchQueue.main.async {
-            NSApp.setActivationPolicy(.accessory)
-        }
 
         // AXIsProcessTrusted() — NO prompt, just checks current state.
         // NOTE: If you see a re-prompt after every build, it's because Xcode's
@@ -78,6 +75,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         editMenu.addItem(NSMenuItem(title: "Equalize Both", action: NSSelectorFromString("equalizeBoth:"), keyEquivalent: ""))
         editItem.submenu = editMenu
 
+        NSApp.mainMenu = nil
         NSApp.mainMenu = mainMenu
     }
 
@@ -284,8 +282,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.setActivationPolicy(.regular)
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-                self.setupMainMenu()
                 configuratorWindowController.showEditorWindow()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                    self.setupMainMenu()
+                    NSApp.activate(ignoringOtherApps: true)
+                }
             }
         }
     }
