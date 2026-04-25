@@ -427,9 +427,6 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation {
         profile.compatibilityMode = compatibilityModeCheckbox.state == .on
         clampEditableProfileToWorkspace()
         let savedProfile = makeSavedProfile(from: profile).normalizedForSaving()
-        profile = makeEditableProfile(from: savedProfile)
-        previewView.usesCenteredOrigin = savedProfile.editorCoordinateMode == .centered
-        clampEditableProfileToWorkspace()
         canvasObjects = makeCanvasObjects(from: profile)
         refreshFittedPadSizeFields()
         updatePreviewCanvasLayout()
