@@ -2,6 +2,8 @@ import Cocoa
 
 final class ConfiguratorWindowController: NSWindowController, NSWindowDelegate {
 
+    var onClose: (() -> Void)?
+
     convenience init() {
         let viewController = ConfiguratorViewController()
         let window = NSWindow(
@@ -24,10 +26,6 @@ final class ConfiguratorWindowController: NSWindowController, NSWindowDelegate {
         window.delegate = self
     }
 
-    func prepareEditorWindow() {
-        _ = window
-    }
-
     func showEditorWindow() {
         if let window {
             if window.isMiniaturized {
@@ -45,7 +43,7 @@ final class ConfiguratorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
+        onClose?()
     }
 
     private func activateEditorApp() {

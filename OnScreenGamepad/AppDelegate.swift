@@ -4,13 +4,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     var gamepadWindow: GamepadWindow?
     var statusItem: NSStatusItem?
-    private lazy var configuratorWindowController = ConfiguratorWindowController()
+    private lazy var configuratorWindowController: ConfiguratorWindowController = {
+        let controller = ConfiguratorWindowController()
+        controller.onClose = { [weak self] in
+            self?.restorePreviousApplicationFocus()
+        }
+        return controller
+    }()
     private let supportedOpacityValues: [Double] = [0.25, 0.4, 0.55, 0.7, 0.85, 1.0]
+    private var lastActiveNonSelfApplication: NSRunningApplication?
+    private var workspaceActivationObserver: NSObjectProtocol?
+
+    deinit {
+        if let workspaceActivationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(workspaceActivationObserver)
+        }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
+        NSApp.setActivationPolicy(.regular)
         setupMainMenu()
         setupStatusBar()
+        startTrackingActiveApplications()
 
         // AXIsProcessTrusted() — NO prompt, just checks current state.
         // NOTE: If you see a re-prompt after every build, it's because Xcode's
@@ -75,7 +90,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         editMenu.addItem(NSMenuItem(title: "Equalize Both", action: NSSelectorFromString("equalizeBoth:"), keyEquivalent: ""))
         editItem.submenu = editMenu
 
-        NSApp.mainMenu = nil
         NSApp.mainMenu = mainMenu
     }
 
@@ -272,23 +286,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func showConfigurator() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self else {
-                return
-            }
-
-            let configuratorWindowController = self.configuratorWindowController
-            configuratorWindowController.prepareEditorWindow()
-            NSApp.setActivationPolicy(.regular)
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-                configuratorWindowController.showEditorWindow()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-                    self.setupMainMenu()
-                    NSApp.activate(ignoringOtherApps: true)
-                }
-            }
-        }
+        updateLastActiveApplicationIfNeeded(NSWorkspace.shared.frontmostApplication)
+        configuratorWindowController.showEditorWindow()
     }
 
     @objc func openAccessibility() {
@@ -310,5 +309,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         default:
             return false
         }
+    }
+
+    private func startTrackingActiveApplications() {
+        updateLastActiveApplicationIfNeeded(NSWorkspace.shared.frontmostApplication)
+
+        workspaceActivationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            self?.updateLastActiveApplicationIfNeeded(application)
+        }
+    }
+
+    private func updateLastActiveApplicationIfNeeded(_ application: NSRunningApplication?) {
+        guard let application, application.processIdentifier != NSRunningApplication.current.processIdentifier else {
+            return
+        }
+
+        lastActiveNonSelfApplication = application
+    }
+
+    private func restorePreviousApplicationFocus() {
+        guard let application = lastActiveNonSelfApplication, !application.isTerminated else {
+            return
+        }
+
+        application.activate(options: [.activateIgnoringOtherApps])
     }
 }
