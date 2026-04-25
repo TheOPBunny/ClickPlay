@@ -1,6 +1,6 @@
 import Cocoa
 
-final class ButtonEditorViewController: NSViewController {
+final class ButtonEditorViewController: NSViewController, NSMenuItemValidation {
 
     private final class PreviewCanvasView: NSView {
         let previewView: GamepadPreviewView
@@ -82,6 +82,7 @@ final class ButtonEditorViewController: NSViewController {
     private var profile = ProfileStore.shared.activeProfile
     private var canvasObjects: [CanvasButtonObject] = []
     private var profileIDsWarnedForHighButtonCount = Set<UUID>()
+    private let editorUndoManager = UndoManager()
 
     private let nameField = NSTextField()
     private let opacitySlider = NSSlider()
@@ -103,6 +104,10 @@ final class ButtonEditorViewController: NSViewController {
         view = NSView(frame: NSRect(x: 0, y: 0, width: 980, height: 700))
     }
 
+    override var undoManager: UndoManager? {
+        editorUndoManager
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         buildLayout()
@@ -115,6 +120,7 @@ final class ButtonEditorViewController: NSViewController {
     }
 
     func load(profile: Profile) {
+        editorUndoManager.removeAllActions()
         self.profile = makeEditableProfile(from: profile)
         previewView.usesCenteredOrigin = profile.editorCoordinateMode == .centered
         clampEditableProfileToWorkspace()
@@ -228,7 +234,15 @@ final class ButtonEditorViewController: NSViewController {
                 return
             }
 
-            self.profile.buttons[button.rawValue] = self.configByApplyingGeometryClamp(config)
+            let previousConfig = self.profile.buttons[button.rawValue]
+            let nextConfig = self.configByApplyingGeometryClamp(config)
+            self.profile.buttons[button.rawValue] = nextConfig
+            self.registerButtonStateUndo(
+                button: button,
+                before: previousConfig,
+                after: nextConfig,
+                actionName: "Edit Button"
+            )
             self.syncWorkspaceAfterGeometryChange(selectedButton: button)
             self.previewView.reload(objects: self.canvasObjects, keepSelection: true)
         }
@@ -322,6 +336,27 @@ final class ButtonEditorViewController: NSViewController {
         profile.buttons.values.filter(\.enabled).count
     }
 
+    @objc func undo(_ sender: Any?) {
+        editorUndoManager.undo()
+    }
+
+    @objc func redo(_ sender: Any?) {
+        editorUndoManager.redo()
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(undo(_:)):
+            menuItem.title = editorUndoManager.undoMenuItemTitle
+            return editorUndoManager.canUndo
+        case #selector(redo(_:)):
+            menuItem.title = editorUndoManager.redoMenuItemTitle
+            return editorUndoManager.canRedo
+        default:
+            return true
+        }
+    }
+
     @objc private func opacityMoved() {
         profile.opacity = opacitySlider.doubleValue
         opacityLabel.stringValue = "\(Int(profile.opacity * 100))%"
@@ -342,7 +377,9 @@ final class ButtonEditorViewController: NSViewController {
         }
 
         let button = GamepadButton.generated()
-        profile.buttons[button.rawValue] = makeNewButtonConfig()
+        let config = makeNewButtonConfig()
+        profile.buttons[button.rawValue] = config
+        registerButtonStateUndo(button: button, before: nil, after: config, actionName: "Add Button")
         syncWorkspaceAfterGeometryChange(selectedButton: button)
         previewView.reload(objects: canvasObjects, keepSelection: false)
         previewView.select(button: button)
@@ -372,7 +409,9 @@ final class ButtonEditorViewController: NSViewController {
     }
 
     private func deleteButton(_ button: GamepadButton) {
+        let previousConfig = profile.buttons[button.rawValue]
         profile.buttons.removeValue(forKey: button.rawValue)
+        registerButtonStateUndo(button: button, before: previousConfig, after: nil, actionName: "Delete Button")
         refreshFittedPadSizeFields()
         updatePreviewCanvasLayout()
         canvasObjects = makeCanvasObjects(from: profile)
@@ -522,10 +561,82 @@ final class ButtonEditorViewController: NSViewController {
             return
         }
 
-        view.window?.undoManager?.registerUndo(withTarget: self) { target in
+        editorUndoManager.registerUndo(withTarget: self) { target in
             target.applyCanvasFrames(before, oppositeFrames: after)
         }
-        view.window?.undoManager?.setActionName("Move/Resize Button")
+        editorUndoManager.setActionName("Move/Resize Button")
+    }
+
+    private func registerButtonStateUndo(
+        button: GamepadButton,
+        before: ButtonConfig?,
+        after: ButtonConfig?,
+        actionName: String
+    ) {
+        guard buttonStateChanged(before, after) else {
+            return
+        }
+
+        editorUndoManager.registerUndo(withTarget: self) { target in
+            target.applyButtonState(button: button, state: before, oppositeState: after, actionName: actionName)
+        }
+        editorUndoManager.setActionName(actionName)
+    }
+
+    private func applyButtonState(
+        button: GamepadButton,
+        state: ButtonConfig?,
+        oppositeState: ButtonConfig?,
+        actionName: String
+    ) {
+        if let state {
+            profile.buttons[button.rawValue] = configByApplyingGeometryClamp(state)
+        } else {
+            profile.buttons.removeValue(forKey: button.rawValue)
+        }
+
+        clampEditableProfileToWorkspace()
+        canvasObjects = makeCanvasObjects(from: profile)
+        refreshFittedPadSizeFields()
+        updatePreviewCanvasLayout()
+        previewView.reload(objects: canvasObjects, keepSelection: true)
+
+        if let config = profile.buttons[button.rawValue] {
+            previewView.select(button: button)
+            detailPanel.load(button: button, config: config)
+        } else {
+            detailPanel.clear()
+        }
+
+        editorUndoManager.registerUndo(withTarget: self) { target in
+            target.applyButtonState(button: button, state: oppositeState, oppositeState: state, actionName: actionName)
+        }
+        editorUndoManager.setActionName(actionName)
+    }
+
+    private func buttonStateChanged(_ lhs: ButtonConfig?, _ rhs: ButtonConfig?) -> Bool {
+        switch (lhs, rhs) {
+        case (nil, nil):
+            return false
+        case (nil, _), (_, nil):
+            return true
+        case let (lhs?, rhs?):
+            return lhs.x != rhs.x
+                || lhs.y != rhs.y
+                || lhs.width != rhs.width
+                || lhs.height != rhs.height
+                || lhs.editorWidth != rhs.editorWidth
+                || lhs.editorHeight != rhs.editorHeight
+                || lhs.colorHex != rhs.colorHex
+                || lhs.keyCode != rhs.keyCode
+                || lhs.keyModifiers != rhs.keyModifiers
+                || lhs.label != rhs.label
+                || lhs.labelFontSize != rhs.labelFontSize
+                || lhs.labelBold != rhs.labelBold
+                || lhs.labelItalic != rhs.labelItalic
+                || lhs.enabled != rhs.enabled
+                || lhs.interactionMode != rhs.interactionMode
+        }
     }
 
     private func applyCanvasFrames(_ frames: [GamepadButton: CGRect], oppositeFrames: [GamepadButton: CGRect]) {
@@ -555,10 +666,10 @@ final class ButtonEditorViewController: NSViewController {
             )
         }
 
-        view.window?.undoManager?.registerUndo(withTarget: self) { target in
+        editorUndoManager.registerUndo(withTarget: self) { target in
             target.applyCanvasFrames(oppositeFrames, oppositeFrames: frames)
         }
-        view.window?.undoManager?.setActionName("Move/Resize Button")
+        editorUndoManager.setActionName("Move/Resize Button")
     }
 
     private func editorFrame(for config: ButtonConfig) -> CGRect {

@@ -78,6 +78,10 @@ final class GamepadPreviewView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    override var acceptsFirstResponder: Bool {
+        true
+    }
+
     func reload(objects: [CanvasButtonObject], keepSelection: Bool) {
         let retainedSelection = keepSelection ? selectedIDs : []
         self.objects = objects
@@ -133,6 +137,7 @@ final class GamepadPreviewView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
         let canvasPoint = convert(event.locationInWindow, from: nil)
         let modelPoint = modelPoint(forCanvasPoint: canvasPoint)
 

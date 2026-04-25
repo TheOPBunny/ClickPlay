@@ -9,6 +9,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        setupMainMenu()
         setupStatusBar()
 
         // AXIsProcessTrusted() — NO prompt, just checks current state.
@@ -29,6 +30,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
             pollForPermission()
         }
+    }
+
+    private func setupMainMenu() {
+        let mainMenu = NSMenu()
+        let appItem = NSMenuItem()
+        let editItem = NSMenuItem()
+        mainMenu.addItem(appItem)
+        mainMenu.addItem(editItem)
+
+        let appMenu = NSMenu(title: "OnScreenGamepad")
+        appMenu.addItem(
+            NSMenuItem(
+                title: "Quit OnScreenGamepad",
+                action: #selector(NSApplication.terminate(_:)),
+                keyEquivalent: "q"
+            )
+        )
+        appItem.submenu = appMenu
+
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
+        let redoItem = NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        redoItem.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(redoItem)
+        editItem.submenu = editMenu
+
+        NSApp.mainMenu = mainMenu
     }
 
     func setupStatusBar() {
