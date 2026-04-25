@@ -17,7 +17,7 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>LSUIElement</key>
-	<true/>
+	<false/>
 	<key>NSAccessibilityUsageDescription</key>
 	<string>OnScreenGamepad needs Accessibility access to send keyboard inputs to other apps on your behalf.</string>
 	<key>NSPrincipalClass</key>
