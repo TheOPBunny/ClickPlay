@@ -41,7 +41,7 @@ final class ConfiguratorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
-        NSApp.setActivationPolicy(.regular)
+        NSApp.setActivationPolicy(.accessory)
     }
 
     private func activateEditorApp() {
