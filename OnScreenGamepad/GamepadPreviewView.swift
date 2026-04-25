@@ -27,6 +27,21 @@ struct AnchoredButtonResize {
     var resizesFromBottom: Bool
 }
 
+struct CanvasAlignmentGuide: Equatable {
+    enum Orientation {
+        case vertical
+        case horizontal
+    }
+
+    var orientation: Orientation
+    var position: CGFloat
+}
+
+struct CanvasGeometryChangeResult {
+    var geometries: [GamepadButton: ButtonEditorGeometry]
+    var guides: [CanvasAlignmentGuide]
+}
+
 enum ResizeCorner: CaseIterable {
     case topLeft
     case topRight
@@ -53,7 +68,7 @@ enum CanvasDragState {
 final class GamepadPreviewView: NSView {
 
     var onSelectionChanged: ((Set<GamepadButton>) -> Void)?
-    var onGeometryChanged: (([GamepadButton: ButtonEditorGeometry]) -> [GamepadButton: ButtonEditorGeometry])?
+    var onGeometryChanged: (([GamepadButton: ButtonEditorGeometry]) -> CanvasGeometryChangeResult)?
     var onGeometryChangeCompleted: ((_ before: [GamepadButton: CGRect], _ after: [GamepadButton: CGRect]) -> Void)?
     var maximumWorkspaceSize = CGSize(width: 1000, height: 1000)
     var usesCenteredOrigin = false {
@@ -64,6 +79,7 @@ final class GamepadPreviewView: NSView {
     private var selectedIDs = Set<GamepadButton>()
     private var dragState: CanvasDragState = .none
     private var currentDragStartFrames: [GamepadButton: CGRect] = [:]
+    private var alignmentGuides: [CanvasAlignmentGuide] = []
 
     private let handleSize: CGFloat = 8
 
@@ -112,8 +128,20 @@ final class GamepadPreviewView: NSView {
         setSelection([button])
     }
 
+    func select(buttons: Set<GamepadButton>) {
+        setSelection(buttons)
+    }
+
+    func currentSelection() -> Set<GamepadButton> {
+        selectedIDs
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
+
+        for guide in alignmentGuides {
+            drawAlignmentGuide(guide)
+        }
 
         for object in objects where object.isEnabled {
             drawButton(object)
@@ -140,6 +168,7 @@ final class GamepadPreviewView: NSView {
         window?.makeFirstResponder(self)
         let canvasPoint = convert(event.locationInWindow, from: nil)
         let modelPoint = modelPoint(forCanvasPoint: canvasPoint)
+        let isCommandClick = event.modifierFlags.contains(.command)
 
         if let handleHit = resizeHandle(atCanvasPoint: canvasPoint), let object = object(for: handleHit.button) {
             setSelection([handleHit.button])
@@ -150,6 +179,11 @@ final class GamepadPreviewView: NSView {
                 startFrame: object.frame,
                 startMouse: modelPoint
             )
+            return
+        }
+
+        if isCommandClick, let button = button(at: modelPoint) {
+            toggleSelection(button)
             return
         }
 
@@ -166,6 +200,7 @@ final class GamepadPreviewView: NSView {
 
         setSelection([])
         currentDragStartFrames = [:]
+        alignmentGuides = []
         dragState = .marqueeSelect(start: canvasPoint, current: canvasPoint)
         needsDisplay = true
     }
@@ -226,11 +261,15 @@ final class GamepadPreviewView: NSView {
                 onGeometryChangeCompleted?(currentDragStartFrames, afterFrames)
             }
 
-        case .none, .marqueeSelect:
+        case let .marqueeSelect(start, current):
+            setSelection(buttonsIntersectingMarquee(from: start, to: current))
+
+        case .none:
             break
         }
 
         currentDragStartFrames = [:]
+        alignmentGuides = []
         dragState = .none
         needsDisplay = true
     }
@@ -259,7 +298,12 @@ final class GamepadPreviewView: NSView {
     }
 
     private func applyGeometryChange(_ proposedGeometries: [GamepadButton: ButtonEditorGeometry]) {
-        let appliedGeometries = onGeometryChanged?(proposedGeometries) ?? proposedGeometries
+        let result = onGeometryChanged?(proposedGeometries) ?? CanvasGeometryChangeResult(
+            geometries: proposedGeometries,
+            guides: []
+        )
+        let appliedGeometries = result.geometries
+        alignmentGuides = result.guides
 
         for (id, geometry) in appliedGeometries {
             guard let index = objects.firstIndex(where: { $0.id == id }) else {
@@ -286,6 +330,16 @@ final class GamepadPreviewView: NSView {
         window?.invalidateCursorRects(for: self)
     }
 
+    private func toggleSelection(_ button: GamepadButton) {
+        var nextSelection = selectedIDs
+        if nextSelection.contains(button) {
+            nextSelection.remove(button)
+        } else {
+            nextSelection.insert(button)
+        }
+        setSelection(nextSelection)
+    }
+
     private func syncObjectSelection() {
         for index in objects.indices {
             objects[index].isSelected = selectedIDs.contains(objects[index].id)
@@ -308,6 +362,26 @@ final class GamepadPreviewView: NSView {
         }
 
         return nil
+    }
+
+    private func buttonsIntersectingMarquee(from start: CGPoint, to current: CGPoint) -> Set<GamepadButton> {
+        let marqueeRect = CGRect(
+            x: min(start.x, current.x),
+            y: min(start.y, current.y),
+            width: abs(current.x - start.x),
+            height: abs(current.y - start.y)
+        )
+
+        guard marqueeRect.width > 1, marqueeRect.height > 1 else {
+            return []
+        }
+
+        return Set(objects.compactMap { object in
+            guard object.isEnabled, canvasFrame(for: object.frame).intersects(marqueeRect) else {
+                return nil
+            }
+            return object.id
+        })
     }
 
     private func resizeHandle(atCanvasPoint point: CGPoint) -> (button: GamepadButton, corner: ResizeCorner)? {
@@ -469,6 +543,25 @@ final class GamepadPreviewView: NSView {
         path.stroke()
     }
 
+    private func drawAlignmentGuide(_ guide: CanvasAlignmentGuide) {
+        let path = NSBezierPath()
+        path.lineWidth = 1
+
+        switch guide.orientation {
+        case .vertical:
+            let x = canvasX(forModelX: guide.position)
+            path.move(to: CGPoint(x: x, y: 0))
+            path.line(to: CGPoint(x: x, y: bounds.height))
+        case .horizontal:
+            let y = canvasY(forModelY: guide.position)
+            path.move(to: CGPoint(x: 0, y: y))
+            path.line(to: CGPoint(x: bounds.width, y: y))
+        }
+
+        NSColor.systemYellow.withAlphaComponent(0.85).setStroke()
+        path.stroke()
+    }
+
     private func drawMarquee(from start: CGPoint, to current: CGPoint) {
         let rect = CGRect(
             x: min(start.x, current.x),
@@ -526,6 +619,22 @@ final class GamepadPreviewView: NSView {
             x: point.x - (maximumWorkspaceSize.width / 2),
             y: point.y - (maximumWorkspaceSize.height / 2)
         )
+    }
+
+    private func canvasX(forModelX x: CGFloat) -> CGFloat {
+        guard usesCenteredOrigin else {
+            return x
+        }
+
+        return x + (maximumWorkspaceSize.width / 2)
+    }
+
+    private func canvasY(forModelY y: CGFloat) -> CGFloat {
+        guard usesCenteredOrigin else {
+            return y
+        }
+
+        return y + (maximumWorkspaceSize.height / 2)
     }
 }
 
