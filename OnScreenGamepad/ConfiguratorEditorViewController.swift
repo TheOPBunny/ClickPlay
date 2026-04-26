@@ -12,10 +12,13 @@ final class ConfiguratorViewController: NSSplitViewController {
 
         let sidebarItem = NSSplitViewItem(sidebarWithViewController: profileListViewController)
         sidebarItem.minimumThickness = 200
-        sidebarItem.maximumThickness = 260
+        sidebarItem.maximumThickness = 360
+        sidebarItem.canCollapse = true
+        sidebarItem.preferredThicknessFraction = 0.22
 
         addSplitViewItem(sidebarItem)
         addSplitViewItem(NSSplitViewItem(viewController: editorViewController))
+        splitView.autosaveName = "ConfiguratorSplitView"
 
         profileListViewController.onProfileSelected = { [weak self] profile in
             self?.editorViewController.load(profile: profile)

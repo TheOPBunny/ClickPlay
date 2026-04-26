@@ -20,7 +20,7 @@ final class ConfiguratorWindowController: NSWindowController, NSWindowDelegate {
         window.collectionBehavior = [.moveToActiveSpace]
         window.tabbingMode = .disallowed
         window.setFrameAutosaveName("ConfiguratorWindow")
-        window.contentMinSize = NSSize(width: 980, height: 680)
+        window.contentMinSize = NSSize(width: 760, height: 680)
 
         self.init(window: window)
         window.delegate = self
