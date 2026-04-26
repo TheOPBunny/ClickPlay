@@ -21,6 +21,18 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         case both
     }
 
+    private enum SplitMetrics {
+        static let collapsedInspectorWidth: CGFloat = 44
+        static let minimumPreviewWidth: CGFloat = 420
+        static let minimumInspectorWidth: CGFloat = 300
+        static let defaultInspectorWidth: CGFloat = 320
+    }
+
+    private enum DefaultsKey {
+        static let inspectorExpandedWidth = "Configurator.inspectorExpandedWidth"
+        static let inspectorCollapsed = "Configurator.inspectorCollapsed"
+    }
+
     private final class PreviewCanvasView: NSView {
         let previewView: GamepadPreviewView
         var showsGrid = true {
@@ -94,6 +106,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     var onProfileSaved: ((Profile) -> Void)?
+    var onToggleSidebar: (() -> Void)?
 
     private static let maximumWorkspaceSize = CGSize(width: 1000, height: 1000)
     private static let buttonCountWarningThreshold = 100
@@ -108,6 +121,9 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private var pasteCount = 0
     private var profileIDsWarnedForHighButtonCount = Set<UUID>()
     private let editorUndoManager = UndoManager()
+    private var isInspectorCollapsed = false
+    private var lastExpandedInspectorWidth = SplitMetrics.defaultInspectorWidth
+    private var hasRestoredInspectorLayout = false
 
     private let nameField = NSTextField()
     private let opacitySlider = NSSlider()
@@ -136,12 +152,14 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        loadInspectorDefaults()
         buildLayout()
         load(profile: ProfileStore.shared.activeProfile)
     }
 
     override func viewDidLayout() {
         super.viewDidLayout()
+        restoreInspectorLayoutIfNeeded()
         updatePreviewCanvasLayout()
     }
 
@@ -204,7 +222,20 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         let addButton = NSButton(title: "Add Button", target: self, action: #selector(addButtonPressed))
         addButton.bezelStyle = .rounded
 
+        let leftSidebarToggleButton = SidebarToggleButton()
+        leftSidebarToggleButton.side = .left
+        leftSidebarToggleButton.toolTip = "Toggle Profiles Sidebar"
+        leftSidebarToggleButton.target = self
+        leftSidebarToggleButton.action = #selector(toggleSidebarPressed)
+
+        let rightInspectorToggleButton = SidebarToggleButton()
+        rightInspectorToggleButton.side = .right
+        rightInspectorToggleButton.toolTip = "Toggle Inspector"
+        rightInspectorToggleButton.target = self
+        rightInspectorToggleButton.action = #selector(toggleInspector)
+
         let topBar = NSStackView(views: [
+            leftSidebarToggleButton,
             makeLabel("Name:"),
             nameField,
             makeLabel("  Opacity:"),
@@ -217,6 +248,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             compatibilityModeCheckbox,
             showGridCheckbox,
             NSView(),
+            rightInspectorToggleButton,
             addButton,
             saveButton,
         ])
@@ -280,6 +312,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
         hint.font = .systemFont(ofSize: 10)
         hint.textColor = .secondaryLabelColor
+        hint.lineBreakMode = .byWordWrapping
         hint.translatesAutoresizingMaskIntoConstraints = false
 
         editorSplitView.isVertical = true
@@ -289,7 +322,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         editorSplitView.translatesAutoresizingMaskIntoConstraints = false
 
         leftColumn.orientation = .vertical
-        leftColumn.alignment = .leading
+        leftColumn.alignment = .width
         leftColumn.spacing = 6
         leftColumn.translatesAutoresizingMaskIntoConstraints = false
         leftColumn.addArrangedSubview(previewScrollView)
@@ -299,11 +332,6 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         editorSplitView.addArrangedSubview(detailPanel)
         editorSplitView.setHoldingPriority(.defaultLow, forSubviewAt: 0)
         editorSplitView.setHoldingPriority(.defaultHigh, forSubviewAt: 1)
-
-        let preferredPreviewWidthConstraint = leftColumn.widthAnchor.constraint(equalTo: editorSplitView.widthAnchor, multiplier: 0.66)
-        preferredPreviewWidthConstraint.priority = .defaultHigh
-        let minimumDetailWidthConstraint = detailPanel.widthAnchor.constraint(greaterThanOrEqualToConstant: 300)
-        minimumDetailWidthConstraint.priority = .defaultHigh
 
         [topBar, editorSplitView].forEach(view.addSubview(_:))
 
@@ -321,25 +349,107 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             editorSplitView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
             editorSplitView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
             editorSplitView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -12),
-            leftColumn.widthAnchor.constraint(greaterThanOrEqualToConstant: 420),
-            preferredPreviewWidthConstraint,
-            previewScrollView.widthAnchor.constraint(equalTo: leftColumn.widthAnchor),
             previewScrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 420),
-            hint.widthAnchor.constraint(equalTo: leftColumn.widthAnchor),
-            minimumDetailWidthConstraint,
         ])
     }
 
-    func splitView(_ splitView: NSSplitView, canCollapseSubview subview: NSView) -> Bool {
-        splitView == editorSplitView && subview == detailPanel
+    @objc private func toggleSidebarPressed() {
+        onToggleSidebar?()
     }
 
-    func splitView(
-        _ splitView: NSSplitView,
-        shouldCollapseSubview subview: NSView,
-        forDoubleClickOnDividerAt dividerIndex: Int
-    ) -> Bool {
-        splitView == editorSplitView && subview == detailPanel
+    @objc private func toggleInspector() {
+        guard editorSplitView.arrangedSubviews.count > 1 else {
+            return
+        }
+
+        let currentWidth = detailPanel.frame.width
+        if isInspectorCollapsed {
+            isInspectorCollapsed = false
+            detailPanel.setCollapsed(false)
+            setInspectorWidth(lastExpandedInspectorWidth)
+        } else {
+            if currentWidth > SplitMetrics.collapsedInspectorWidth + 1 {
+                updateLastExpandedInspectorWidth(currentWidth)
+            }
+
+            isInspectorCollapsed = true
+            detailPanel.setCollapsed(true)
+            setInspectorWidth(SplitMetrics.collapsedInspectorWidth)
+        }
+
+        saveInspectorDefaults()
+    }
+
+    private func setInspectorWidth(_ width: CGFloat) {
+        let dividerPosition = editorSplitView.bounds.width - editorSplitView.dividerThickness - width
+        editorSplitView.setPosition(max(SplitMetrics.minimumPreviewWidth, dividerPosition), ofDividerAt: 0)
+        editorSplitView.layoutSubtreeIfNeeded()
+    }
+
+    func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
+        guard splitView == editorSplitView, dividerIndex == 0 else {
+            return proposedMinimumPosition
+        }
+
+        return SplitMetrics.minimumPreviewWidth
+    }
+
+    func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
+        guard splitView == editorSplitView, dividerIndex == 0 else {
+            return proposedMaximumPosition
+        }
+
+        let minimumInspectorWidth = isInspectorCollapsed ? SplitMetrics.collapsedInspectorWidth : SplitMetrics.minimumInspectorWidth
+        return splitView.bounds.width - splitView.dividerThickness - minimumInspectorWidth
+    }
+
+    func splitViewDidResizeSubviews(_ notification: Notification) {
+        guard let splitView = notification.object as? NSSplitView, splitView == editorSplitView else {
+            return
+        }
+
+        let inspectorWidth = detailPanel.frame.width
+        if isInspectorCollapsed {
+            if inspectorWidth > SplitMetrics.collapsedInspectorWidth + 24 {
+                isInspectorCollapsed = false
+                detailPanel.setCollapsed(false)
+                updateLastExpandedInspectorWidth(inspectorWidth)
+                saveInspectorDefaults()
+            }
+        } else if inspectorWidth > SplitMetrics.collapsedInspectorWidth + 1 {
+            updateLastExpandedInspectorWidth(inspectorWidth)
+            saveInspectorDefaults()
+        }
+    }
+
+    private func restoreInspectorLayoutIfNeeded() {
+        guard !hasRestoredInspectorLayout, editorSplitView.bounds.width > 0 else {
+            return
+        }
+
+        hasRestoredInspectorLayout = true
+        detailPanel.setCollapsed(isInspectorCollapsed)
+        setInspectorWidth(isInspectorCollapsed ? SplitMetrics.collapsedInspectorWidth : lastExpandedInspectorWidth)
+    }
+
+    private func updateLastExpandedInspectorWidth(_ width: CGFloat) {
+        lastExpandedInspectorWidth = max(width, SplitMetrics.minimumInspectorWidth)
+    }
+
+    private func loadInspectorDefaults() {
+        let defaults = UserDefaults.standard
+        isInspectorCollapsed = defaults.bool(forKey: DefaultsKey.inspectorCollapsed)
+
+        let savedWidth = defaults.double(forKey: DefaultsKey.inspectorExpandedWidth)
+        if savedWidth > 0 {
+            updateLastExpandedInspectorWidth(savedWidth)
+        }
+    }
+
+    private func saveInspectorDefaults() {
+        let defaults = UserDefaults.standard
+        defaults.set(isInspectorCollapsed, forKey: DefaultsKey.inspectorCollapsed)
+        defaults.set(Double(lastExpandedInspectorWidth), forKey: DefaultsKey.inspectorExpandedWidth)
     }
 
     private func makeLabel(_ text: String) -> NSTextField {

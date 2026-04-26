@@ -6,7 +6,10 @@ final class ProfileListViewController: NSViewController, NSTableViewDataSource, 
 
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
+    private let titleLabel = NSTextField(labelWithString: "Profiles")
+    private let bar = NSStackView()
     private var isReloadingSelection = false
+    private var isCollapsed = false
 
     private var profiles: [Profile] {
         ProfileStore.shared.profiles
@@ -33,31 +36,54 @@ final class ProfileListViewController: NSViewController, NSTableViewDataSource, 
         scrollView.hasVerticalScroller = true
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
-        let bar = NSStackView(views: [
-            makeButton(title: "+", action: #selector(showAddProfileMenu(_:))),
-            makeButton(title: "⎘", action: #selector(duplicateProfile)),
-            makeButton(title: "−", action: #selector(deleteProfile)),
+        titleLabel.font = .boldSystemFont(ofSize: 13)
+        titleLabel.lineBreakMode = .byTruncatingTail
+
+        let header = NSStackView(views: [
+            titleLabel,
             NSView(),
         ])
+        header.orientation = .horizontal
+        header.alignment = .centerY
+        header.spacing = 6
+        header.edgeInsets = NSEdgeInsets(top: 4, left: 6, bottom: 4, right: 6)
+        header.translatesAutoresizingMaskIntoConstraints = false
+
+        bar.addArrangedSubview(makeButton(title: "+", action: #selector(showAddProfileMenu(_:))))
+        bar.addArrangedSubview(makeButton(title: "⎘", action: #selector(duplicateProfile)))
+        bar.addArrangedSubview(makeButton(title: "−", action: #selector(deleteProfile)))
+        bar.addArrangedSubview(NSView())
         bar.orientation = .horizontal
         bar.spacing = 4
         bar.translatesAutoresizingMaskIntoConstraints = false
 
+        view.addSubview(header)
         view.addSubview(scrollView)
         view.addSubview(bar)
 
         NSLayoutConstraint.activate([
+            header.topAnchor.constraint(equalTo: view.topAnchor),
+            header.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            header.heightAnchor.constraint(equalToConstant: 32),
             bar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 4),
             bar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -4),
             bar.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -4),
             bar.heightAnchor.constraint(equalToConstant: 26),
-            scrollView.topAnchor.constraint(equalTo: view.topAnchor),
+            scrollView.topAnchor.constraint(equalTo: header.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: bar.topAnchor, constant: -4),
         ])
 
         reload()
+    }
+
+    func setCollapsed(_ collapsed: Bool) {
+        isCollapsed = collapsed
+        titleLabel.isHidden = collapsed
+        scrollView.isHidden = collapsed
+        bar.isHidden = collapsed
     }
 
     func reload() {
