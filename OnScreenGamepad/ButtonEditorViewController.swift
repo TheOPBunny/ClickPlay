@@ -381,7 +381,9 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     func savePanelLayout() {
-        syncInspectorStateFromCurrentWidth()
+        if hasRestoredInspectorLayout {
+            syncInspectorStateFromCurrentWidth()
+        }
         saveInspectorDefaults()
     }
 
@@ -413,6 +415,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     func splitViewDidResizeSubviews(_ notification: Notification) {
         guard let splitView = notification.object as? NSSplitView, splitView == editorSplitView else {
+            return
+        }
+
+        guard hasRestoredInspectorLayout else {
             return
         }
 

@@ -4,13 +4,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     var gamepadWindow: GamepadWindow?
     var statusItem: NSStatusItem?
-    private lazy var configuratorWindowController: ConfiguratorWindowController = {
-        let controller = ConfiguratorWindowController()
-        controller.onClose = { [weak self] in
-            self?.restorePreviousApplicationFocus()
-        }
-        return controller
-    }()
+    private var configuratorWindowController: ConfiguratorWindowController?
     private let supportedOpacityValues: [Double] = [0.25, 0.4, 0.55, 0.7, 0.85, 1.0]
     private var lastActiveNonSelfApplication: NSRunningApplication?
     private var workspaceActivationObserver: NSObjectProtocol?
@@ -49,6 +43,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
         true
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        configuratorWindowController?.flushPanelLayoutDefaults()
     }
 
     func setupMainMenu() {
@@ -291,7 +289,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func showConfigurator() {
         updateLastActiveApplicationIfNeeded(NSWorkspace.shared.frontmostApplication)
-        configuratorWindowController.showEditorWindow()
+        getConfiguratorWindowController().showEditorWindow()
     }
 
     @objc func openAccessibility() {
@@ -342,5 +340,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         application.activate(options: [.activateIgnoringOtherApps])
+    }
+
+    private func getConfiguratorWindowController() -> ConfiguratorWindowController {
+        if let configuratorWindowController {
+            return configuratorWindowController
+        }
+
+        let controller = ConfiguratorWindowController()
+        controller.onClose = { [weak self] in
+            self?.restorePreviousApplicationFocus()
+        }
+        configuratorWindowController = controller
+        return controller
     }
 }

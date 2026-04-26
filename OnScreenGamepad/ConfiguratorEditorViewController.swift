@@ -106,7 +106,9 @@ final class ConfiguratorViewController: NSViewController, NSSplitViewDelegate {
     }
 
     func savePanelLayout() {
-        syncSidebarStateFromCurrentWidth()
+        if hasRestoredSidebarLayout {
+            syncSidebarStateFromCurrentWidth()
+        }
         saveSidebarDefaults()
         editorViewController.savePanelLayout()
     }
@@ -196,6 +198,10 @@ final class ConfiguratorViewController: NSViewController, NSSplitViewDelegate {
             return
         }
 
+        guard hasRestoredSidebarLayout else {
+            return
+        }
+
         syncSidebarStateFromCurrentWidth()
     }
 
@@ -217,5 +223,10 @@ final class ConfiguratorViewController: NSViewController, NSSplitViewDelegate {
         let defaults = UserDefaults.standard
         defaults.set(isSidebarCollapsed, forKey: DefaultsKey.sidebarCollapsed)
         defaults.set(Double(lastExpandedSidebarWidth), forKey: DefaultsKey.sidebarExpandedWidth)
+    }
+
+    func flushPanelLayoutDefaults() {
+        savePanelLayout()
+        UserDefaults.standard.synchronize()
     }
 }
