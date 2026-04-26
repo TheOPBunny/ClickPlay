@@ -3,9 +3,9 @@ import Cocoa
 final class ConfiguratorViewController: NSSplitViewController {
 
     private enum Metrics {
-        static let minimumSidebarWidth: CGFloat = 100
-        static let defaultSidebarWidth: CGFloat = 240
-        static let maximumSidebarWidth: CGFloat = 820
+        static let minimumSidebarWidth: CGFloat = 72
+        static let defaultSidebarWidth: CGFloat = 280
+        static let maximumSidebarWidth: CGFloat = 900
     }
 
     private enum DefaultsKey {
@@ -26,16 +26,22 @@ final class ConfiguratorViewController: NSSplitViewController {
         super.viewDidLoad()
         loadSidebarDefaults()
 
-        let sidebarItem = NSSplitViewItem(sidebarWithViewController: profileListViewController)
+        splitView.isVertical = true
+        splitView.dividerStyle = .thin
+
+        let sidebarItem = NSSplitViewItem(viewController: profileListViewController)
         sidebarItem.minimumThickness = Metrics.minimumSidebarWidth
         sidebarItem.maximumThickness = Metrics.maximumSidebarWidth
         sidebarItem.canCollapse = true
-        sidebarItem.preferredThicknessFraction = 0.30
-        sidebarItem.holdingPriority = .defaultHigh
+        sidebarItem.preferredThicknessFraction = 0.25
+        sidebarItem.holdingPriority = .defaultLow
         self.sidebarItem = sidebarItem
 
+        let editorItem = NSSplitViewItem(viewController: editorViewController)
+        editorItem.holdingPriority = .defaultHigh
+
         addSplitViewItem(sidebarItem)
-        addSplitViewItem(NSSplitViewItem(viewController: editorViewController))
+        addSplitViewItem(editorItem)
 
         editorViewController.onToggleSidebar = { [weak self] in
             self?.toggleSidebar()
