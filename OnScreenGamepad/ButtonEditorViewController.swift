@@ -1,6 +1,6 @@
 import Cocoa
 
-final class ButtonEditorViewController: NSViewController, NSMenuItemValidation {
+final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, NSSplitViewDelegate {
 
     private struct ClipboardButton: Codable {
         var config: ButtonConfig
@@ -120,6 +120,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation {
     private lazy var previewCanvasView = PreviewCanvasView(previewView: previewView)
     private let previewScrollView = NSScrollView()
     private let detailPanel = ButtonDetailPanel()
+    private let editorSplitView = NSSplitView()
     private let leftColumn = NSStackView()
     private let hint = NSTextField(
         labelWithString: "Drag buttons freely inside a 1000 × 1000 workspace. Saving fits the gamepad to the outermost button bounds."
@@ -281,6 +282,12 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation {
         hint.textColor = .secondaryLabelColor
         hint.translatesAutoresizingMaskIntoConstraints = false
 
+        editorSplitView.isVertical = true
+        editorSplitView.dividerStyle = .thin
+        editorSplitView.delegate = self
+        editorSplitView.autosaveName = "ButtonEditorSplitView"
+        editorSplitView.translatesAutoresizingMaskIntoConstraints = false
+
         leftColumn.orientation = .vertical
         leftColumn.alignment = .leading
         leftColumn.spacing = 6
@@ -288,10 +295,17 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation {
         leftColumn.addArrangedSubview(previewScrollView)
         leftColumn.addArrangedSubview(hint)
 
-        let preferredPreviewWidthConstraint = leftColumn.widthAnchor.constraint(equalTo: view.widthAnchor, multiplier: 0.60)
-        preferredPreviewWidthConstraint.priority = .defaultHigh
+        editorSplitView.addArrangedSubview(leftColumn)
+        editorSplitView.addArrangedSubview(detailPanel)
+        editorSplitView.setHoldingPriority(.defaultLow, forSubviewAt: 0)
+        editorSplitView.setHoldingPriority(.defaultHigh, forSubviewAt: 1)
 
-        [topBar, leftColumn, detailPanel].forEach(view.addSubview(_:))
+        let preferredPreviewWidthConstraint = leftColumn.widthAnchor.constraint(equalTo: editorSplitView.widthAnchor, multiplier: 0.66)
+        preferredPreviewWidthConstraint.priority = .defaultHigh
+        let minimumDetailWidthConstraint = detailPanel.widthAnchor.constraint(greaterThanOrEqualToConstant: 300)
+        minimumDetailWidthConstraint.priority = .defaultHigh
+
+        [topBar, editorSplitView].forEach(view.addSubview(_:))
 
         NSLayoutConstraint.activate([
             topBar.topAnchor.constraint(equalTo: view.topAnchor, constant: 12),
@@ -303,21 +317,29 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation {
             opacityLabel.widthAnchor.constraint(equalToConstant: 36),
             padWidthField.widthAnchor.constraint(equalToConstant: 52),
             padHeightField.widthAnchor.constraint(equalToConstant: 52),
-            leftColumn.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: 14),
-            leftColumn.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-            leftColumn.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -12),
-            leftColumn.widthAnchor.constraint(greaterThanOrEqualToConstant: 520),
-            leftColumn.widthAnchor.constraint(lessThanOrEqualToConstant: 900),
+            editorSplitView.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: 14),
+            editorSplitView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            editorSplitView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            editorSplitView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -12),
+            leftColumn.widthAnchor.constraint(greaterThanOrEqualToConstant: 420),
             preferredPreviewWidthConstraint,
             previewScrollView.widthAnchor.constraint(equalTo: leftColumn.widthAnchor),
             previewScrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 420),
             hint.widthAnchor.constraint(equalTo: leftColumn.widthAnchor),
-            detailPanel.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: 14),
-            detailPanel.leadingAnchor.constraint(equalTo: leftColumn.trailingAnchor, constant: 20),
-            detailPanel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
-            detailPanel.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -12),
-            detailPanel.widthAnchor.constraint(greaterThanOrEqualToConstant: 300),
+            minimumDetailWidthConstraint,
         ])
+    }
+
+    func splitView(_ splitView: NSSplitView, canCollapseSubview subview: NSView) -> Bool {
+        splitView == editorSplitView && subview == detailPanel
+    }
+
+    func splitView(
+        _ splitView: NSSplitView,
+        shouldCollapseSubview subview: NSView,
+        forDoubleClickOnDividerAt dividerIndex: Int
+    ) -> Bool {
+        splitView == editorSplitView && subview == detailPanel
     }
 
     private func makeLabel(_ text: String) -> NSTextField {

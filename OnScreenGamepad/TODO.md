@@ -40,7 +40,7 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 - [x] Add the ability to group, align, and equalize a selected group of buttons.
 - [x] Add a circle button shape.
 - [x] Make the editing window larger and scale it with the application window size.
-- [ ] Allow side panels to collapse and be resized horizontally.
+- [x] Allow side panels to collapse and be resized horizontally.
 - [ ] Update `KeyRecorder` so left-click starts listening for keys and another left-click stops listening.
 - [ ] Allow a button to be assigned multiple keys, for example `[xxaaa]` or `[abab]`.
 - [ ] If a button has multiple keys, add an option to activate them sequentially or simultaneously.
