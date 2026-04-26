@@ -107,6 +107,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     var onProfileSaved: ((Profile) -> Void)?
     var onToggleSidebar: (() -> Void)?
+    var onSavePanelLayout: (() -> Void)?
 
     private static let maximumWorkspaceSize = CGSize(width: 1000, height: 1000)
     private static let buttonCountWarningThreshold = 100
@@ -318,7 +319,6 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         editorSplitView.isVertical = true
         editorSplitView.dividerStyle = .thin
         editorSplitView.delegate = self
-        editorSplitView.autosaveName = "ButtonEditorSplitView"
         editorSplitView.translatesAutoresizingMaskIntoConstraints = false
 
         leftColumn.orientation = .vertical
@@ -380,6 +380,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         saveInspectorDefaults()
     }
 
+    func savePanelLayout() {
+        syncInspectorStateFromCurrentWidth()
+        saveInspectorDefaults()
+    }
+
     private func setInspectorWidth(_ width: CGFloat) {
         let dividerPosition = editorSplitView.bounds.width - editorSplitView.dividerThickness - width
         editorSplitView.setPosition(max(SplitMetrics.minimumPreviewWidth, dividerPosition), ofDividerAt: 0)
@@ -409,6 +414,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         }
 
         let inspectorWidth = detailPanel.frame.width
+        syncInspectorStateFromCurrentWidth(inspectorWidth: inspectorWidth)
+    }
+
+    private func syncInspectorStateFromCurrentWidth(inspectorWidth: CGFloat? = nil) {
+        let inspectorWidth = inspectorWidth ?? detailPanel.frame.width
         if isInspectorCollapsed {
             if inspectorWidth > SplitMetrics.collapsedInspectorWidth + 24 {
                 isInspectorCollapsed = false
