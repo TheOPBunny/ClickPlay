@@ -22,7 +22,6 @@ final class ConfiguratorViewController: NSViewController, NSSplitViewDelegate {
     private var isSidebarCollapsed = false
     private var lastExpandedSidebarWidth = Metrics.defaultSidebarWidth
     private var hasRestoredSidebarLayout = false
-    private var lastKnownSplitViewWidth: CGFloat = 0
 
     override func loadView() {
         view = NSView(frame: NSRect(x: 0, y: 0, width: 980, height: 700))
@@ -97,7 +96,7 @@ final class ConfiguratorViewController: NSViewController, NSSplitViewDelegate {
             return
         }
 
-        lastKnownSplitViewWidth = splitView.bounds.width
+        syncSidebarStateFromCurrentWidth()
     }
 
     deinit {
@@ -172,7 +171,6 @@ final class ConfiguratorViewController: NSViewController, NSSplitViewDelegate {
         hasRestoredSidebarLayout = true
         profileListViewController.view.isHidden = isSidebarCollapsed
         splitView.adjustSubviews()
-        lastKnownSplitViewWidth = splitView.bounds.width
         if !isSidebarCollapsed {
             setSidebarWidth(lastExpandedSidebarWidth)
         }
@@ -201,13 +199,6 @@ final class ConfiguratorViewController: NSViewController, NSSplitViewDelegate {
         }
 
         guard hasRestoredSidebarLayout else {
-            return
-        }
-
-        let currentSplitViewWidth = splitView.bounds.width
-        let isWindowResize = abs(currentSplitViewWidth - lastKnownSplitViewWidth) > 0.5
-        lastKnownSplitViewWidth = currentSplitViewWidth
-        guard !isWindowResize else {
             return
         }
 
