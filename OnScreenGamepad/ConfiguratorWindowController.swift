@@ -45,8 +45,12 @@ final class ConfiguratorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
-        configuratorViewController?.savePanelLayout()
+        flushPanelLayoutDefaults()
         onClose?()
+    }
+
+    func flushPanelLayoutDefaults() {
+        configuratorViewController?.flushPanelLayoutDefaults()
     }
 
     private func activateEditorApp() {
