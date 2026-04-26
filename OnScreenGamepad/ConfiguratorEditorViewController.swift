@@ -32,7 +32,7 @@ final class ConfiguratorViewController: NSSplitViewController {
         let sidebarItem = NSSplitViewItem(viewController: profileListViewController)
         sidebarItem.minimumThickness = Metrics.minimumSidebarWidth
         sidebarItem.maximumThickness = Metrics.maximumSidebarWidth
-        sidebarItem.canCollapse = true
+        sidebarItem.canCollapse = false
         sidebarItem.preferredThicknessFraction = 0.25
         sidebarItem.holdingPriority = .defaultLow
         self.sidebarItem = sidebarItem
