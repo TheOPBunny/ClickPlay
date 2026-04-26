@@ -22,7 +22,6 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     private enum SplitMetrics {
-        static let collapsedInspectorWidth: CGFloat = 44
         static let minimumPreviewWidth: CGFloat = 420
         static let minimumInspectorWidth: CGFloat = 300
         static let defaultInspectorWidth: CGFloat = 320
@@ -365,16 +364,17 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         let currentWidth = detailPanel.frame.width
         if isInspectorCollapsed {
             isInspectorCollapsed = false
-            detailPanel.setCollapsed(false)
+            detailPanel.isHidden = false
+            editorSplitView.adjustSubviews()
             setInspectorWidth(lastExpandedInspectorWidth)
         } else {
-            if currentWidth > SplitMetrics.collapsedInspectorWidth + 1 {
+            if currentWidth >= SplitMetrics.minimumInspectorWidth {
                 updateLastExpandedInspectorWidth(currentWidth)
             }
 
             isInspectorCollapsed = true
-            detailPanel.setCollapsed(true)
-            setInspectorWidth(SplitMetrics.collapsedInspectorWidth)
+            detailPanel.isHidden = true
+            editorSplitView.adjustSubviews()
         }
 
         saveInspectorDefaults()
@@ -404,8 +404,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             return proposedMaximumPosition
         }
 
-        let minimumInspectorWidth = isInspectorCollapsed ? SplitMetrics.collapsedInspectorWidth : SplitMetrics.minimumInspectorWidth
-        return splitView.bounds.width - splitView.dividerThickness - minimumInspectorWidth
+        guard !isInspectorCollapsed, !detailPanel.isHidden else {
+            return proposedMaximumPosition
+        }
+
+        return splitView.bounds.width - splitView.dividerThickness - SplitMetrics.minimumInspectorWidth
     }
 
     func splitViewDidResizeSubviews(_ notification: Notification) {
@@ -418,15 +421,14 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     private func syncInspectorStateFromCurrentWidth(inspectorWidth: CGFloat? = nil) {
+        guard !detailPanel.isHidden else {
+            isInspectorCollapsed = true
+            return
+        }
+
+        isInspectorCollapsed = false
         let inspectorWidth = inspectorWidth ?? detailPanel.frame.width
-        if isInspectorCollapsed {
-            if inspectorWidth > SplitMetrics.collapsedInspectorWidth + 24 {
-                isInspectorCollapsed = false
-                detailPanel.setCollapsed(false)
-                updateLastExpandedInspectorWidth(inspectorWidth)
-                saveInspectorDefaults()
-            }
-        } else if inspectorWidth > SplitMetrics.collapsedInspectorWidth + 1 {
+        if inspectorWidth >= SplitMetrics.minimumInspectorWidth {
             updateLastExpandedInspectorWidth(inspectorWidth)
             saveInspectorDefaults()
         }
@@ -438,8 +440,13 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         }
 
         hasRestoredInspectorLayout = true
-        detailPanel.setCollapsed(isInspectorCollapsed)
-        setInspectorWidth(isInspectorCollapsed ? SplitMetrics.collapsedInspectorWidth : lastExpandedInspectorWidth)
+        detailPanel.setCollapsed(false)
+        detailPanel.isHidden = isInspectorCollapsed
+        editorSplitView.adjustSubviews()
+
+        if !isInspectorCollapsed {
+            setInspectorWidth(lastExpandedInspectorWidth)
+        }
     }
 
     private func updateLastExpandedInspectorWidth(_ width: CGFloat) {
