@@ -1,11 +1,12 @@
 import Cocoa
 
-final class ConfiguratorViewController: NSSplitViewController {
+final class ConfiguratorViewController: NSViewController, NSSplitViewDelegate {
 
     private enum Metrics {
-        static let minimumSidebarWidth: CGFloat = 72
+        static let minimumSidebarWidth: CGFloat = 160
         static let defaultSidebarWidth: CGFloat = 280
         static let maximumSidebarWidth: CGFloat = 900
+        static let minimumEditorWidth: CGFloat = 420
     }
 
     private enum DefaultsKey {
@@ -15,12 +16,16 @@ final class ConfiguratorViewController: NSSplitViewController {
 
     private let profileListViewController = ProfileListViewController()
     private let editorViewController = ButtonEditorViewController()
-    private var sidebarItem: NSSplitViewItem?
+    private let splitView = NSSplitView()
     private var profilesDidChangeObserver: NSObjectProtocol?
     private var shouldSkipNextEditorRefresh = false
     private var isSidebarCollapsed = false
     private var lastExpandedSidebarWidth = Metrics.defaultSidebarWidth
     private var hasRestoredSidebarLayout = false
+
+    override func loadView() {
+        view = NSView(frame: NSRect(x: 0, y: 0, width: 980, height: 700))
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -28,20 +33,8 @@ final class ConfiguratorViewController: NSSplitViewController {
 
         splitView.isVertical = true
         splitView.dividerStyle = .thin
-
-        let sidebarItem = NSSplitViewItem(viewController: profileListViewController)
-        sidebarItem.minimumThickness = Metrics.minimumSidebarWidth
-        sidebarItem.maximumThickness = Metrics.maximumSidebarWidth
-        sidebarItem.canCollapse = false
-        sidebarItem.preferredThicknessFraction = 0.25
-        sidebarItem.holdingPriority = .defaultLow
-        self.sidebarItem = sidebarItem
-
-        let editorItem = NSSplitViewItem(viewController: editorViewController)
-        editorItem.holdingPriority = .defaultHigh
-
-        addSplitViewItem(sidebarItem)
-        addSplitViewItem(editorItem)
+        splitView.delegate = self
+        splitView.translatesAutoresizingMaskIntoConstraints = false
 
         editorViewController.onToggleSidebar = { [weak self] in
             self?.toggleSidebar()
@@ -58,6 +51,21 @@ final class ConfiguratorViewController: NSSplitViewController {
             self?.shouldSkipNextEditorRefresh = true
             ProfileStore.shared.upsert(profile)
         }
+
+        addChild(profileListViewController)
+        addChild(editorViewController)
+        splitView.addArrangedSubview(profileListViewController.view)
+        splitView.addArrangedSubview(editorViewController.view)
+        splitView.setHoldingPriority(.defaultLow, forSubviewAt: 0)
+        splitView.setHoldingPriority(.defaultHigh, forSubviewAt: 1)
+
+        view.addSubview(splitView)
+        NSLayoutConstraint.activate([
+            splitView.topAnchor.constraint(equalTo: view.topAnchor),
+            splitView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            splitView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            splitView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
 
         profilesDidChangeObserver = NotificationCenter.default.addObserver(
             forName: ProfileStore.profilesDidChange,
@@ -110,7 +118,8 @@ final class ConfiguratorViewController: NSSplitViewController {
 
         if isSidebarCollapsed {
             isSidebarCollapsed = false
-            sidebarItem?.isCollapsed = false
+            profileListViewController.view.isHidden = false
+            splitView.adjustSubviews()
             setSidebarWidth(lastExpandedSidebarWidth)
         } else {
             let currentWidth = splitView.arrangedSubviews[0].frame.width
@@ -119,7 +128,8 @@ final class ConfiguratorViewController: NSSplitViewController {
             }
 
             isSidebarCollapsed = true
-            sidebarItem?.isCollapsed = true
+            profileListViewController.view.isHidden = true
+            splitView.adjustSubviews()
         }
 
         saveSidebarDefaults()
@@ -127,8 +137,6 @@ final class ConfiguratorViewController: NSSplitViewController {
 
     private func setSidebarWidth(_ width: CGFloat) {
         let clampedWidth = min(max(width, Metrics.minimumSidebarWidth), Metrics.maximumSidebarWidth)
-        sidebarItem?.minimumThickness = Metrics.minimumSidebarWidth
-        sidebarItem?.maximumThickness = Metrics.maximumSidebarWidth
         splitView.setPosition(clampedWidth, ofDividerAt: 0)
         splitView.layoutSubtreeIfNeeded()
     }
@@ -138,7 +146,7 @@ final class ConfiguratorViewController: NSSplitViewController {
             return
         }
 
-        if sidebarItem?.isCollapsed == true {
+        if profileListViewController.view.isHidden {
             isSidebarCollapsed = true
             return
         }
@@ -159,10 +167,36 @@ final class ConfiguratorViewController: NSSplitViewController {
         }
 
         hasRestoredSidebarLayout = true
-        sidebarItem?.isCollapsed = isSidebarCollapsed
+        profileListViewController.view.isHidden = isSidebarCollapsed
+        splitView.adjustSubviews()
         if !isSidebarCollapsed {
             setSidebarWidth(lastExpandedSidebarWidth)
         }
+    }
+
+    func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
+        guard splitView == self.splitView, dividerIndex == 0, !isSidebarCollapsed else {
+            return proposedMinimumPosition
+        }
+
+        return Metrics.minimumSidebarWidth
+    }
+
+    func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
+        guard splitView == self.splitView, dividerIndex == 0 else {
+            return proposedMaximumPosition
+        }
+
+        let availableMax = splitView.bounds.width - splitView.dividerThickness - Metrics.minimumEditorWidth
+        return min(Metrics.maximumSidebarWidth, max(Metrics.minimumSidebarWidth, availableMax))
+    }
+
+    func splitViewDidResizeSubviews(_ notification: Notification) {
+        guard let resizedSplitView = notification.object as? NSSplitView, resizedSplitView == splitView else {
+            return
+        }
+
+        syncSidebarStateFromCurrentWidth()
     }
 
     private func updateLastExpandedSidebarWidth(_ width: CGFloat) {
