@@ -72,9 +72,15 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             previewView.frame = bounds
         }
 
-        func updateCanvasSize() {
-            if frame.size != workspaceSize {
-                frame = CGRect(origin: .zero, size: workspaceSize)
+        func updateCanvasSize(minimumVisibleWidth: CGFloat) {
+            let scale = max(1, minimumVisibleWidth / workspaceSize.width)
+            let scaledSize = CGSize(
+                width: workspaceSize.width * scale,
+                height: workspaceSize.height * scale
+            )
+
+            if frame.size != scaledSize {
+                frame = CGRect(origin: .zero, size: scaledSize)
             }
 
             needsLayout = true
@@ -124,6 +130,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private var isInspectorCollapsed = false
     private var lastExpandedInspectorWidth = SplitMetrics.defaultInspectorWidth
     private var hasRestoredInspectorLayout = false
+    private var lastKnownEditorSplitViewWidth: CGFloat = 0
 
     private let nameField = NSTextField()
     private let opacitySlider = NSSlider()
@@ -161,6 +168,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         super.viewDidLayout()
         restoreInspectorLayoutIfNeeded()
         updatePreviewCanvasLayout()
+        lastKnownEditorSplitViewWidth = editorSplitView.bounds.width
     }
 
     func load(profile: Profile) {
@@ -422,6 +430,13 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             return
         }
 
+        let currentSplitViewWidth = editorSplitView.bounds.width
+        let isWindowResize = abs(currentSplitViewWidth - lastKnownEditorSplitViewWidth) > 0.5
+        lastKnownEditorSplitViewWidth = currentSplitViewWidth
+        guard !isWindowResize else {
+            return
+        }
+
         let inspectorWidth = detailPanel.frame.width
         syncInspectorStateFromCurrentWidth(inspectorWidth: inspectorWidth)
     }
@@ -449,6 +464,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         detailPanel.setCollapsed(false)
         detailPanel.isHidden = isInspectorCollapsed
         editorSplitView.adjustSubviews()
+        lastKnownEditorSplitViewWidth = editorSplitView.bounds.width
 
         if !isInspectorCollapsed {
             setInspectorWidth(lastExpandedInspectorWidth)
@@ -828,7 +844,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     private func updatePreviewCanvasLayout() {
         previewCanvasView.showsGrid = showGridCheckbox.state == .on
-        previewCanvasView.updateCanvasSize()
+        let visibleWidth = max(previewScrollView.contentView.bounds.width, Self.maximumWorkspaceSize.width)
+        previewCanvasView.updateCanvasSize(minimumVisibleWidth: visibleWidth)
         previewCanvasView.layoutSubtreeIfNeeded()
     }
 
