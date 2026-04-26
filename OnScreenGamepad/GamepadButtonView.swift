@@ -2,6 +2,44 @@ import Cocoa
 
 final class GamepadButtonView: NSView {
 
+    private final class CenteredLabelView: NSView {
+        var stringValue = "" {
+            didSet { needsDisplay = true }
+        }
+        var font: NSFont = .systemFont(ofSize: 11) {
+            didSet { needsDisplay = true }
+        }
+
+        override var isFlipped: Bool { true }
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            nil
+        }
+
+        override func draw(_ dirtyRect: NSRect) {
+            super.draw(dirtyRect)
+
+            let paragraphStyle = NSMutableParagraphStyle()
+            paragraphStyle.alignment = .center
+            let attributedLabel = NSAttributedString(
+                string: stringValue,
+                attributes: [
+                    .font: font,
+                    .foregroundColor: NSColor.white,
+                    .paragraphStyle: paragraphStyle,
+                ]
+            )
+            let measuredSize = attributedLabel.size()
+            let drawRect = CGRect(
+                x: 2,
+                y: max(0, bounds.midY - ceil(measuredSize.height) / 2),
+                width: max(0, bounds.width - 4),
+                height: ceil(measuredSize.height)
+            )
+            attributedLabel.draw(in: drawRect)
+        }
+    }
+
     private static let compatibilityTapDuration: TimeInterval = 0.033
 
     let button: GamepadButton
@@ -9,7 +47,7 @@ final class GamepadButtonView: NSView {
     private var compatibilityModeEnabled: Bool
     private var pressedBinding: (keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)?
     private let shapeLayer = CAShapeLayer()
-    private let label = NSTextField(labelWithString: "")
+    private let label = CenteredLabelView(frame: .zero)
     private var isPressed = false
     private var trackingArea: NSTrackingArea?
     private var autoReleaseWorkItem: DispatchWorkItem?
@@ -32,14 +70,13 @@ final class GamepadButtonView: NSView {
 
         label.stringValue = config.resolvedDisplayLabel
         label.font = config.resolvedLabelFont
-        label.textColor = .white
-        label.alignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
         NSLayoutConstraint.activate([
-            label.centerXAnchor.constraint(equalTo: centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: centerYAnchor),
-            label.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, constant: -4)
+            label.topAnchor.constraint(equalTo: topAnchor),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor),
+            label.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
 
         updateAppearance(animated: false)
@@ -79,7 +116,7 @@ final class GamepadButtonView: NSView {
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        guard containsInteractivePoint(point) else {
+        guard containsAnyInteractivePointCandidate(point) else {
             return nil
         }
 
@@ -236,8 +273,16 @@ final class GamepadButtonView: NSView {
             return (normalizedX * normalizedX) + (normalizedY * normalizedY) <= 1
         }
     }
-}
 
-// NSTextField doesn't have isUserInteractionEnabled in AppKit — remove that line,
-// it's UIKit only. The label won't intercept clicks because NSTextField with
-// isEditable=false and isBordered=false doesn't install a tracking area.
+    private func containsAnyInteractivePointCandidate(_ point: CGPoint) -> Bool {
+        if containsInteractivePoint(point) {
+            return true
+        }
+
+        guard let superview else {
+            return false
+        }
+
+        return containsInteractivePoint(convert(point, from: superview))
+    }
+}
