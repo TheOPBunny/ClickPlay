@@ -5,6 +5,11 @@ enum ButtonInteractionMode: String, Codable {
     case toggleHold
 }
 
+enum ButtonShape: String, Codable {
+    case roundedRectangle
+    case oval
+}
+
 enum EditorCoordinateMode: String, Codable {
     case legacyTopLeft
     case centered
@@ -27,6 +32,7 @@ struct ButtonConfig: Codable {
     var labelFontSize: Double
     var labelBold: Bool
     var labelItalic: Bool
+    var shape: ButtonShape
     var enabled: Bool
     var interactionMode: ButtonInteractionMode
 
@@ -44,6 +50,7 @@ struct ButtonConfig: Codable {
         case labelFontSize
         case labelBold
         case labelItalic
+        case shape
         case enabled
         case interactionMode
     }
@@ -62,6 +69,7 @@ struct ButtonConfig: Codable {
         labelFontSize: Double = 11,
         labelBold: Bool = true,
         labelItalic: Bool = false,
+        shape: ButtonShape = .roundedRectangle,
         enabled: Bool,
         interactionMode: ButtonInteractionMode = .momentary
     ) {
@@ -78,6 +86,7 @@ struct ButtonConfig: Codable {
         self.labelFontSize = labelFontSize
         self.labelBold = labelBold
         self.labelItalic = labelItalic
+        self.shape = shape
         self.enabled = enabled
         self.interactionMode = interactionMode
     }
@@ -97,6 +106,7 @@ struct ButtonConfig: Codable {
         labelFontSize = try container.decodeIfPresent(Double.self, forKey: .labelFontSize) ?? 11
         labelBold = try container.decodeIfPresent(Bool.self, forKey: .labelBold) ?? true
         labelItalic = try container.decodeIfPresent(Bool.self, forKey: .labelItalic) ?? false
+        shape = try container.decodeIfPresent(ButtonShape.self, forKey: .shape) ?? .roundedRectangle
         enabled = try container.decode(Bool.self, forKey: .enabled)
         interactionMode = try container.decodeIfPresent(ButtonInteractionMode.self, forKey: .interactionMode) ?? .momentary
     }

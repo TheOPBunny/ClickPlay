@@ -20,6 +20,7 @@ final class ButtonDetailPanel: NSView {
     private let yField = NSTextField()
     private let widthField = NSTextField()
     private let heightField = NSTextField()
+    private let shapePopup = NSPopUpButton()
     private let interactionModePopup = NSPopUpButton()
     private let enabledCheckbox = NSButton(checkboxWithTitle: "Enabled", target: nil, action: nil)
     private let applyButton = NSButton(title: "Apply Changes", target: nil, action: nil)
@@ -42,6 +43,7 @@ final class ButtonDetailPanel: NSView {
         keyRecorder.setKey(code: 49)
         labelBoldCheckbox.state = .off
         labelItalicCheckbox.state = .off
+        shapePopup.selectItem(withTag: ButtonShape.roundedRectangle.tag)
         interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
         applyButton.isEnabled = false
         deleteButton.isEnabled = false
@@ -62,6 +64,7 @@ final class ButtonDetailPanel: NSView {
         yField.stringValue = String(format: "%.1f", config.y)
         widthField.stringValue = String(format: "%.1f", config.editorWidth > 0 ? config.editorWidth : config.width)
         heightField.stringValue = String(format: "%.1f", config.editorHeight > 0 ? config.editorHeight : config.height)
+        shapePopup.selectItem(withTag: config.shape.tag)
         enabledCheckbox.state = config.enabled ? .on : .off
         interactionModePopup.selectItem(withTag: config.interactionMode.tag)
         keyRecorder.setKey(
@@ -136,6 +139,9 @@ final class ButtonDetailPanel: NSView {
         labelBoldCheckbox.action = #selector(applyPressed)
         labelItalicCheckbox.target = self
         labelItalicCheckbox.action = #selector(applyPressed)
+        shapePopup.target = self
+        shapePopup.action = #selector(applyPressed)
+        populateShapes()
         interactionModePopup.target = self
         interactionModePopup.action = #selector(applyPressed)
         populateInteractionModes()
@@ -153,6 +159,7 @@ final class ButtonDetailPanel: NSView {
         stack.addArrangedSubview(makeRow(label: "Color:", control: colorWell))
         stack.addArrangedSubview(makeRow(label: "X (px):", control: xField))
         stack.addArrangedSubview(makeRow(label: "Y (px):", control: yField))
+        stack.addArrangedSubview(makeRow(label: "Shape:", control: shapePopup))
         stack.addArrangedSubview(makeRow(label: "Mode:", control: interactionModePopup))
         stack.addArrangedSubview(enabledCheckbox)
         stack.addArrangedSubview(makeSizeRow())
@@ -265,6 +272,17 @@ final class ButtonDetailPanel: NSView {
         interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
     }
 
+    private func populateShapes() {
+        shapePopup.removeAllItems()
+
+        for shape in ButtonShape.allCases {
+            shapePopup.addItem(withTitle: shape.displayName)
+            shapePopup.lastItem?.tag = shape.tag
+        }
+
+        shapePopup.selectItem(withTag: ButtonShape.roundedRectangle.tag)
+    }
+
     private func emitChange() {
         guard var config, let button else {
             return
@@ -280,6 +298,7 @@ final class ButtonDetailPanel: NSView {
         config.y = Double(yField.stringValue) ?? config.y
         config.editorWidth = sizeValue(from: widthField.stringValue, fallback: config.editorWidth > 0 ? config.editorWidth : config.width)
         config.editorHeight = sizeValue(from: heightField.stringValue, fallback: config.editorHeight > 0 ? config.editorHeight : config.height)
+        config.shape = ButtonShape(tag: shapePopup.selectedTag()) ?? .roundedRectangle
         config.enabled = enabledCheckbox.state == .on
         config.interactionMode = ButtonInteractionMode(tag: interactionModePopup.selectedTag()) ?? .momentary
 
@@ -307,6 +326,41 @@ final class ButtonDetailPanel: NSView {
         let clampedSize = min(max(size, 6), 36)
         labelSizeField.stringValue = "\(Int(clampedSize))"
         labelSizeStepper.doubleValue = clampedSize
+    }
+}
+
+private extension ButtonShape {
+    static var allCases: [ButtonShape] {
+        [.roundedRectangle, .oval]
+    }
+
+    var displayName: String {
+        switch self {
+        case .roundedRectangle:
+            return "Rounded Rectangle"
+        case .oval:
+            return "Circle/Oval"
+        }
+    }
+
+    var tag: Int {
+        switch self {
+        case .roundedRectangle:
+            return 0
+        case .oval:
+            return 1
+        }
+    }
+
+    init?(tag: Int) {
+        switch tag {
+        case 0:
+            self = .roundedRectangle
+        case 1:
+            self = .oval
+        default:
+            return nil
+        }
     }
 }
 

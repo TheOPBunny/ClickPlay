@@ -8,6 +8,7 @@ struct CanvasButtonObject {
     var labelFontSize: Double
     var labelBold: Bool
     var labelItalic: Bool
+    var shape: ButtonShape
     var isEnabled: Bool
     var isSelected: Bool
 }
@@ -356,7 +357,7 @@ final class GamepadPreviewView: NSView {
                 continue
             }
 
-            if object.frame.contains(point) {
+            if objectContainsPoint(object, point: point) {
                 return object.id
             }
         }
@@ -475,7 +476,7 @@ final class GamepadPreviewView: NSView {
 
     private func drawButton(_ object: CanvasButtonObject) {
         let canvasFrame = canvasFrame(for: object.frame)
-        let path = NSBezierPath(roundedRect: canvasFrame, xRadius: 6, yRadius: 6)
+        let path = buttonPath(for: object.shape, in: canvasFrame)
         NSColor(hex: object.colorHex).withAlphaComponent(0.85).setFill()
         path.fill()
 
@@ -489,7 +490,7 @@ final class GamepadPreviewView: NSView {
         path.lineWidth = 2
         path.stroke()
 
-        drawSelectionGlow(in: canvasFrame)
+        drawSelectionGlow(for: object.shape, in: canvasFrame)
 
         for corner in ResizeCorner.allCases {
             drawResizeHandle(handleRect(for: corner, objectFrame: canvasFrame))
@@ -525,13 +526,41 @@ final class GamepadPreviewView: NSView {
         attributedLabel.draw(in: drawRect)
     }
 
-    private func drawSelectionGlow(in frame: CGRect) {
+    private func drawSelectionGlow(for shape: ButtonShape, in frame: CGRect) {
         NSGraphicsContext.saveGraphicsState()
         NSColor.white.withAlphaComponent(0.22).setStroke()
-        let glowPath = NSBezierPath(roundedRect: frame.insetBy(dx: -2, dy: -2), xRadius: 8, yRadius: 8)
+        let glowPath = buttonPath(for: shape, in: frame.insetBy(dx: -2, dy: -2))
         glowPath.lineWidth = 3
         glowPath.stroke()
         NSGraphicsContext.restoreGraphicsState()
+    }
+
+    private func buttonPath(for shape: ButtonShape, in frame: CGRect) -> NSBezierPath {
+        switch shape {
+        case .roundedRectangle:
+            return NSBezierPath(roundedRect: frame, xRadius: 6, yRadius: 6)
+        case .oval:
+            return NSBezierPath(ovalIn: frame)
+        }
+    }
+
+    private func objectContainsPoint(_ object: CanvasButtonObject, point: CGPoint) -> Bool {
+        guard object.frame.contains(point) else {
+            return false
+        }
+
+        switch object.shape {
+        case .roundedRectangle:
+            return true
+        case .oval:
+            guard object.frame.width > 0, object.frame.height > 0 else {
+                return false
+            }
+
+            let normalizedX = (point.x - object.frame.midX) / (object.frame.width / 2)
+            let normalizedY = (point.y - object.frame.midY) / (object.frame.height / 2)
+            return (normalizedX * normalizedX) + (normalizedY * normalizedY) <= 1
+        }
     }
 
     private func drawResizeHandle(_ rect: CGRect) {

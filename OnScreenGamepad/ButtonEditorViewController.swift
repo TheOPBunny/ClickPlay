@@ -711,6 +711,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation {
                 labelFontSize: config.labelFontSize,
                 labelBold: config.labelBold,
                 labelItalic: config.labelItalic,
+                shape: config.shape,
                 isEnabled: config.enabled,
                 isSelected: false
             )
@@ -762,6 +763,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation {
             labelFontSize: config.labelFontSize,
             labelBold: config.labelBold,
             labelItalic: config.labelItalic,
+            shape: config.shape,
             isEnabled: config.enabled,
             isSelected: false
         )
@@ -888,6 +890,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation {
                 || lhs.labelFontSize != rhs.labelFontSize
                 || lhs.labelBold != rhs.labelBold
                 || lhs.labelItalic != rhs.labelItalic
+                || lhs.shape != rhs.shape
                 || lhs.enabled != rhs.enabled
                 || lhs.interactionMode != rhs.interactionMode
         }

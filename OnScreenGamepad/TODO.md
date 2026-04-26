@@ -38,7 +38,7 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 - [x] Add multi-select for buttons using drag selection or `Cmd`-click.
 - [x] Add snapping and alignment guides.
 - [x] Add the ability to group, align, and equalize a selected group of buttons.
-- [ ] Add a circle button shape.
+- [x] Add a circle button shape.
 - [x] Make the editing window larger and scale it with the application window size.
 - [ ] Allow side panels to collapse and be resized horizontally.
 - [ ] Update `KeyRecorder` so left-click starts listening for keys and another left-click stops listening.
