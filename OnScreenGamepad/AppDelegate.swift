@@ -47,6 +47,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+        true
+    }
+
     func setupMainMenu() {
         let mainMenu = NSMenu()
         let appItem = NSMenuItem()

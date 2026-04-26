@@ -9,6 +9,7 @@ final class ButtonDetailPanel: NSView {
     private var button: GamepadButton?
 
     private let titleLabel = NSTextField(labelWithString: "Select a button")
+    private let contentStack = NSStackView()
     private let labelField = NSTextField()
     private let keyRecorder = KeyRecorderButton()
     private let colorWell = NSColorWell()
@@ -25,6 +26,7 @@ final class ButtonDetailPanel: NSView {
     private let enabledCheckbox = NSButton(checkboxWithTitle: "Enabled", target: nil, action: nil)
     private let applyButton = NSButton(title: "Apply Changes", target: nil, action: nil)
     private let deleteButton = NSButton(title: "Delete Button", target: nil, action: nil)
+    private var isCollapsed = false
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -94,8 +96,15 @@ final class ButtonDetailPanel: NSView {
         heightField.stringValue = String(format: "%.1f", height)
     }
 
+    func setCollapsed(_ collapsed: Bool) {
+        isCollapsed = collapsed
+        titleLabel.isHidden = collapsed
+        contentStack.isHidden = collapsed
+    }
+
     private func setup() {
         titleLabel.font = .boldSystemFont(ofSize: 14)
+        titleLabel.lineBreakMode = .byTruncatingTail
 
         keyRecorder.translatesAutoresizingMaskIntoConstraints = false
         keyRecorder.widthAnchor.constraint(equalToConstant: 150).isActive = true
@@ -146,32 +155,45 @@ final class ButtonDetailPanel: NSView {
         interactionModePopup.action = #selector(applyPressed)
         populateInteractionModes()
 
-        let stack = NSStackView()
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 10
-        stack.translatesAutoresizingMaskIntoConstraints = false
+        let header = NSStackView(views: [
+            titleLabel,
+            NSView(),
+        ])
+        header.orientation = .horizontal
+        header.alignment = .centerY
+        header.spacing = 6
+        header.edgeInsets = NSEdgeInsets(top: 4, left: 6, bottom: 4, right: 6)
+        header.translatesAutoresizingMaskIntoConstraints = false
 
-        stack.addArrangedSubview(titleLabel)
-        stack.addArrangedSubview(makeRow(label: "Label:", control: labelField))
-        stack.addArrangedSubview(makeLabelStyleRow())
-        stack.addArrangedSubview(makeRow(label: "Key:", control: keyRecorder))
-        stack.addArrangedSubview(makeRow(label: "Color:", control: colorWell))
-        stack.addArrangedSubview(makeRow(label: "X (px):", control: xField))
-        stack.addArrangedSubview(makeRow(label: "Y (px):", control: yField))
-        stack.addArrangedSubview(makeRow(label: "Shape:", control: shapePopup))
-        stack.addArrangedSubview(makeRow(label: "Mode:", control: interactionModePopup))
-        stack.addArrangedSubview(enabledCheckbox)
-        stack.addArrangedSubview(makeSizeRow())
-        stack.addArrangedSubview(applyButton)
-        stack.addArrangedSubview(deleteButton)
+        contentStack.orientation = .vertical
+        contentStack.alignment = .leading
+        contentStack.spacing = 10
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
 
-        addSubview(stack)
+        contentStack.addArrangedSubview(makeRow(label: "Label:", control: labelField))
+        contentStack.addArrangedSubview(makeLabelStyleRow())
+        contentStack.addArrangedSubview(makeRow(label: "Key:", control: keyRecorder))
+        contentStack.addArrangedSubview(makeRow(label: "Color:", control: colorWell))
+        contentStack.addArrangedSubview(makeRow(label: "X (px):", control: xField))
+        contentStack.addArrangedSubview(makeRow(label: "Y (px):", control: yField))
+        contentStack.addArrangedSubview(makeRow(label: "Shape:", control: shapePopup))
+        contentStack.addArrangedSubview(makeRow(label: "Mode:", control: interactionModePopup))
+        contentStack.addArrangedSubview(enabledCheckbox)
+        contentStack.addArrangedSubview(makeSizeRow())
+        contentStack.addArrangedSubview(applyButton)
+        contentStack.addArrangedSubview(deleteButton)
+
+        addSubview(header)
+        addSubview(contentStack)
 
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: 8),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            header.topAnchor.constraint(equalTo: topAnchor),
+            header.leadingAnchor.constraint(equalTo: leadingAnchor),
+            header.trailingAnchor.constraint(equalTo: trailingAnchor),
+            header.heightAnchor.constraint(equalToConstant: 32),
+            contentStack.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 8),
+            contentStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            contentStack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -8),
         ])
 
         labelField.bezelStyle = .roundedBezel
