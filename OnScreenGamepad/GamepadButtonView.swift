@@ -8,6 +8,7 @@ final class GamepadButtonView: NSView {
     private var config: ButtonConfig
     private var compatibilityModeEnabled: Bool
     private var pressedBinding: (keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)?
+    private let shapeLayer = CAShapeLayer()
     private let label = NSTextField(labelWithString: "")
     private var isPressed = false
     private var trackingArea: NSTrackingArea?
@@ -25,8 +26,9 @@ final class GamepadButtonView: NSView {
 
     private func setup() {
         wantsLayer = true
-        layer?.cornerRadius = 8
-        layer?.masksToBounds = true
+        layer?.masksToBounds = false
+        shapeLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2
+        layer?.addSublayer(shapeLayer)
 
         label.stringValue = config.resolvedDisplayLabel
         label.font = config.resolvedLabelFont
@@ -42,6 +44,11 @@ final class GamepadButtonView: NSView {
 
         updateAppearance(animated: false)
         NSLog("[Button \(button.rawValue)] Created frame will be set by parent, keyCode=\(config.keyCode)")
+    }
+
+    override func layout() {
+        super.layout()
+        updateShapePath()
     }
 
     func updateConfig(_ newConfig: ButtonConfig, compatibilityModeEnabled: Bool) {
@@ -71,6 +78,14 @@ final class GamepadButtonView: NSView {
         return true
     }
 
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard containsInteractivePoint(point) else {
+            return nil
+        }
+
+        return self
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let ta = trackingArea { removeTrackingArea(ta) }
@@ -84,6 +99,10 @@ final class GamepadButtonView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        guard containsInteractivePoint(convert(event.locationInWindow, from: nil)) else {
+            return
+        }
+
         NSLog("[Button \(button.rawValue)] mouseDown ✓")
         handlePressStarted()
     }
@@ -95,7 +114,7 @@ final class GamepadButtonView: NSView {
 
     override func mouseDragged(with event: NSEvent) {
         guard !usesToggleHold, !usesCompatibilityTap else { return }
-        let inside = bounds.contains(convert(event.locationInWindow, from: nil))
+        let inside = containsInteractivePoint(convert(event.locationInWindow, from: nil))
         if inside != isPressed { setPressed(inside) }
     }
 
@@ -171,16 +190,50 @@ final class GamepadButtonView: NSView {
         let base = NSColor(hex: config.colorHex)
         let target = isPressed ? base.withAlphaComponent(1.0) : base.withAlphaComponent(0.75)
         let scale: CGFloat = isPressed ? 0.92 : 1.0
+        updateShapePath()
         if animated {
             NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = 0.05
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                layer?.backgroundColor = target.cgColor
+                shapeLayer.fillColor = target.cgColor
                 layer?.transform = CATransform3DMakeScale(scale, scale, 1)
             }
         } else {
-            layer?.backgroundColor = target.cgColor
+            shapeLayer.fillColor = target.cgColor
             layer?.transform = CATransform3DMakeScale(scale, scale, 1)
+        }
+    }
+
+    private func updateShapePath() {
+        shapeLayer.frame = bounds
+        shapeLayer.path = buttonPath(in: bounds)
+    }
+
+    private func buttonPath(in rect: CGRect) -> CGPath {
+        switch config.shape {
+        case .roundedRectangle:
+            return CGPath(roundedRect: rect, cornerWidth: 8, cornerHeight: 8, transform: nil)
+        case .oval:
+            return CGPath(ellipseIn: rect, transform: nil)
+        }
+    }
+
+    private func containsInteractivePoint(_ point: CGPoint) -> Bool {
+        guard bounds.contains(point) else {
+            return false
+        }
+
+        switch config.shape {
+        case .roundedRectangle:
+            return true
+        case .oval:
+            guard bounds.width > 0, bounds.height > 0 else {
+                return false
+            }
+
+            let normalizedX = (point.x - bounds.midX) / (bounds.width / 2)
+            let normalizedY = (point.y - bounds.midY) / (bounds.height / 2)
+            return (normalizedX * normalizedX) + (normalizedY * normalizedY) <= 1
         }
     }
 }
