@@ -3,6 +3,7 @@ import Cocoa
 final class ConfiguratorWindowController: NSWindowController, NSWindowDelegate {
 
     var onClose: (() -> Void)?
+    private var configuratorViewController: ConfiguratorViewController?
 
     convenience init() {
         let viewController = ConfiguratorViewController()
@@ -23,6 +24,7 @@ final class ConfiguratorWindowController: NSWindowController, NSWindowDelegate {
         window.contentMinSize = NSSize(width: 760, height: 680)
 
         self.init(window: window)
+        configuratorViewController = viewController
         window.delegate = self
     }
 
@@ -43,6 +45,7 @@ final class ConfiguratorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        configuratorViewController?.savePanelLayout()
         onClose?()
     }
 
