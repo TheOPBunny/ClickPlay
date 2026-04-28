@@ -2,10 +2,11 @@ import Cocoa
 
 final class KeyRecorderButton: NSView {
 
-    var onKeyRecorded: ((Int, NSEvent.ModifierFlags) -> Void)?
+    var onKeyRecorded: (([ButtonKeyBinding]) -> Void)?
 
     private(set) var recordedCode: Int = 49
     private(set) var recordedModifiers: NSEvent.ModifierFlags = []
+    private(set) var recordedBindings: [ButtonKeyBinding] = [ButtonKeyBinding(keyCode: 49, keyModifiers: 0)]
 
     private var isRecording = false {
         didSet {
@@ -41,16 +42,23 @@ final class KeyRecorderButton: NSView {
     }
 
     func setKey(code: Int, modifiers: NSEvent.ModifierFlags = []) {
-        recordedCode = code
-        recordedModifiers = modifiers
+        setKeyBindings([ButtonKeyBinding(keyCode: code, keyModifiers: Int(modifiers.rawValue))])
+    }
+
+    func setKeyBindings(_ bindings: [ButtonKeyBinding]) {
+        recordedBindings = bindings.isEmpty ? [ButtonKeyBinding(keyCode: 49, keyModifiers: 0)] : bindings
+        recordedCode = recordedBindings[0].keyCode
+        recordedModifiers = NSEvent.ModifierFlags(rawValue: UInt(recordedBindings[0].keyModifiers))
         updateAppearance()
     }
 
     @objc private func toggleRecording() {
-        isRecording ? stopRecording() : startRecording()
+        isRecording ? stopRecording(commitPendingBindings: true) : startRecording()
     }
 
     private func startRecording() {
+        stopRecording(commitPendingBindings: false)
+        recordedBindings = []
         isRecording = true
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             self?.handleKey(event)
@@ -58,13 +66,23 @@ final class KeyRecorderButton: NSView {
         }
     }
 
-    private func stopRecording() {
+    private func stopRecording(commitPendingBindings: Bool) {
+        let capturedBindings = recordedBindings
         isRecording = false
 
         if let monitor {
             NSEvent.removeMonitor(monitor)
             self.monitor = nil
         }
+
+        guard commitPendingBindings, !capturedBindings.isEmpty else {
+            updateAppearance()
+            return
+        }
+
+        recordedCode = capturedBindings[0].keyCode
+        recordedModifiers = NSEvent.ModifierFlags(rawValue: UInt(capturedBindings[0].keyModifiers))
+        onKeyRecorded?(capturedBindings)
     }
 
     private func handleKey(_ event: NSEvent) {
@@ -73,48 +91,37 @@ final class KeyRecorderButton: NSView {
             return
         }
 
-        recordedCode = Int(event.keyCode)
-        recordedModifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
-        stopRecording()
-        onKeyRecorded?(recordedCode, recordedModifiers)
+        let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        recordedBindings.append(ButtonKeyBinding(keyCode: Int(event.keyCode), keyModifiers: Int(modifiers.rawValue)))
+        updateAppearance()
     }
 
     private func updateAppearance() {
         if isRecording {
-            button.title = "Press a key…"
+            button.title = recordedBindings.isEmpty ? "Press keys…" : displayName(for: recordedBindings)
             button.contentTintColor = .systemOrange
             return
         }
 
-        button.title = keyDisplayName(code: recordedCode, modifiers: recordedModifiers)
+        button.title = displayName(for: recordedBindings)
         button.contentTintColor = .labelColor
     }
 
-    private func keyDisplayName(code: Int, modifiers: NSEvent.ModifierFlags) -> String {
-        var parts: [String] = []
+    private func displayName(for bindings: [ButtonKeyBinding]) -> String {
+        guard bindings.count > 1 else {
+            let binding = bindings.first ?? ButtonKeyBinding(keyCode: recordedCode, keyModifiers: Int(recordedModifiers.rawValue))
+            return ButtonConfig.keyDisplayName(
+                code: binding.keyCode,
+                modifiers: NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
+            )
+        }
 
-        if modifiers.contains(.control) { parts.append("⌃") }
-        if modifiers.contains(.option) { parts.append("⌥") }
-        if modifiers.contains(.shift) { parts.append("⇧") }
-        if modifiers.contains(.command) { parts.append("⌘") }
-
-        parts.append(Self.keyName(code))
-        return parts.joined()
-    }
-
-    private static func keyName(_ code: Int) -> String {
-        let keyNames: [Int: String] = [
-            0: "A", 1: "S", 2: "D", 3: "F", 4: "H", 5: "G", 6: "Z", 7: "X", 8: "C", 9: "V",
-            11: "B", 12: "Q", 13: "W", 14: "E", 15: "R", 16: "Y", 17: "T", 31: "O", 32: "U",
-            34: "I", 35: "P", 37: "L", 38: "J", 40: "K", 45: "N", 46: "M",
-            36: "↩", 48: "⇥", 49: "Space", 51: "⌫", 53: "⎋",
-            123: "←", 124: "→", 125: "↓", 126: "↑",
-            96: "F5", 97: "F6", 98: "F7", 99: "F3", 100: "F8", 101: "F9",
-            103: "F11", 109: "F10", 111: "F12",
-            115: "Home", 116: "PgUp", 117: "Del", 119: "End", 121: "PgDn",
-        ]
-
-        return keyNames[code] ?? "key(\(code))"
+        return "[" + bindings.map { binding in
+            ButtonConfig.keyDisplayName(
+                code: binding.keyCode,
+                modifiers: NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
+            )
+        }.joined() + "]"
     }
 
     deinit {

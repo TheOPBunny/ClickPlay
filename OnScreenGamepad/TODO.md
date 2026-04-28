@@ -42,8 +42,8 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 - [x] Make the editing window larger and scale it with the application window size.
 - [o] Allow side panels to collapse and be resized horizontally.
   - Fix the empty editor space by fitting the preview canvas horizontally when it runs out of visible content.
-- [ ] Update `KeyRecorder` so left-click starts listening for keys and another left-click stops listening.
-- [ ] Allow a button to be assigned multiple keys, for example `[xxaaa]` or `[abab]`.
+- [x] Update `KeyRecorder` so left-click starts listening for keys and another left-click stops listening.
+- [x] Allow a button to be assigned multiple keys, for example `[xxaaa]` or `[abab]`.
 - [ ] If a button has multiple keys, add an option to activate them sequentially or simultaneously.
 - [x] Add a "sticky" option so pressing a button keeps it held down until pressed again.
 - [ ] Add a visual cue for buttons being toggle held.
