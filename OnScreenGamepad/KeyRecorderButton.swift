@@ -15,6 +15,7 @@ final class KeyRecorderButton: NSView {
     }
 
     private let button = NSButton()
+    private let recordingDot = NSView()
     private var monitor: Any?
 
     override init(frame: NSRect) {
@@ -25,13 +26,26 @@ final class KeyRecorderButton: NSView {
         button.action = #selector(toggleRecording)
         button.translatesAutoresizingMaskIntoConstraints = false
 
+        recordingDot.wantsLayer = true
+        recordingDot.layer?.backgroundColor = NSColor.systemRed.cgColor
+        recordingDot.layer?.cornerRadius = 4
+        recordingDot.layer?.borderColor = NSColor.white.withAlphaComponent(0.85).cgColor
+        recordingDot.layer?.borderWidth = 1
+        recordingDot.translatesAutoresizingMaskIntoConstraints = false
+        recordingDot.isHidden = true
+
         addSubview(button)
+        addSubview(recordingDot)
 
         NSLayoutConstraint.activate([
             button.topAnchor.constraint(equalTo: topAnchor),
             button.bottomAnchor.constraint(equalTo: bottomAnchor),
             button.leadingAnchor.constraint(equalTo: leadingAnchor),
             button.trailingAnchor.constraint(equalTo: trailingAnchor),
+            recordingDot.widthAnchor.constraint(equalToConstant: 8),
+            recordingDot.heightAnchor.constraint(equalToConstant: 8),
+            recordingDot.centerYAnchor.constraint(equalTo: centerYAnchor),
+            recordingDot.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -9),
         ])
 
         updateAppearance()
@@ -100,11 +114,13 @@ final class KeyRecorderButton: NSView {
         if isRecording {
             button.title = recordedBindings.isEmpty ? "Press keys…" : displayName(for: recordedBindings)
             button.contentTintColor = .systemOrange
+            recordingDot.isHidden = false
             return
         }
 
         button.title = displayName(for: recordedBindings)
         button.contentTintColor = .labelColor
+        recordingDot.isHidden = true
     }
 
     private func displayName(for bindings: [ButtonKeyBinding]) -> String {
