@@ -46,6 +46,7 @@ final class GamepadButtonView: NSView {
     private var config: ButtonConfig
     private var compatibilityModeEnabled: Bool
     private var pressedBinding: (keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)?
+    private var pressedBindings: [(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)] = []
     private let shapeLayer = CAShapeLayer()
     private let label = CenteredLabelView(frame: .zero)
     private var isPressed = false
@@ -107,6 +108,11 @@ final class GamepadButtonView: NSView {
         sequenceRepeatWorkItem = nil
 
         guard let pressedBinding else {
+            if !pressedBindings.isEmpty {
+                releasePressedBindings()
+                return
+            }
+
             if hadSequentialRepeat || hadScheduledVisualRelease {
                 isPressed = false
                 updateAppearance(animated: false)
@@ -163,13 +169,15 @@ final class GamepadButtonView: NSView {
     override func mouseDragged(with event: NSEvent) {
         guard !usesSequentialMultiKey, !usesToggleHold, !usesCompatibilityTap else { return }
         let inside = containsInteractivePoint(convert(event.locationInWindow, from: nil))
-        if inside != isPressed { setPressed(inside) }
+        if inside != isPressed {
+            setCurrentPressed(inside)
+        }
     }
 
     override func mouseExited(with event: NSEvent) {
         NSLog("[Button \(button.rawValue)] mouseExited")
         guard !usesSequentialMultiKey, !usesToggleHold, !usesCompatibilityTap else { return }
-        if isPressed { setPressed(false) }
+        if isPressed { setCurrentPressed(false) }
     }
 
     private var usesToggleHold: Bool {
@@ -184,6 +192,10 @@ final class GamepadButtonView: NSView {
         config.keyBindings.count > 1 && config.multiKeyActivationMode == .sequential
     }
 
+    private var usesSimultaneousMultiKey: Bool {
+        config.keyBindings.count > 1 && config.multiKeyActivationMode == .simultaneous
+    }
+
     private func handlePressStarted() {
         if usesSequentialMultiKey {
             if usesToggleHold {
@@ -192,6 +204,22 @@ final class GamepadButtonView: NSView {
             }
 
             playSequentialBindings()
+            return
+        }
+
+        if usesSimultaneousMultiKey {
+            if usesToggleHold {
+                setSimultaneousPressed(!isPressed)
+                return
+            }
+
+            if usesCompatibilityTap {
+                setSimultaneousPressed(true)
+                scheduleCompatibilityRelease()
+                return
+            }
+
+            setSimultaneousPressed(true)
             return
         }
 
@@ -211,6 +239,12 @@ final class GamepadButtonView: NSView {
 
     private func handlePressEnded() {
         guard !usesSequentialMultiKey, !usesToggleHold, !usesCompatibilityTap else { return }
+
+        if usesSimultaneousMultiKey {
+            setSimultaneousPressed(false)
+            return
+        }
+
         setPressed(false)
     }
 
@@ -218,7 +252,7 @@ final class GamepadButtonView: NSView {
         autoReleaseWorkItem?.cancel()
 
         let workItem = DispatchWorkItem { [weak self] in
-            self?.setPressed(false)
+            self?.setCurrentPressed(false)
         }
         autoReleaseWorkItem = workItem
 
@@ -306,6 +340,54 @@ final class GamepadButtonView: NSView {
             autoReleaseWorkItem?.cancel()
             autoReleaseWorkItem = nil
         }
+        updateAppearance(animated: true)
+    }
+
+    private func setCurrentPressed(_ pressed: Bool) {
+        if usesSimultaneousMultiKey {
+            setSimultaneousPressed(pressed)
+        } else {
+            setPressed(pressed)
+        }
+    }
+
+    private func setSimultaneousPressed(_ pressed: Bool) {
+        guard pressed != isPressed else { return }
+        isPressed = pressed
+        NSLog("[Button \(button.rawValue)] setSimultaneousPressed=\(pressed) keyBindings=\(config.keyBindings.map(\.keyCode)) mode=\(config.interactionMode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
+
+        if pressed {
+            var seenBindings = Set<ButtonKeyBinding>()
+            pressedBindings = config.keyBindings.compactMap { binding in
+                guard seenBindings.insert(binding).inserted else {
+                    return nil
+                }
+
+                return (
+                    keyCode: CGKeyCode(binding.keyCode),
+                    modifiers: NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
+                )
+            }
+
+            for binding in pressedBindings {
+                KeyInjector.shared.pressRaw(binding.keyCode, modifiers: binding.modifiers)
+            }
+        } else {
+            releasePressedBindings()
+        }
+
+        updateAppearance(animated: true)
+    }
+
+    private func releasePressedBindings() {
+        for binding in pressedBindings.reversed() {
+            KeyInjector.shared.releaseRaw(binding.keyCode, modifiers: binding.modifiers)
+        }
+
+        pressedBindings = []
+        isPressed = false
+        autoReleaseWorkItem?.cancel()
+        autoReleaseWorkItem = nil
         updateAppearance(animated: true)
     }
 

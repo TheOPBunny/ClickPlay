@@ -23,6 +23,8 @@ final class ButtonDetailPanel: NSView {
     private let heightField = NSTextField()
     private let shapePopup = NSPopUpButton()
     private let interactionModePopup = NSPopUpButton()
+    private let multiKeyActivationModePopup = NSPopUpButton()
+    private var multiKeyActivationModeRow: NSStackView?
     private let enabledCheckbox = NSButton(checkboxWithTitle: "Enabled", target: nil, action: nil)
     private let applyButton = NSButton(title: "Apply Changes", target: nil, action: nil)
     private let deleteButton = NSButton(title: "Delete Button", target: nil, action: nil)
@@ -47,6 +49,8 @@ final class ButtonDetailPanel: NSView {
         labelItalicCheckbox.state = .off
         shapePopup.selectItem(withTag: ButtonShape.roundedRectangle.tag)
         interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
+        multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
+        updateMultiKeyActivationModeVisibility()
         applyButton.isEnabled = false
         deleteButton.isEnabled = false
     }
@@ -69,6 +73,8 @@ final class ButtonDetailPanel: NSView {
         shapePopup.selectItem(withTag: config.shape.tag)
         enabledCheckbox.state = config.enabled ? .on : .off
         interactionModePopup.selectItem(withTag: config.interactionMode.tag)
+        multiKeyActivationModePopup.selectItem(withTag: config.multiKeyActivationMode.tag)
+        updateMultiKeyActivationModeVisibility()
         keyRecorder.setKeyBindings(config.keyBindings)
     }
 
@@ -150,6 +156,9 @@ final class ButtonDetailPanel: NSView {
         interactionModePopup.target = self
         interactionModePopup.action = #selector(applyPressed)
         populateInteractionModes()
+        multiKeyActivationModePopup.target = self
+        multiKeyActivationModePopup.action = #selector(applyPressed)
+        populateMultiKeyActivationModes()
 
         let header = NSStackView(views: [
             titleLabel,
@@ -174,6 +183,9 @@ final class ButtonDetailPanel: NSView {
         contentStack.addArrangedSubview(makeRow(label: "Y (px):", control: yField))
         contentStack.addArrangedSubview(makeRow(label: "Shape:", control: shapePopup))
         contentStack.addArrangedSubview(makeRow(label: "Mode:", control: interactionModePopup))
+        let multiKeyRow = makeRow(label: "Keys:", control: multiKeyActivationModePopup)
+        multiKeyActivationModeRow = multiKeyRow
+        contentStack.addArrangedSubview(multiKeyRow)
         contentStack.addArrangedSubview(enabledCheckbox)
         contentStack.addArrangedSubview(makeSizeRow())
         contentStack.addArrangedSubview(applyButton)
@@ -290,6 +302,17 @@ final class ButtonDetailPanel: NSView {
         interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
     }
 
+    private func populateMultiKeyActivationModes() {
+        multiKeyActivationModePopup.removeAllItems()
+
+        for mode in MultiKeyActivationMode.allCases {
+            multiKeyActivationModePopup.addItem(withTitle: mode.displayName)
+            multiKeyActivationModePopup.lastItem?.tag = mode.tag
+        }
+
+        multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
+    }
+
     private func populateShapes() {
         shapePopup.removeAllItems()
 
@@ -319,8 +342,10 @@ final class ButtonDetailPanel: NSView {
         config.shape = ButtonShape(tag: shapePopup.selectedTag()) ?? .roundedRectangle
         config.enabled = enabledCheckbox.state == .on
         config.interactionMode = ButtonInteractionMode(tag: interactionModePopup.selectedTag()) ?? .momentary
+        config.multiKeyActivationMode = MultiKeyActivationMode(tag: multiKeyActivationModePopup.selectedTag()) ?? .sequential
 
         self.config = config
+        updateMultiKeyActivationModeVisibility()
         onChanged?(button, config)
     }
 
@@ -333,6 +358,13 @@ final class ButtonDetailPanel: NSView {
         config?.keyCode = bindings[0].keyCode
         config?.keyModifiers = bindings[0].keyModifiers
         config?.multiKeyActivationMode = .sequential
+        multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
+        updateMultiKeyActivationModeVisibility(for: bindings)
+    }
+
+    private func updateMultiKeyActivationModeVisibility(for bindings: [ButtonKeyBinding]? = nil) {
+        let currentBindings = bindings ?? config?.keyBindings ?? []
+        multiKeyActivationModeRow?.isHidden = currentBindings.count <= 1
     }
 
     private func clampedLabelSize(from stringValue: String, fallback: Double) -> Double {
@@ -422,6 +454,41 @@ private extension ButtonInteractionMode {
             self = .momentary
         case 1:
             self = .toggleHold
+        default:
+            return nil
+        }
+    }
+}
+
+private extension MultiKeyActivationMode {
+    static var allCases: [MultiKeyActivationMode] {
+        [.sequential, .simultaneous]
+    }
+
+    var displayName: String {
+        switch self {
+        case .sequential:
+            return "Sequential"
+        case .simultaneous:
+            return "Simultaneous"
+        }
+    }
+
+    var tag: Int {
+        switch self {
+        case .sequential:
+            return 0
+        case .simultaneous:
+            return 1
+        }
+    }
+
+    init?(tag: Int) {
+        switch tag {
+        case 0:
+            self = .sequential
+        case 1:
+            self = .simultaneous
         default:
             return nil
         }
