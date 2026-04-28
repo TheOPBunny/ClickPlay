@@ -47,7 +47,7 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 - [x] If a button has multiple keys, add an option to activate them sequentially or simultaneously.
 - [x] Add a "sticky" option so pressing a button keeps it held down until pressed again.
 - [ ] Add a visual cue for buttons being toggle held.
-- [ ] Add a "turbo" option so pressing a button repeatedly sends its key until pressed again.
+- [x] Add a "turbo" option so pressing a button repeatedly sends its key until pressed again.
 - [x] Center text on buttons.
 - [ ] Investigate whether macOS Accessibility dwell actions can be activated.
 - [x] If a label is empty, use the key as the label.

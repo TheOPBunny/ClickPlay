@@ -427,7 +427,7 @@ private extension ButtonShape {
 
 private extension ButtonInteractionMode {
     static var allCases: [ButtonInteractionMode] {
-        [.momentary, .toggleHold]
+        [.momentary, .toggleHold, .turbo]
     }
 
     var displayName: String {
@@ -436,6 +436,8 @@ private extension ButtonInteractionMode {
             return "Momentary"
         case .toggleHold:
             return "Toggle Hold"
+        case .turbo:
+            return "Turbo"
         }
     }
 
@@ -445,6 +447,8 @@ private extension ButtonInteractionMode {
             return 0
         case .toggleHold:
             return 1
+        case .turbo:
+            return 2
         }
     }
 
@@ -454,6 +458,8 @@ private extension ButtonInteractionMode {
             self = .momentary
         case 1:
             self = .toggleHold
+        case 2:
+            self = .turbo
         default:
             return nil
         }

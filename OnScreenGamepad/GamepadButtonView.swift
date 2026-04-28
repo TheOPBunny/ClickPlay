@@ -167,7 +167,7 @@ final class GamepadButtonView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard !usesSequentialMultiKey, !usesToggleHold, !usesCompatibilityTap else { return }
+        guard !usesTurbo, !usesSequentialMultiKey, !usesToggleHold, !usesCompatibilityTap else { return }
         let inside = containsInteractivePoint(convert(event.locationInWindow, from: nil))
         if inside != isPressed {
             setCurrentPressed(inside)
@@ -176,12 +176,16 @@ final class GamepadButtonView: NSView {
 
     override func mouseExited(with event: NSEvent) {
         NSLog("[Button \(button.rawValue)] mouseExited")
-        guard !usesSequentialMultiKey, !usesToggleHold, !usesCompatibilityTap else { return }
+        guard !usesTurbo, !usesSequentialMultiKey, !usesToggleHold, !usesCompatibilityTap else { return }
         if isPressed { setCurrentPressed(false) }
     }
 
     private var usesToggleHold: Bool {
         config.interactionMode == .toggleHold
+    }
+
+    private var usesTurbo: Bool {
+        config.interactionMode == .turbo
     }
 
     private var usesCompatibilityTap: Bool {
@@ -197,6 +201,11 @@ final class GamepadButtonView: NSView {
     }
 
     private func handlePressStarted() {
+        if usesTurbo {
+            toggleTurboRepeat()
+            return
+        }
+
         if usesSequentialMultiKey {
             if usesToggleHold {
                 toggleSequentialRepeat()
@@ -238,7 +247,7 @@ final class GamepadButtonView: NSView {
     }
 
     private func handlePressEnded() {
-        guard !usesSequentialMultiKey, !usesToggleHold, !usesCompatibilityTap else { return }
+        guard !usesTurbo, !usesSequentialMultiKey, !usesToggleHold, !usesCompatibilityTap else { return }
 
         if usesSimultaneousMultiKey {
             setSimultaneousPressed(false)
@@ -289,6 +298,18 @@ final class GamepadButtonView: NSView {
         repeatSequentialBindings()
     }
 
+    private func toggleTurboRepeat() {
+        if sequenceRepeatWorkItem != nil {
+            stopTurboRepeat()
+            return
+        }
+
+        isPressed = true
+        updateAppearance(animated: true)
+        NSLog("[Button \(button.rawValue)] startTurboRepeat keyBindings=\(config.keyBindings.map(\.keyCode)) activationMode=\(config.multiKeyActivationMode.rawValue)")
+        repeatTurboActivation()
+    }
+
     private func repeatSequentialBindings() {
         postSequentialBindings()
 
@@ -314,12 +335,67 @@ final class GamepadButtonView: NSView {
         NSLog("[Button \(button.rawValue)] stopSequentialRepeat")
     }
 
+    private func repeatTurboActivation() {
+        postTurboActivation()
+
+        var workItem: DispatchWorkItem?
+        workItem = DispatchWorkItem { [weak self] in
+            guard workItem?.isCancelled == false else {
+                return
+            }
+
+            self?.repeatTurboActivation()
+        }
+        if let workItem {
+            sequenceRepeatWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration, execute: workItem)
+        }
+    }
+
+    private func stopTurboRepeat() {
+        sequenceRepeatWorkItem?.cancel()
+        sequenceRepeatWorkItem = nil
+        isPressed = false
+        updateAppearance(animated: true)
+        NSLog("[Button \(button.rawValue)] stopTurboRepeat")
+    }
+
     private func postSequentialBindings() {
         for binding in config.keyBindings {
             let keyCode = CGKeyCode(binding.keyCode)
             let modifiers = NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
             KeyInjector.shared.pressRaw(keyCode, modifiers: modifiers)
             KeyInjector.shared.releaseRaw(keyCode, modifiers: modifiers)
+        }
+    }
+
+    private func postTurboActivation() {
+        if usesSimultaneousMultiKey {
+            postSimultaneousTap()
+            return
+        }
+
+        if usesSequentialMultiKey {
+            postSequentialBindings()
+            return
+        }
+
+        let binding = config.keyBindings.first ?? ButtonKeyBinding(keyCode: config.keyCode, keyModifiers: config.keyModifiers)
+        let keyCode = CGKeyCode(binding.keyCode)
+        let modifiers = NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
+        KeyInjector.shared.pressRaw(keyCode, modifiers: modifiers)
+        KeyInjector.shared.releaseRaw(keyCode, modifiers: modifiers)
+    }
+
+    private func postSimultaneousTap() {
+        let bindings = uniqueInputBindings()
+
+        for binding in bindings {
+            KeyInjector.shared.pressRaw(binding.keyCode, modifiers: binding.modifiers)
+        }
+
+        for binding in bindings.reversed() {
+            KeyInjector.shared.releaseRaw(binding.keyCode, modifiers: binding.modifiers)
         }
     }
 
@@ -357,17 +433,7 @@ final class GamepadButtonView: NSView {
         NSLog("[Button \(button.rawValue)] setSimultaneousPressed=\(pressed) keyBindings=\(config.keyBindings.map(\.keyCode)) mode=\(config.interactionMode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
 
         if pressed {
-            var seenBindings = Set<ButtonKeyBinding>()
-            pressedBindings = config.keyBindings.compactMap { binding in
-                guard seenBindings.insert(binding).inserted else {
-                    return nil
-                }
-
-                return (
-                    keyCode: CGKeyCode(binding.keyCode),
-                    modifiers: NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
-                )
-            }
+            pressedBindings = uniqueInputBindings()
 
             for binding in pressedBindings {
                 KeyInjector.shared.pressRaw(binding.keyCode, modifiers: binding.modifiers)
@@ -389,6 +455,20 @@ final class GamepadButtonView: NSView {
         autoReleaseWorkItem?.cancel()
         autoReleaseWorkItem = nil
         updateAppearance(animated: true)
+    }
+
+    private func uniqueInputBindings() -> [(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)] {
+        var seenBindings = Set<ButtonKeyBinding>()
+        return config.keyBindings.compactMap { binding in
+            guard seenBindings.insert(binding).inserted else {
+                return nil
+            }
+
+            return (
+                keyCode: CGKeyCode(binding.keyCode),
+                modifiers: NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
+            )
+        }
     }
 
     deinit {

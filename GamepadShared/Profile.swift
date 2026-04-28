@@ -3,6 +3,7 @@ import Foundation
 enum ButtonInteractionMode: String, Codable {
     case momentary
     case toggleHold
+    case turbo
 }
 
 enum ButtonShape: String, Codable {
