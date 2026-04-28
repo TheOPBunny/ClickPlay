@@ -51,6 +51,7 @@ final class GamepadButtonView: NSView {
     private var isPressed = false
     private var trackingArea: NSTrackingArea?
     private var autoReleaseWorkItem: DispatchWorkItem?
+    private var sequenceRepeatWorkItem: DispatchWorkItem?
 
     init(button: GamepadButton, config: ButtonConfig, compatibilityModeEnabled: Bool) {
         self.button = button
@@ -98,10 +99,20 @@ final class GamepadButtonView: NSView {
     }
 
     func releaseIfNeeded() {
+        let hadSequentialRepeat = sequenceRepeatWorkItem != nil
+        let hadScheduledVisualRelease = autoReleaseWorkItem != nil
         autoReleaseWorkItem?.cancel()
         autoReleaseWorkItem = nil
+        sequenceRepeatWorkItem?.cancel()
+        sequenceRepeatWorkItem = nil
 
-        guard let pressedBinding else { return }
+        guard let pressedBinding else {
+            if hadSequentialRepeat || hadScheduledVisualRelease {
+                isPressed = false
+                updateAppearance(animated: false)
+            }
+            return
+        }
 
         KeyInjector.shared.releaseRaw(pressedBinding.keyCode, modifiers: pressedBinding.modifiers)
         self.pressedBinding = nil
@@ -175,6 +186,11 @@ final class GamepadButtonView: NSView {
 
     private func handlePressStarted() {
         if usesSequentialMultiKey {
+            if usesToggleHold {
+                toggleSequentialRepeat()
+                return
+            }
+
             playSequentialBindings()
             return
         }
@@ -216,12 +232,7 @@ final class GamepadButtonView: NSView {
         updateAppearance(animated: true)
 
         NSLog("[Button \(button.rawValue)] playSequential keyBindings=\(config.keyBindings.map(\.keyCode)) mode=\(config.interactionMode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
-        for binding in config.keyBindings {
-            let keyCode = CGKeyCode(binding.keyCode)
-            let modifiers = NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
-            KeyInjector.shared.pressRaw(keyCode, modifiers: modifiers)
-            KeyInjector.shared.releaseRaw(keyCode, modifiers: modifiers)
-        }
+        postSequentialBindings()
 
         let workItem = DispatchWorkItem { [weak self] in
             self?.isPressed = false
@@ -230,6 +241,52 @@ final class GamepadButtonView: NSView {
         }
         autoReleaseWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration, execute: workItem)
+    }
+
+    private func toggleSequentialRepeat() {
+        if sequenceRepeatWorkItem != nil {
+            stopSequentialRepeat()
+            return
+        }
+
+        isPressed = true
+        updateAppearance(animated: true)
+        NSLog("[Button \(button.rawValue)] startSequentialRepeat keyBindings=\(config.keyBindings.map(\.keyCode))")
+        repeatSequentialBindings()
+    }
+
+    private func repeatSequentialBindings() {
+        postSequentialBindings()
+
+        var workItem: DispatchWorkItem?
+        workItem = DispatchWorkItem { [weak self] in
+            guard workItem?.isCancelled == false else {
+                return
+            }
+
+            self?.repeatSequentialBindings()
+        }
+        if let workItem {
+            sequenceRepeatWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration, execute: workItem)
+        }
+    }
+
+    private func stopSequentialRepeat() {
+        sequenceRepeatWorkItem?.cancel()
+        sequenceRepeatWorkItem = nil
+        isPressed = false
+        updateAppearance(animated: true)
+        NSLog("[Button \(button.rawValue)] stopSequentialRepeat")
+    }
+
+    private func postSequentialBindings() {
+        for binding in config.keyBindings {
+            let keyCode = CGKeyCode(binding.keyCode)
+            let modifiers = NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
+            KeyInjector.shared.pressRaw(keyCode, modifiers: modifiers)
+            KeyInjector.shared.releaseRaw(keyCode, modifiers: modifiers)
+        }
     }
 
     private func setPressed(_ pressed: Bool) {
