@@ -2,6 +2,9 @@ import Cocoa
 
 final class ConfiguratorWindowController: NSWindowController, NSWindowDelegate {
 
+    var onClose: (() -> Void)?
+    private var configuratorViewController: ConfiguratorViewController?
+
     convenience init() {
         let viewController = ConfiguratorViewController()
         let window = NSWindow(
@@ -18,9 +21,10 @@ final class ConfiguratorWindowController: NSWindowController, NSWindowDelegate {
         window.collectionBehavior = [.moveToActiveSpace]
         window.tabbingMode = .disallowed
         window.setFrameAutosaveName("ConfiguratorWindow")
-        window.contentMinSize = NSSize(width: 980, height: 680)
+        window.contentMinSize = NSSize(width: 760, height: 680)
 
         self.init(window: window)
+        configuratorViewController = viewController
         window.delegate = self
     }
 
@@ -40,7 +44,16 @@ final class ConfiguratorWindowController: NSWindowController, NSWindowDelegate {
         activateEditorApp()
     }
 
+    func windowWillClose(_ notification: Notification) {
+        flushPanelLayoutDefaults()
+        onClose?()
+    }
+
+    func flushPanelLayoutDefaults() {
+        configuratorViewController?.flushPanelLayoutDefaults()
+    }
+
     private func activateEditorApp() {
-        NSRunningApplication.current.activate(options: [.activateIgnoringOtherApps])
+        NSApp.activate(ignoringOtherApps: true)
     }
 }

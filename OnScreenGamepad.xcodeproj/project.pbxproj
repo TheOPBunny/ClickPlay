@@ -14,6 +14,7 @@
 		108EF0E02F984826009EFAAA /* GamepadPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108EF0DF2F984826009EFAAA /* GamepadPreviewView.swift */; };
 		108EF0E22F9848B2009EFAAA /* ProfileListViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108EF0E12F9848B2009EFAAA /* ProfileListViewController.swift */; };
 		108EF0E42F984A0B009EFAAA /* ButtonEditorViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108EF0E32F984A0B009EFAAA /* ButtonEditorViewController.swift */; };
+		10A1B0002F9D000000000001 /* SidebarToggleButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A1B0002F9D000000000000 /* SidebarToggleButton.swift */; };
 		A000 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = B000 /* main.swift */; };
 		A001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B001 /* AppDelegate.swift */; };
 		A002 /* ../GamepadShared/KeyMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = B002 /* ../GamepadShared/KeyMapping.swift */; };
@@ -33,6 +34,7 @@
 		108EF0DF2F984826009EFAAA /* GamepadPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamepadPreviewView.swift; sourceTree = "<group>"; };
 		108EF0E12F9848B2009EFAAA /* ProfileListViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileListViewController.swift; sourceTree = "<group>"; };
 		108EF0E32F984A0B009EFAAA /* ButtonEditorViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ButtonEditorViewController.swift; sourceTree = "<group>"; };
+		10A1B0002F9D000000000000 /* SidebarToggleButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarToggleButton.swift; sourceTree = "<group>"; };
 		B000 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		B001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		B002 /* ../GamepadShared/KeyMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../GamepadShared/KeyMapping.swift; sourceTree = "<group>"; };
@@ -79,6 +81,7 @@
 				108EF0DF2F984826009EFAAA /* GamepadPreviewView.swift */,
 				108EF0E12F9848B2009EFAAA /* ProfileListViewController.swift */,
 				108EF0E32F984A0B009EFAAA /* ButtonEditorViewController.swift */,
+				10A1B0002F9D000000000000 /* SidebarToggleButton.swift */,
 			);
 			path = OnScreenGamepad;
 			sourceTree = "<group>";
@@ -178,6 +181,7 @@
 				108EF0DC2F984329009EFAAA /* KeyRecorderButton.swift in Sources */,
 				A004 /* GamepadButtonView.swift in Sources */,
 				108EF0E42F984A0B009EFAAA /* ButtonEditorViewController.swift in Sources */,
+				10A1B0002F9D000000000001 /* SidebarToggleButton.swift in Sources */,
 				A005 /* GamepadContentView.swift in Sources */,
 				A006 /* GamepadWindow.swift in Sources */,
 				A007 /* ../GamepadShared/Profile.swift in Sources */,
@@ -239,7 +243,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.4;
+				MARKETING_VERSION = 0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.Hassan.OnScreenGamepad;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -290,7 +294,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.4;
+				MARKETING_VERSION = 0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.Hassan.OnScreenGamepad;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";

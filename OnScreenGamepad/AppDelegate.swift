@@ -4,12 +4,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     var gamepadWindow: GamepadWindow?
     var statusItem: NSStatusItem?
-    private lazy var configuratorWindowController = ConfiguratorWindowController()
+    private var configuratorWindowController: ConfiguratorWindowController?
     private let supportedOpacityValues: [Double] = [0.25, 0.4, 0.55, 0.7, 0.85, 1.0]
+    private var lastActiveNonSelfApplication: NSRunningApplication?
+    private var workspaceActivationObserver: NSObjectProtocol?
+
+    deinit {
+        if let workspaceActivationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(workspaceActivationObserver)
+        }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
+        NSApp.setActivationPolicy(.regular)
+        setupMainMenu()
         setupStatusBar()
+        startTrackingActiveApplications()
 
         // AXIsProcessTrusted() — NO prompt, just checks current state.
         // NOTE: If you see a re-prompt after every build, it's because Xcode's
@@ -29,6 +39,60 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
             pollForPermission()
         }
+    }
+
+    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+        true
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        configuratorWindowController?.flushPanelLayoutDefaults()
+    }
+
+    func setupMainMenu() {
+        let mainMenu = NSMenu()
+        let appItem = NSMenuItem()
+        let editItem = NSMenuItem()
+        mainMenu.addItem(appItem)
+        mainMenu.addItem(editItem)
+
+        let appMenu = NSMenu(title: "OnScreenGamepad")
+        appMenu.addItem(
+            NSMenuItem(
+                title: "Quit OnScreenGamepad",
+                action: #selector(NSApplication.terminate(_:)),
+                keyEquivalent: "q"
+            )
+        )
+        appItem.submenu = appMenu
+
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
+        let redoItem = NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        redoItem.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(redoItem)
+        editMenu.addItem(NSMenuItem.separator())
+        editMenu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(NSMenuItem(title: "Delete", action: NSSelectorFromString("delete:"), keyEquivalent: "\u{8}"))
+        editMenu.addItem(NSMenuItem.separator())
+        editMenu.addItem(NSMenuItem(title: "Align Left", action: NSSelectorFromString("alignLeft:"), keyEquivalent: ""))
+        editMenu.addItem(NSMenuItem(title: "Align Center X", action: NSSelectorFromString("alignCenterX:"), keyEquivalent: ""))
+        editMenu.addItem(NSMenuItem(title: "Align Right", action: NSSelectorFromString("alignRight:"), keyEquivalent: ""))
+        editMenu.addItem(NSMenuItem(title: "Align Top", action: NSSelectorFromString("alignTop:"), keyEquivalent: ""))
+        editMenu.addItem(NSMenuItem(title: "Align Center Y", action: NSSelectorFromString("alignCenterY:"), keyEquivalent: ""))
+        editMenu.addItem(NSMenuItem(title: "Align Bottom", action: NSSelectorFromString("alignBottom:"), keyEquivalent: ""))
+        editMenu.addItem(NSMenuItem.separator())
+        editMenu.addItem(NSMenuItem(title: "Distribute Horizontally", action: NSSelectorFromString("distributeHorizontally:"), keyEquivalent: ""))
+        editMenu.addItem(NSMenuItem(title: "Distribute Vertically", action: NSSelectorFromString("distributeVertically:"), keyEquivalent: ""))
+        editMenu.addItem(NSMenuItem.separator())
+        editMenu.addItem(NSMenuItem(title: "Equalize Widths", action: NSSelectorFromString("equalizeWidths:"), keyEquivalent: ""))
+        editMenu.addItem(NSMenuItem(title: "Equalize Heights", action: NSSelectorFromString("equalizeHeights:"), keyEquivalent: ""))
+        editMenu.addItem(NSMenuItem(title: "Equalize Both", action: NSSelectorFromString("equalizeBoth:"), keyEquivalent: ""))
+        editItem.submenu = editMenu
+
+        NSApp.mainMenu = mainMenu
     }
 
     func setupStatusBar() {
@@ -224,9 +288,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func showConfigurator() {
-        DispatchQueue.main.async { [weak self] in
-            self?.configuratorWindowController.showEditorWindow()
-        }
+        updateLastActiveApplicationIfNeeded(NSWorkspace.shared.frontmostApplication)
+        getConfiguratorWindowController().showEditorWindow()
     }
 
     @objc func openAccessibility() {
@@ -248,5 +311,47 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         default:
             return false
         }
+    }
+
+    private func startTrackingActiveApplications() {
+        updateLastActiveApplicationIfNeeded(NSWorkspace.shared.frontmostApplication)
+
+        workspaceActivationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            self?.updateLastActiveApplicationIfNeeded(application)
+        }
+    }
+
+    private func updateLastActiveApplicationIfNeeded(_ application: NSRunningApplication?) {
+        guard let application, application.processIdentifier != NSRunningApplication.current.processIdentifier else {
+            return
+        }
+
+        lastActiveNonSelfApplication = application
+    }
+
+    private func restorePreviousApplicationFocus() {
+        guard let application = lastActiveNonSelfApplication, !application.isTerminated else {
+            return
+        }
+
+        application.activate(options: [.activateIgnoringOtherApps])
+    }
+
+    private func getConfiguratorWindowController() -> ConfiguratorWindowController {
+        if let configuratorWindowController {
+            return configuratorWindowController
+        }
+
+        let controller = ConfiguratorWindowController()
+        controller.onClose = { [weak self] in
+            self?.restorePreviousApplicationFocus()
+        }
+        configuratorWindowController = controller
+        return controller
     }
 }

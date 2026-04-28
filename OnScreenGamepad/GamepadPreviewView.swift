@@ -1,29 +1,92 @@
 import Cocoa
 
-final class GamepadPreviewView: NSView {
+struct CanvasButtonObject {
+    let id: GamepadButton
+    var frame: CGRect
+    var label: String
+    var colorHex: String
+    var labelFontSize: Double
+    var labelBold: Bool
+    var labelItalic: Bool
+    var shape: ButtonShape
+    var isEnabled: Bool
+    var isSelected: Bool
+}
 
-    var onButtonSelected: ((GamepadButton) -> Void)?
-    var onButtonMoved: ((GamepadButton, Double, Double) -> Void)?
-    var onButtonResized: ((GamepadButton, Double, Double) -> Void)?
-    var maximumWorkspaceSize = CGSize(width: 1000, height: 1000)
-    var usesCenteredOrigin = false
+struct ButtonEditorGeometry {
+    var centerX: Double
+    var centerY: Double
+    var width: Double
+    var height: Double
+    var anchoredResize: AnchoredButtonResize?
+}
 
-    private var buttonLayers: [GamepadButton: CALayer] = [:]
-    private var handleLayers: [GamepadButton: CALayer] = [:]
-    private var selectedButton: GamepadButton?
-    private var profile = ProfileStore.shared.activeProfile
-    private var lastRenderedSize: CGSize = .zero
+struct AnchoredButtonResize {
+    var anchorX: Double
+    var anchorY: Double
+    var resizesFromLeft: Bool
+    var resizesFromBottom: Bool
+}
 
-    private enum DragMode {
-        case move
-        case resizeBottomRight
+struct CanvasAlignmentGuide: Equatable {
+    enum Orientation {
+        case vertical
+        case horizontal
     }
 
-    private var dragMode: DragMode = .move
-    private var dragButton: GamepadButton?
-    private var dragStartMouse: CGPoint = .zero
-    private var dragStartButtonCenter: CGPoint = .zero
-    private var dragStartButtonSize: CGSize = .zero
+    var orientation: Orientation
+    var position: CGFloat
+}
+
+struct CanvasGeometryChangeResult {
+    var geometries: [GamepadButton: ButtonEditorGeometry]
+    var guides: [CanvasAlignmentGuide]
+}
+
+enum ResizeCorner: CaseIterable {
+    case topLeft
+    case topRight
+    case bottomLeft
+    case bottomRight
+
+    var cursor: NSCursor {
+        switch self {
+        case .topLeft, .bottomRight:
+            return .diagonalResizeNorthWestSouthEast
+        case .topRight, .bottomLeft:
+            return .diagonalResizeNorthEastSouthWest
+        }
+    }
+}
+
+enum CanvasDragState {
+    case none
+    case move(ids: Set<GamepadButton>, startFrames: [GamepadButton: CGRect], startMouse: CGPoint)
+    case resize(id: GamepadButton, corner: ResizeCorner, startFrame: CGRect, startMouse: CGPoint)
+    case marqueeSelect(start: CGPoint, current: CGPoint)
+}
+
+final class GamepadPreviewView: NSView {
+
+    var onSelectionChanged: ((Set<GamepadButton>) -> Void)?
+    var onGeometryChanged: (([GamepadButton: ButtonEditorGeometry]) -> CanvasGeometryChangeResult)?
+    var onGeometryChangeCompleted: ((_ before: [GamepadButton: CGRect], _ after: [GamepadButton: CGRect]) -> Void)?
+    var maximumWorkspaceSize = CGSize(width: 1000, height: 1000)
+    var workspaceOrigin = CGPoint.zero {
+        didSet {
+            needsDisplay = true
+            window?.invalidateCursorRects(for: self)
+        }
+    }
+    var usesCenteredOrigin = false {
+        didSet { needsDisplay = true }
+    }
+
+    private var objects: [CanvasButtonObject] = []
+    private var selectedIDs = Set<GamepadButton>()
+    private var dragState: CanvasDragState = .none
+    private var currentDragStartFrames: [GamepadButton: CGRect] = [:]
+    private var alignmentGuides: [CanvasAlignmentGuide] = []
 
     private let handleSize: CGFloat = 8
 
@@ -31,393 +94,629 @@ final class GamepadPreviewView: NSView {
         super.init(frame: frame)
         wantsLayer = true
         layer?.backgroundColor = NSColor.clear.cgColor
+        postsFrameChangedNotifications = true
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
-    func reload(profile: Profile, keepSelection: Bool) {
-        let previousSelection = keepSelection ? selectedButton : nil
-        let shouldRebuild = bounds.size != lastRenderedSize
-        self.profile = profile
-        lastRenderedSize = bounds.size
-
-        if shouldRebuild {
-            rebuildLayers()
-        } else {
-            updateExistingLayers()
-        }
-
-        highlight(previousSelection)
+    override var acceptsFirstResponder: Bool {
+        true
     }
 
-    func syncConfig(_ config: ButtonConfig, for button: GamepadButton) {
-        profile.buttons[button.rawValue] = config
+    func reload(objects: [CanvasButtonObject], keepSelection: Bool) {
+        let retainedSelection = keepSelection ? selectedIDs : []
+        self.objects = objects
+        selectedIDs = Set(objects.map(\.id)).intersection(retainedSelection)
+        syncObjectSelection()
+        needsDisplay = true
+        window?.invalidateCursorRects(for: self)
     }
 
-    private func rebuildLayers() {
-        buttonLayers.values.forEach { $0.removeFromSuperlayer() }
-        handleLayers.values.forEach { $0.removeFromSuperlayer() }
-        buttonLayers.removeAll()
-        handleLayers.removeAll()
-
-        for button in GamepadButton.allCases {
-            guard let config = profile.buttons[button.rawValue], config.enabled else {
-                continue
-            }
-
-            let center = canvasPoint(forModelPoint: CGPoint(x: config.x, y: config.y))
-            let buttonWidth = CGFloat(config.editorWidth > 0 ? config.editorWidth : config.width)
-            let buttonHeight = CGFloat(config.editorHeight > 0 ? config.editorHeight : config.height)
-
-            let buttonLayer = CALayer()
-            buttonLayer.frame = CGRect(
-                x: center.x - (buttonWidth / 2),
-                y: center.y - (buttonHeight / 2),
-                width: buttonWidth,
-                height: buttonHeight
-            )
-            buttonLayer.backgroundColor = NSColor(hex: config.colorHex).withAlphaComponent(0.85).cgColor
-            buttonLayer.cornerRadius = 6
-
-            let textLayer = CATextLayer()
-            textLayer.string = NSAttributedString(
-                string: config.resolvedDisplayLabel,
-                attributes: config.resolvedLabelAttributes
-            )
-            textLayer.fontSize = config.labelFontSize
-            textLayer.alignmentMode = .center
-            textLayer.foregroundColor = NSColor.white.cgColor
-            textLayer.contentsScale = window?.backingScaleFactor ?? 2
-            textLayer.frame = textFrame(in: buttonLayer.bounds, config: config)
-            buttonLayer.addSublayer(textLayer)
-
-            layer?.addSublayer(buttonLayer)
-            buttonLayers[button] = buttonLayer
-
-            let handleLayer = CALayer()
-            handleLayer.frame = CGRect(
-                x: buttonLayer.frame.maxX - handleSize,
-                y: buttonLayer.frame.minY,
-                width: handleSize,
-                height: handleSize
-            )
-            handleLayer.backgroundColor = NSColor.white.withAlphaComponent(0.7).cgColor
-            handleLayer.cornerRadius = 2
-            handleLayer.isHidden = true
-            layer?.addSublayer(handleLayer)
-            handleLayers[button] = handleLayer
-        }
-    }
-
-    private func updateExistingLayers() {
-        let activeButtons = Set(GamepadButton.allCases.filter {
-            guard let config = profile.buttons[$0.rawValue] else {
-                return false
-            }
-
-            return config.enabled
-        })
-
-        for button in Array(buttonLayers.keys) where !activeButtons.contains(button) {
-            buttonLayers[button]?.removeFromSuperlayer()
-            buttonLayers.removeValue(forKey: button)
-
-            handleLayers[button]?.removeFromSuperlayer()
-            handleLayers.removeValue(forKey: button)
-        }
-
-        for button in GamepadButton.allCases {
-            guard let config = profile.buttons[button.rawValue], config.enabled else {
-                continue
-            }
-
-            let buttonLayer = buttonLayers[button] ?? makeButtonLayer(for: button)
-            let handleLayer = handleLayers[button] ?? makeHandleLayer(for: button)
-            update(buttonLayer: buttonLayer, handleLayer: handleLayer, with: config)
-        }
-    }
-
-    private func makeButtonLayer(for button: GamepadButton) -> CALayer {
-        let buttonLayer = CALayer()
-        buttonLayer.cornerRadius = 6
-
-        let textLayer = CATextLayer()
-        textLayer.alignmentMode = .center
-        textLayer.foregroundColor = NSColor.white.cgColor
-        textLayer.contentsScale = window?.backingScaleFactor ?? 2
-        buttonLayer.addSublayer(textLayer)
-
-        layer?.addSublayer(buttonLayer)
-        buttonLayers[button] = buttonLayer
-        return buttonLayer
-    }
-
-    private func makeHandleLayer(for button: GamepadButton) -> CALayer {
-        let handleLayer = CALayer()
-        handleLayer.backgroundColor = NSColor.white.withAlphaComponent(0.7).cgColor
-        handleLayer.cornerRadius = 2
-        handleLayer.isHidden = true
-        layer?.addSublayer(handleLayer)
-        handleLayers[button] = handleLayer
-        return handleLayer
-    }
-
-    private func update(buttonLayer: CALayer, handleLayer: CALayer, with config: ButtonConfig) {
-        let center = canvasPoint(forModelPoint: CGPoint(x: config.x, y: config.y))
-        let buttonWidth = CGFloat(config.editorWidth > 0 ? config.editorWidth : config.width)
-        let buttonHeight = CGFloat(config.editorHeight > 0 ? config.editorHeight : config.height)
-
-        buttonLayer.frame = CGRect(
-            x: center.x - (buttonWidth / 2),
-            y: center.y - (buttonHeight / 2),
-            width: buttonWidth,
-            height: buttonHeight
-        )
-        buttonLayer.backgroundColor = NSColor(hex: config.colorHex).withAlphaComponent(0.85).cgColor
-
-        if let textLayer = buttonLayer.sublayers?.first as? CATextLayer {
-            textLayer.string = NSAttributedString(
-                string: config.resolvedDisplayLabel,
-                attributes: config.resolvedLabelAttributes
-            )
-            textLayer.fontSize = config.labelFontSize
-            textLayer.contentsScale = window?.backingScaleFactor ?? 2
-            textLayer.frame = textFrame(in: buttonLayer.bounds, config: config)
-        }
-
-        handleLayer.frame = CGRect(
-            x: buttonLayer.frame.maxX - handleSize,
-            y: buttonLayer.frame.minY,
-            width: handleSize,
-            height: handleSize
-        )
-    }
-
-    override func layout() {
-        super.layout()
-        guard bounds.size != .zero, bounds.size != lastRenderedSize else {
+    func syncObject(_ object: CanvasButtonObject) {
+        guard let index = objects.firstIndex(where: { $0.id == object.id }) else {
             return
         }
 
-        reload(profile: profile, keepSelection: true)
+        var nextObject = object
+        nextObject.isSelected = selectedIDs.contains(object.id)
+        objects[index] = nextObject
+        needsDisplay = true
+        window?.invalidateCursorRects(for: self)
+    }
+
+    func select(button: GamepadButton) {
+        guard objects.contains(where: { $0.id == button && $0.isEnabled }) else {
+            setSelection([])
+            return
+        }
+
+        setSelection([button])
+    }
+
+    func select(buttons: Set<GamepadButton>) {
+        setSelection(buttons)
+    }
+
+    func currentSelection() -> Set<GamepadButton> {
+        selectedIDs
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+
+        for guide in alignmentGuides {
+            drawAlignmentGuide(guide)
+        }
+
+        for object in objects where object.isEnabled {
+            drawButton(object)
+        }
+
+        if case let .marqueeSelect(start, current) = dragState {
+            drawMarquee(from: start, to: current)
+        }
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+
+        guard selectedIDs.count == 1, let selectedID = selectedIDs.first, let object = object(for: selectedID) else {
+            return
+        }
+
+        for corner in ResizeCorner.allCases {
+            addCursorRect(handleRect(for: corner, objectFrame: canvasFrame(for: object.frame)), cursor: corner.cursor)
+        }
     }
 
     override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
         let canvasPoint = convert(event.locationInWindow, from: nil)
-        let point = modelPoint(forCanvasPoint: canvasPoint)
-        guard let button = button(at: point), let config = profile.buttons[button.rawValue] else {
-            highlight(nil)
+        let modelPoint = modelPoint(forCanvasPoint: canvasPoint)
+        let isCommandClick = event.modifierFlags.contains(.command)
+
+        if let handleHit = resizeHandle(atCanvasPoint: canvasPoint), let object = object(for: handleHit.button) {
+            setSelection([handleHit.button])
+            currentDragStartFrames = [handleHit.button: object.frame]
+            dragState = .resize(
+                id: handleHit.button,
+                corner: handleHit.corner,
+                startFrame: object.frame,
+                startMouse: modelPoint
+            )
             return
         }
 
-        highlight(button)
-        onButtonSelected?(button)
-        dragButton = button
-        dragStartMouse = point
+        if isCommandClick, let button = button(at: modelPoint) {
+            toggleSelection(button)
+            return
+        }
 
-        dragStartButtonCenter = CGPoint(x: CGFloat(config.x), y: CGFloat(config.y))
-        dragStartButtonSize = CGSize(
-            width: CGFloat(config.editorWidth > 0 ? config.editorWidth : config.width),
-            height: CGFloat(config.editorHeight > 0 ? config.editorHeight : config.height)
-        )
-        dragMode = isOnHandle(canvasPoint, for: button) ? .resizeBottomRight : .move
+        if let selectedHit = button(at: modelPoint, restrictedTo: selectedIDs) {
+            beginMove(button: selectedHit, startMouse: modelPoint)
+            return
+        }
+
+        if let button = button(at: modelPoint) {
+            setSelection([button])
+            beginMove(button: button, startMouse: modelPoint)
+            return
+        }
+
+        setSelection([])
+        currentDragStartFrames = [:]
+        alignmentGuides = []
+        dragState = .marqueeSelect(start: canvasPoint, current: canvasPoint)
+        needsDisplay = true
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard let button = dragButton else {
+        let canvasPoint = convert(event.locationInWindow, from: nil)
+        let modelPoint = modelPoint(forCanvasPoint: canvasPoint)
+
+        switch dragState {
+        case .none:
             return
-        }
 
-        let point = modelPoint(forCanvasPoint: convert(event.locationInWindow, from: nil))
-        let deltaX = point.x - dragStartMouse.x
-        let deltaY = point.y - dragStartMouse.y
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
+        case let .move(ids, startFrames, startMouse):
+            let delta = CGPoint(x: modelPoint.x - startMouse.x, y: modelPoint.y - startMouse.y)
+            var proposedGeometries: [GamepadButton: ButtonEditorGeometry] = [:]
 
-        switch dragMode {
-        case .move:
-            let halfWidth = dragStartButtonSize.width / 2
-            let halfHeight = dragStartButtonSize.height / 2
-            let nextX = (dragStartButtonCenter.x + deltaX).clamped(to: permittedCenterXRange(halfWidth: halfWidth))
-            let nextY = (dragStartButtonCenter.y + deltaY).clamped(to: permittedCenterYRange(halfHeight: halfHeight))
-
-            if let buttonLayer = buttonLayers[button] {
-                buttonLayer.position = canvasPoint(forModelPoint: CGPoint(x: nextX, y: nextY))
-                updateHandleFrame(for: button, buttonLayer: buttonLayer)
-            }
-
-            onButtonMoved?(button, nextX, nextY)
-
-        case .resizeBottomRight:
-            let maxWidth = max(20, maximumWidth(forCenterX: dragStartButtonCenter.x))
-            let maxHeight = max(14, maximumHeight(forCenterY: dragStartButtonCenter.y))
-            let newWidth = (dragStartButtonSize.width + deltaX).clamped(to: 20 ... maxWidth)
-            let newHeight = (dragStartButtonSize.height - deltaY).clamped(to: 14 ... maxHeight)
-
-            if let buttonLayer = buttonLayers[button] {
-                let center = buttonLayer.position
-                buttonLayer.bounds = CGRect(origin: .zero, size: CGSize(width: newWidth, height: newHeight))
-                buttonLayer.position = center
-
-                if
-                    let config = profile.buttons[button.rawValue],
-                    let textLayer = buttonLayer.sublayers?.first
-                {
-                    textLayer.frame = textFrame(in: buttonLayer.bounds, config: config)
+            for id in ids {
+                guard let startFrame = startFrames[id] else {
+                    continue
                 }
 
-                updateHandleFrame(for: button, buttonLayer: buttonLayer)
+                let proposedFrame = startFrame.offsetBy(dx: delta.x, dy: delta.y)
+                proposedGeometries[id] = ButtonEditorGeometry(
+                    centerX: proposedFrame.midX,
+                    centerY: proposedFrame.midY,
+                    width: proposedFrame.width,
+                    height: proposedFrame.height,
+                    anchoredResize: nil
+                )
             }
 
-            onButtonResized?(button, newWidth, newHeight)
-        }
+            applyGeometryChange(proposedGeometries)
 
-        CATransaction.commit()
+        case let .resize(id, corner, startFrame, startMouse):
+            let deltaX = modelPoint.x - startMouse.x
+            let deltaY = modelPoint.y - startMouse.y
+            let geometry = resizedGeometry(startFrame: startFrame, corner: corner, deltaX: deltaX, deltaY: deltaY)
+            applyGeometryChange([id: geometry])
+
+        case let .marqueeSelect(start, _):
+            dragState = .marqueeSelect(start: start, current: canvasPoint)
+            needsDisplay = true
+        }
     }
 
     override func mouseUp(with event: NSEvent) {
-        dragButton = nil
+        switch dragState {
+        case .move, .resize:
+            let afterFrames = currentDragStartFrames.keys.reduce(into: [GamepadButton: CGRect]()) { result, id in
+                guard let object = object(for: id) else {
+                    return
+                }
+
+                result[id] = object.frame
+            }
+
+            if afterFrames != currentDragStartFrames {
+                onGeometryChangeCompleted?(currentDragStartFrames, afterFrames)
+            }
+
+        case let .marqueeSelect(start, current):
+            setSelection(buttonsIntersectingMarquee(from: start, to: current))
+
+        case .none:
+            break
+        }
+
+        currentDragStartFrames = [:]
+        alignmentGuides = []
+        dragState = .none
+        needsDisplay = true
     }
 
-    private func button(at point: CGPoint) -> GamepadButton? {
-        for button in GamepadButton.allCases {
-            guard let config = profile.buttons[button.rawValue], config.enabled else {
+    override func mouseMoved(with event: NSEvent) {
+        let canvasPoint = convert(event.locationInWindow, from: nil)
+        if let hit = resizeHandle(atCanvasPoint: canvasPoint) {
+            hit.corner.cursor.set()
+        } else {
+            NSCursor.arrow.set()
+        }
+    }
+
+    private func beginMove(button: GamepadButton, startMouse: CGPoint) {
+        let ids = selectedIDs.contains(button) ? selectedIDs : [button]
+        let startFrames = ids.reduce(into: [GamepadButton: CGRect]()) { result, id in
+            guard let object = object(for: id) else {
+                return
+            }
+
+            result[id] = object.frame
+        }
+
+        currentDragStartFrames = startFrames
+        dragState = .move(ids: ids, startFrames: startFrames, startMouse: startMouse)
+    }
+
+    private func applyGeometryChange(_ proposedGeometries: [GamepadButton: ButtonEditorGeometry]) {
+        let result = onGeometryChanged?(proposedGeometries) ?? CanvasGeometryChangeResult(
+            geometries: proposedGeometries,
+            guides: []
+        )
+        let appliedGeometries = result.geometries
+        alignmentGuides = result.guides
+
+        for (id, geometry) in appliedGeometries {
+            guard let index = objects.firstIndex(where: { $0.id == id }) else {
                 continue
             }
 
-            let centerX = CGFloat(config.x)
-            let centerY = CGFloat(config.y)
-            let buttonWidth = CGFloat(config.editorWidth > 0 ? config.editorWidth : config.width)
-            let buttonHeight = CGFloat(config.editorHeight > 0 ? config.editorHeight : config.height)
-            let frame = CGRect(
-                x: centerX - (buttonWidth / 2),
-                y: centerY - (buttonHeight / 2),
-                width: buttonWidth,
-                height: buttonHeight
+            objects[index].frame = CGRect(
+                x: geometry.centerX - (geometry.width / 2),
+                y: geometry.centerY - (geometry.height / 2),
+                width: geometry.width,
+                height: geometry.height
             )
+        }
 
-            if frame.contains(point) {
-                return button
+        needsDisplay = true
+        window?.invalidateCursorRects(for: self)
+    }
+
+    private func setSelection(_ selection: Set<GamepadButton>) {
+        selectedIDs = Set(objects.map(\.id)).intersection(selection)
+        syncObjectSelection()
+        onSelectionChanged?(selectedIDs)
+        needsDisplay = true
+        window?.invalidateCursorRects(for: self)
+    }
+
+    private func toggleSelection(_ button: GamepadButton) {
+        var nextSelection = selectedIDs
+        if nextSelection.contains(button) {
+            nextSelection.remove(button)
+        } else {
+            nextSelection.insert(button)
+        }
+        setSelection(nextSelection)
+    }
+
+    private func syncObjectSelection() {
+        for index in objects.indices {
+            objects[index].isSelected = selectedIDs.contains(objects[index].id)
+        }
+    }
+
+    private func object(for id: GamepadButton) -> CanvasButtonObject? {
+        objects.first { $0.id == id && $0.isEnabled }
+    }
+
+    private func button(at point: CGPoint, restrictedTo ids: Set<GamepadButton>? = nil) -> GamepadButton? {
+        for object in objects.reversed() where object.isEnabled {
+            if let ids, !ids.contains(object.id) {
+                continue
+            }
+
+            if objectContainsPoint(object, point: point) {
+                return object.id
             }
         }
 
         return nil
     }
 
-    private func isOnHandle(_ point: CGPoint, for button: GamepadButton) -> Bool {
-        guard let handleLayer = handleLayers[button] else {
+    private func buttonsIntersectingMarquee(from start: CGPoint, to current: CGPoint) -> Set<GamepadButton> {
+        let marqueeRect = CGRect(
+            x: min(start.x, current.x),
+            y: min(start.y, current.y),
+            width: abs(current.x - start.x),
+            height: abs(current.y - start.y)
+        )
+
+        guard marqueeRect.width > 1, marqueeRect.height > 1 else {
+            return []
+        }
+
+        return Set(objects.compactMap { object in
+            guard object.isEnabled, canvasFrame(for: object.frame).intersects(marqueeRect) else {
+                return nil
+            }
+            return object.id
+        })
+    }
+
+    private func resizeHandle(atCanvasPoint point: CGPoint) -> (button: GamepadButton, corner: ResizeCorner)? {
+        guard selectedIDs.count == 1, let selectedID = selectedIDs.first, let object = object(for: selectedID) else {
+            return nil
+        }
+
+        let canvasFrame = canvasFrame(for: object.frame)
+        for corner in ResizeCorner.allCases where handleRect(for: corner, objectFrame: canvasFrame).contains(point) {
+            return (selectedID, corner)
+        }
+
+        return nil
+    }
+
+    private func resizedGeometry(
+        startFrame: CGRect,
+        corner: ResizeCorner,
+        deltaX: CGFloat,
+        deltaY: CGFloat
+    ) -> ButtonEditorGeometry {
+        let minWidth: CGFloat = 20
+        let minHeight: CGFloat = 14
+
+        switch corner {
+        case .topLeft:
+            let width = max(minWidth, startFrame.width - deltaX)
+            let height = max(minHeight, startFrame.height + deltaY)
+            return ButtonEditorGeometry(
+                centerX: startFrame.maxX - (width / 2),
+                centerY: startFrame.minY + (height / 2),
+                width: width,
+                height: height,
+                anchoredResize: AnchoredButtonResize(
+                    anchorX: startFrame.maxX,
+                    anchorY: startFrame.minY,
+                    resizesFromLeft: true,
+                    resizesFromBottom: false
+                )
+            )
+
+        case .topRight:
+            let width = max(minWidth, startFrame.width + deltaX)
+            let height = max(minHeight, startFrame.height + deltaY)
+            return ButtonEditorGeometry(
+                centerX: startFrame.minX + (width / 2),
+                centerY: startFrame.minY + (height / 2),
+                width: width,
+                height: height,
+                anchoredResize: AnchoredButtonResize(
+                    anchorX: startFrame.minX,
+                    anchorY: startFrame.minY,
+                    resizesFromLeft: false,
+                    resizesFromBottom: false
+                )
+            )
+
+        case .bottomLeft:
+            let width = max(minWidth, startFrame.width - deltaX)
+            let height = max(minHeight, startFrame.height - deltaY)
+            return ButtonEditorGeometry(
+                centerX: startFrame.maxX - (width / 2),
+                centerY: startFrame.maxY - (height / 2),
+                width: width,
+                height: height,
+                anchoredResize: AnchoredButtonResize(
+                    anchorX: startFrame.maxX,
+                    anchorY: startFrame.maxY,
+                    resizesFromLeft: true,
+                    resizesFromBottom: true
+                )
+            )
+
+        case .bottomRight:
+            let width = max(minWidth, startFrame.width + deltaX)
+            let height = max(minHeight, startFrame.height - deltaY)
+            return ButtonEditorGeometry(
+                centerX: startFrame.minX + (width / 2),
+                centerY: startFrame.maxY - (height / 2),
+                width: width,
+                height: height,
+                anchoredResize: AnchoredButtonResize(
+                    anchorX: startFrame.minX,
+                    anchorY: startFrame.maxY,
+                    resizesFromLeft: false,
+                    resizesFromBottom: true
+                )
+            )
+        }
+    }
+
+    private func drawButton(_ object: CanvasButtonObject) {
+        let canvasFrame = canvasFrame(for: object.frame)
+        let path = buttonPath(for: object.shape, in: canvasFrame)
+        NSColor(hex: object.colorHex).withAlphaComponent(0.85).setFill()
+        path.fill()
+
+        drawLabel(for: object, in: canvasFrame)
+
+        guard object.isSelected else {
+            return
+        }
+
+        NSColor.white.setStroke()
+        path.lineWidth = 2
+        path.stroke()
+
+        drawSelectionGlow(for: object.shape, in: canvasFrame)
+
+        for corner in ResizeCorner.allCases {
+            drawResizeHandle(handleRect(for: corner, objectFrame: canvasFrame))
+        }
+    }
+
+    private func drawLabel(for object: CanvasButtonObject, in frame: CGRect) {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        let fontManager = NSFontManager.shared
+        var font = NSFont.systemFont(ofSize: object.labelFontSize)
+
+        if object.labelBold {
+            font = fontManager.convert(font, toHaveTrait: .boldFontMask)
+        }
+        if object.labelItalic {
+            font = fontManager.convert(font, toHaveTrait: .italicFontMask)
+        }
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor.white,
+            .paragraphStyle: paragraphStyle,
+        ]
+        let attributedLabel = NSAttributedString(string: object.label, attributes: attributes)
+        let measuredSize = attributedLabel.size()
+        let drawRect = CGRect(
+            x: frame.minX + 2,
+            y: frame.midY - (ceil(measuredSize.height) / 2) - 1,
+            width: max(0, frame.width - 4),
+            height: ceil(measuredSize.height)
+        )
+        attributedLabel.draw(in: drawRect)
+    }
+
+    private func drawSelectionGlow(for shape: ButtonShape, in frame: CGRect) {
+        NSGraphicsContext.saveGraphicsState()
+        NSColor.white.withAlphaComponent(0.22).setStroke()
+        let glowPath = buttonPath(for: shape, in: frame.insetBy(dx: -2, dy: -2))
+        glowPath.lineWidth = 3
+        glowPath.stroke()
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
+    private func buttonPath(for shape: ButtonShape, in frame: CGRect) -> NSBezierPath {
+        switch shape {
+        case .roundedRectangle:
+            return NSBezierPath(roundedRect: frame, xRadius: 6, yRadius: 6)
+        case .oval:
+            return NSBezierPath(ovalIn: frame)
+        }
+    }
+
+    private func objectContainsPoint(_ object: CanvasButtonObject, point: CGPoint) -> Bool {
+        guard object.frame.contains(point) else {
             return false
         }
 
-        return !handleLayer.isHidden && handleLayer.frame.contains(point)
+        switch object.shape {
+        case .roundedRectangle:
+            return true
+        case .oval:
+            guard object.frame.width > 0, object.frame.height > 0 else {
+                return false
+            }
+
+            let normalizedX = (point.x - object.frame.midX) / (object.frame.width / 2)
+            let normalizedY = (point.y - object.frame.midY) / (object.frame.height / 2)
+            return (normalizedX * normalizedX) + (normalizedY * normalizedY) <= 1
+        }
     }
 
-    private func highlight(_ button: GamepadButton?) {
-        buttonLayers.values.forEach {
-            $0.borderWidth = 0
-            $0.shadowOpacity = 0
-        }
-        handleLayers.values.forEach { $0.isHidden = true }
-
-        guard let button, let buttonLayer = buttonLayers[button] else {
-            selectedButton = nil
-            return
-        }
-
-        buttonLayer.borderWidth = 2
-        buttonLayer.borderColor = NSColor.white.cgColor
-        buttonLayer.shadowOpacity = 0.6
-        buttonLayer.shadowColor = NSColor.white.cgColor
-        buttonLayer.shadowRadius = 4
-        buttonLayer.shadowOffset = .zero
-        handleLayers[button]?.isHidden = false
-        selectedButton = button
+    private func drawResizeHandle(_ rect: CGRect) {
+        let path = NSBezierPath(roundedRect: rect, xRadius: 2, yRadius: 2)
+        NSColor.white.withAlphaComponent(0.85).setFill()
+        path.fill()
+        NSColor.black.withAlphaComponent(0.35).setStroke()
+        path.lineWidth = 0.5
+        path.stroke()
     }
 
-    private func updateHandleFrame(for button: GamepadButton, buttonLayer: CALayer) {
-        guard let handleLayer = handleLayers[button] else {
-            return
+    private func drawAlignmentGuide(_ guide: CanvasAlignmentGuide) {
+        let path = NSBezierPath()
+        path.lineWidth = 1
+
+        switch guide.orientation {
+        case .vertical:
+            let x = canvasX(forModelX: guide.position)
+            path.move(to: CGPoint(x: x, y: 0))
+            path.line(to: CGPoint(x: x, y: bounds.height))
+        case .horizontal:
+            let y = canvasY(forModelY: guide.position)
+            path.move(to: CGPoint(x: 0, y: y))
+            path.line(to: CGPoint(x: bounds.width, y: y))
         }
 
-        handleLayer.frame = CGRect(
-            x: buttonLayer.frame.maxX - handleSize,
-            y: buttonLayer.frame.minY,
-            width: handleSize,
-            height: handleSize
+        NSColor.systemYellow.withAlphaComponent(0.85).setStroke()
+        path.stroke()
+    }
+
+    private func drawMarquee(from start: CGPoint, to current: CGPoint) {
+        let rect = CGRect(
+            x: min(start.x, current.x),
+            y: min(start.y, current.y),
+            width: abs(current.x - start.x),
+            height: abs(current.y - start.y)
         )
+        guard rect.width > 1, rect.height > 1 else {
+            return
+        }
+
+        NSColor.white.withAlphaComponent(0.08).setFill()
+        NSBezierPath(rect: rect).fill()
+        NSColor.white.withAlphaComponent(0.45).setStroke()
+        let path = NSBezierPath(rect: rect)
+        path.lineWidth = 1
+        path.stroke()
     }
 
-    private func textFrame(in bounds: CGRect, config: ButtonConfig) -> CGRect {
-        let measuredSize = NSString(string: "Ag").size(withAttributes: config.resolvedLabelAttributes)
-        let height = ceil(measuredSize.height)
-        let y = round((bounds.height - height) / 2) - 1
+    private func handleRect(for corner: ResizeCorner, objectFrame: CGRect) -> CGRect {
+        let halfHandle = handleSize / 2
+        let origin: CGPoint
 
-        return CGRect(x: 2, y: max(0, y), width: max(0, bounds.width - 4), height: height)
+        switch corner {
+        case .topLeft:
+            origin = CGPoint(x: objectFrame.minX - halfHandle, y: objectFrame.maxY - halfHandle)
+        case .topRight:
+            origin = CGPoint(x: objectFrame.maxX - halfHandle, y: objectFrame.maxY - halfHandle)
+        case .bottomLeft:
+            origin = CGPoint(x: objectFrame.minX - halfHandle, y: objectFrame.minY - halfHandle)
+        case .bottomRight:
+            origin = CGPoint(x: objectFrame.maxX - halfHandle, y: objectFrame.minY - halfHandle)
+        }
+
+        return CGRect(origin: origin, size: CGSize(width: handleSize, height: handleSize))
     }
 
-    private func canvasPoint(forModelPoint point: CGPoint) -> CGPoint {
+    private func canvasFrame(for modelFrame: CGRect) -> CGRect {
+        var canvasFrame = modelFrame.offsetBy(dx: workspaceOrigin.x, dy: workspaceOrigin.y)
         guard usesCenteredOrigin else {
-            return point
+            return canvasFrame
         }
 
-        return CGPoint(
-            x: point.x + (maximumWorkspaceSize.width / 2),
-            y: point.y + (maximumWorkspaceSize.height / 2)
+        canvasFrame = modelFrame.offsetBy(
+            dx: maximumWorkspaceSize.width / 2,
+            dy: maximumWorkspaceSize.height / 2
         )
+        return canvasFrame.offsetBy(dx: workspaceOrigin.x, dy: workspaceOrigin.y)
     }
 
     private func modelPoint(forCanvasPoint point: CGPoint) -> CGPoint {
+        let workspacePoint = CGPoint(
+            x: point.x - workspaceOrigin.x,
+            y: point.y - workspaceOrigin.y
+        )
         guard usesCenteredOrigin else {
-            return point
+            return workspacePoint
         }
 
         return CGPoint(
-            x: point.x - (maximumWorkspaceSize.width / 2),
-            y: point.y - (maximumWorkspaceSize.height / 2)
+            x: workspacePoint.x - (maximumWorkspaceSize.width / 2),
+            y: workspacePoint.y - (maximumWorkspaceSize.height / 2)
         )
     }
 
-    private func permittedCenterXRange(halfWidth: CGFloat) -> ClosedRange<CGFloat> {
-        if usesCenteredOrigin {
-            let halfWorkspaceWidth = maximumWorkspaceSize.width / 2
-            return (-halfWorkspaceWidth + halfWidth) ... (halfWorkspaceWidth - halfWidth)
+    private func canvasX(forModelX x: CGFloat) -> CGFloat {
+        guard usesCenteredOrigin else {
+            return x + workspaceOrigin.x
         }
 
-        return halfWidth ... (maximumWorkspaceSize.width - halfWidth)
+        return x + (maximumWorkspaceSize.width / 2) + workspaceOrigin.x
     }
 
-    private func permittedCenterYRange(halfHeight: CGFloat) -> ClosedRange<CGFloat> {
-        if usesCenteredOrigin {
-            let halfWorkspaceHeight = maximumWorkspaceSize.height / 2
-            return (-halfWorkspaceHeight + halfHeight) ... (halfWorkspaceHeight - halfHeight)
+    private func canvasY(forModelY y: CGFloat) -> CGFloat {
+        guard usesCenteredOrigin else {
+            return y + workspaceOrigin.y
         }
 
-        return halfHeight ... (maximumWorkspaceSize.height - halfHeight)
-    }
-
-    private func maximumWidth(forCenterX centerX: CGFloat) -> CGFloat {
-        if usesCenteredOrigin {
-            let halfWorkspaceWidth = maximumWorkspaceSize.width / 2
-            return min(halfWorkspaceWidth - centerX, halfWorkspaceWidth + centerX) * 2
-        }
-
-        return (maximumWorkspaceSize.width - centerX) * 2
-    }
-
-    private func maximumHeight(forCenterY centerY: CGFloat) -> CGFloat {
-        if usesCenteredOrigin {
-            let halfWorkspaceHeight = maximumWorkspaceSize.height / 2
-            return min(halfWorkspaceHeight - centerY, halfWorkspaceHeight + centerY) * 2
-        }
-
-        return centerY * 2
+        return y + (maximumWorkspaceSize.height / 2) + workspaceOrigin.y
     }
 }
 
-private extension Comparable {
-    func clamped(to range: ClosedRange<Self>) -> Self {
-        min(max(self, range.lowerBound), range.upperBound)
+private extension NSCursor {
+    static var diagonalResizeNorthWestSouthEast: NSCursor {
+        NSCursor.diagonalResizeCursor(angleDegrees: -45)
+    }
+
+    static var diagonalResizeNorthEastSouthWest: NSCursor {
+        NSCursor.diagonalResizeCursor(angleDegrees: 45)
+    }
+
+    static func diagonalResizeCursor(angleDegrees: CGFloat) -> NSCursor {
+        let size = NSSize(width: 18, height: 18)
+        let image = NSImage(size: size)
+        image.lockFocus()
+
+        NSGraphicsContext.current?.imageInterpolation = .high
+        let transform = NSAffineTransform()
+        transform.translateX(by: size.width / 2, yBy: size.height / 2)
+        transform.rotate(byDegrees: angleDegrees)
+        transform.translateX(by: -size.width / 2, yBy: -size.height / 2)
+        transform.concat()
+
+        let path = NSBezierPath()
+        path.lineWidth = 1.8
+        path.lineCapStyle = .round
+        path.move(to: CGPoint(x: 3, y: 9))
+        path.line(to: CGPoint(x: 15, y: 9))
+        path.move(to: CGPoint(x: 3, y: 9))
+        path.line(to: CGPoint(x: 7, y: 5))
+        path.move(to: CGPoint(x: 3, y: 9))
+        path.line(to: CGPoint(x: 7, y: 13))
+        path.move(to: CGPoint(x: 15, y: 9))
+        path.line(to: CGPoint(x: 11, y: 5))
+        path.move(to: CGPoint(x: 15, y: 9))
+        path.line(to: CGPoint(x: 11, y: 13))
+        NSColor.white.setStroke()
+        path.stroke()
+
+        image.unlockFocus()
+        return NSCursor(image: image, hotSpot: CGPoint(x: size.width / 2, y: size.height / 2))
     }
 }

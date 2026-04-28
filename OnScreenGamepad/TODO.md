@@ -30,24 +30,31 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 ## Configurator
 
 - [x] Remove size section because we can resize the gamepad manually.
-- [ ] Add an option to add a button.
-- [ ] Use system corner dragging to resize buttons, or allow entering dimensions in `px x px`.
-- [ ] Add cut, copy, paste, undo, and redo support for buttons.
-- [ ] Add multi-select for buttons using drag selection or `Cmd`-click.
-- [ ] Add the ability to group, align, and equalize a selected group of buttons.
-- [ ] Add a circle button shape.
+- [x] Add an option to add a button.
+- [x] Use system corner dragging to resize buttons, or allow entering dimensions in `px x px`.
+- [x] Refactor configurator preview into a custom canvas editor model.
+- [x] Add undo and redo support for button edits.
+- [x] Add cut, copy, and paste support for buttons.
+- [x] Add multi-select for buttons using drag selection or `Cmd`-click.
+- [x] Add snapping and alignment guides.
+- [x] Add the ability to group, align, and equalize a selected group of buttons.
+- [x] Add a circle button shape.
 - [x] Make the editing window larger and scale it with the application window size.
-- [ ] Allow side panels to collapse and be resized horizontally.
-- [ ] Update `KeyRecorder` so left-click starts listening for keys and another left-click stops listening.
-- [ ] Allow a button to be assigned multiple keys, for example `[xxaaa]` or `[abab]`.
-- [ ] If a button has multiple keys, add an option to activate them sequentially or simultaneously.
-- [ ] Add a "sticky" option so pressing a button keeps it held down until pressed again.
-- [ ] Add a "turbo" option so pressing a button repeatedly sends its key until pressed again.
+- [o] Allow side panels to collapse and be resized horizontally.
+  - Fix the empty editor space by fitting the preview canvas horizontally when it runs out of visible content.
+- [x] Update `KeyRecorder` so left-click starts listening for keys and another left-click stops listening.
+- [x] Allow a button to be assigned multiple keys, for example `[xxaaa]` or `[abab]`.
+- [x] If a button has multiple keys, add an option to activate them sequentially or simultaneously.
+- [x] Add a "sticky" option so pressing a button keeps it held down until pressed again.
+- [ ] Add a visual cue for buttons being toggle held.
+- [x] Add a "turbo" option so pressing a button repeatedly sends its key until pressed again.
 - [x] Center text on buttons.
 - [ ] Investigate whether macOS Accessibility dwell actions can be activated.
 - [x] If a label is empty, use the key as the label.
 - [x] Add label styling controls for text size, bold, and italic.
+- [ ] Fix button label vertical centering, especially in circle/oval buttons. Likely fix: stop centering by `NSAttributedString.size()` height alone and compute the text baseline from `NSFont.ascender`, `descender`, and `capHeight` in both the live button label view and configurator preview drawing.
 - [ ] Add an option for right-click to activate a button, or to activate a different recorded key.
+- [ ] Add full user template support: save current profile as a template, create profiles from saved templates, and manage saved templates.
 
 Implemented:
 - Button interaction mode control in the configurator with `Momentary` and `Toggle Hold`.

@@ -1,34 +1,50 @@
 import Foundation
 
-// GamepadButton identifies each button slot.
-// Key codes and colors are now stored in ButtonConfig (inside a Profile).
-// Edit profiles via the Configurator app or profiles.json in
-// ~/Library/Application Support/OnScreenGamepad/
+// GamepadButton identifies a profile button by stable profile storage key.
+// Built-in constants exist only for legacy profile compatibility and starter
+// templates; user-created buttons use generated raw values.
+struct GamepadButton: RawRepresentable, Hashable, Codable {
+    let rawValue: String
 
-enum GamepadButton: String, CaseIterable, Codable {
-    // D-Pad
-    case dpadUp    = "D↑"
-    case dpadDown  = "D↓"
-    case dpadLeft  = "D←"
-    case dpadRight = "D→"
+    init(rawValue: String) {
+        self.rawValue = rawValue
+    }
 
-    // Face buttons
-    case faceA = "A"
-    case faceB = "B"
-    case faceX = "X"
-    case faceY = "Y"
+    init(_ rawValue: String) {
+        self.rawValue = rawValue
+    }
 
-    // Shoulders
-    case shoulderL = "L"
-    case shoulderR = "R"
-    case triggerL  = "ZL"
-    case triggerZR = "ZR"
+    // Legacy/template buttons
+    static let dpadUp = GamepadButton("D↑")
+    static let dpadDown = GamepadButton("D↓")
+    static let dpadLeft = GamepadButton("D←")
+    static let dpadRight = GamepadButton("D→")
+    static let faceA = GamepadButton("A")
+    static let faceB = GamepadButton("B")
+    static let faceX = GamepadButton("X")
+    static let faceY = GamepadButton("Y")
+    static let shoulderL = GamepadButton("L")
+    static let shoulderR = GamepadButton("R")
+    static let triggerL = GamepadButton("ZL")
+    static let triggerZR = GamepadButton("ZR")
+    static let start = GamepadButton("START")
+    static let select = GamepadButton("SELECT")
+    static let leftStick = GamepadButton("LS")
+    static let rightStick = GamepadButton("RS")
 
-    // Menu
-    case start  = "START"
-    case select = "SELECT"
+    static let legacyButtons: [GamepadButton] = [
+        .triggerL, .shoulderL, .triggerZR, .shoulderR,
+        .dpadUp, .dpadDown, .dpadLeft, .dpadRight,
+        .select, .start,
+        .faceY, .faceA, .faceX, .faceB,
+        .leftStick, .rightStick,
+    ]
 
-    // Stick clicks
-    case leftStick  = "LS"
-    case rightStick = "RS"
+    static func generated() -> GamepadButton {
+        GamepadButton("button:\(UUID().uuidString)")
+    }
+
+    var isGenerated: Bool {
+        rawValue.hasPrefix("button:")
+    }
 }

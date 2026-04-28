@@ -3,11 +3,13 @@ import Cocoa
 final class ButtonDetailPanel: NSView {
 
     var onChanged: ((GamepadButton, ButtonConfig) -> Void)?
+    var onDelete: ((GamepadButton) -> Void)?
 
     private var config: ButtonConfig?
     private var button: GamepadButton?
 
     private let titleLabel = NSTextField(labelWithString: "Select a button")
+    private let contentStack = NSStackView()
     private let labelField = NSTextField()
     private let keyRecorder = KeyRecorderButton()
     private let colorWell = NSColorWell()
@@ -17,11 +19,16 @@ final class ButtonDetailPanel: NSView {
     private let labelItalicCheckbox = NSButton(checkboxWithTitle: "Italic", target: nil, action: nil)
     private let xField = NSTextField()
     private let yField = NSTextField()
-    private let widthLabel = NSTextField(labelWithString: "–")
-    private let heightLabel = NSTextField(labelWithString: "–")
+    private let widthField = NSTextField()
+    private let heightField = NSTextField()
+    private let shapePopup = NSPopUpButton()
     private let interactionModePopup = NSPopUpButton()
+    private let multiKeyActivationModePopup = NSPopUpButton()
+    private var multiKeyActivationModeRow: NSStackView?
     private let enabledCheckbox = NSButton(checkboxWithTitle: "Enabled", target: nil, action: nil)
     private let applyButton = NSButton(title: "Apply Changes", target: nil, action: nil)
+    private let deleteButton = NSButton(title: "Delete Button", target: nil, action: nil)
+    private var isCollapsed = false
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -36,21 +43,24 @@ final class ButtonDetailPanel: NSView {
         titleLabel.stringValue = "Select a button to edit"
         config = nil
         button = nil
-        [labelField, labelSizeField, xField, yField].forEach { $0.stringValue = "" }
-        keyRecorder.setKey(code: 49)
+        [labelField, labelSizeField, xField, yField, widthField, heightField].forEach { $0.stringValue = "" }
+        keyRecorder.setKeyBindings([ButtonKeyBinding(keyCode: 49, keyModifiers: 0)])
         labelBoldCheckbox.state = .off
         labelItalicCheckbox.state = .off
-        widthLabel.stringValue = "–"
-        heightLabel.stringValue = "–"
+        shapePopup.selectItem(withTag: ButtonShape.roundedRectangle.tag)
         interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
+        multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
+        updateMultiKeyActivationModeVisibility()
         applyButton.isEnabled = false
+        deleteButton.isEnabled = false
     }
 
     func load(button: GamepadButton, config: ButtonConfig) {
         self.button = button
         self.config = config
         applyButton.isEnabled = true
-        titleLabel.stringValue = "Editing: \(button.rawValue)"
+        deleteButton.isEnabled = true
+        titleLabel.stringValue = "Editing: \(config.resolvedDisplayLabel)"
         labelField.stringValue = config.label
         syncLabelSizeControls(to: config.labelFontSize)
         labelBoldCheckbox.state = config.labelBold ? .on : .off
@@ -58,14 +68,14 @@ final class ButtonDetailPanel: NSView {
         colorWell.color = NSColor(hex: config.colorHex)
         xField.stringValue = String(format: "%.1f", config.x)
         yField.stringValue = String(format: "%.1f", config.y)
+        widthField.stringValue = String(format: "%.1f", config.editorWidth > 0 ? config.editorWidth : config.width)
+        heightField.stringValue = String(format: "%.1f", config.editorHeight > 0 ? config.editorHeight : config.height)
+        shapePopup.selectItem(withTag: config.shape.tag)
         enabledCheckbox.state = config.enabled ? .on : .off
         interactionModePopup.selectItem(withTag: config.interactionMode.tag)
-        keyRecorder.setKey(
-            code: config.keyCode,
-            modifiers: NSEvent.ModifierFlags(rawValue: UInt(config.keyModifiers))
-        )
-        widthLabel.stringValue = String(format: "%.1f px", config.editorWidth > 0 ? config.editorWidth : config.width)
-        heightLabel.stringValue = String(format: "%.1f px", config.editorHeight > 0 ? config.editorHeight : config.height)
+        multiKeyActivationModePopup.selectItem(withTag: config.multiKeyActivationMode.tag)
+        updateMultiKeyActivationModeVisibility()
+        keyRecorder.setKeyBindings(config.keyBindings)
     }
 
     func refreshPosition(x: Double, y: Double, config: ButtonConfig) {
@@ -85,19 +95,25 @@ final class ButtonDetailPanel: NSView {
 
         config?.editorWidth = width
         config?.editorHeight = height
-        widthLabel.stringValue = String(format: "%.1f px", width)
-        heightLabel.stringValue = String(format: "%.1f px", height)
+        widthField.stringValue = String(format: "%.1f", width)
+        heightField.stringValue = String(format: "%.1f", height)
+    }
+
+    func setCollapsed(_ collapsed: Bool) {
+        isCollapsed = collapsed
+        titleLabel.isHidden = collapsed
+        contentStack.isHidden = collapsed
     }
 
     private func setup() {
         titleLabel.font = .boldSystemFont(ofSize: 14)
+        titleLabel.lineBreakMode = .byTruncatingTail
 
         keyRecorder.translatesAutoresizingMaskIntoConstraints = false
         keyRecorder.widthAnchor.constraint(equalToConstant: 150).isActive = true
         keyRecorder.heightAnchor.constraint(equalToConstant: 28).isActive = true
-        keyRecorder.onKeyRecorded = { [weak self] code, modifiers in
-            self?.config?.keyCode = code
-            self?.config?.keyModifiers = Int(modifiers.rawValue)
+        keyRecorder.onKeyRecorded = { [weak self] bindings in
+            self?.applyKeyBindings(bindings)
             self?.emitChange()
         }
 
@@ -105,11 +121,21 @@ final class ButtonDetailPanel: NSView {
         applyButton.target = self
         applyButton.action = #selector(applyPressed)
         applyButton.isEnabled = false
+        deleteButton.bezelStyle = .rounded
+        deleteButton.target = self
+        deleteButton.action = #selector(deletePressed)
+        deleteButton.isEnabled = false
 
-        widthLabel.textColor = .secondaryLabelColor
-        widthLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        heightLabel.textColor = .secondaryLabelColor
-        heightLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        widthField.bezelStyle = .roundedBezel
+        widthField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        widthField.widthAnchor.constraint(equalToConstant: 58).isActive = true
+        widthField.target = self
+        widthField.action = #selector(applyPressed)
+        heightField.bezelStyle = .roundedBezel
+        heightField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        heightField.widthAnchor.constraint(equalToConstant: 58).isActive = true
+        heightField.target = self
+        heightField.action = #selector(applyPressed)
         labelSizeField.bezelStyle = .roundedBezel
         labelSizeField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         labelSizeField.widthAnchor.constraint(equalToConstant: 44).isActive = true
@@ -124,34 +150,58 @@ final class ButtonDetailPanel: NSView {
         labelBoldCheckbox.action = #selector(applyPressed)
         labelItalicCheckbox.target = self
         labelItalicCheckbox.action = #selector(applyPressed)
+        shapePopup.target = self
+        shapePopup.action = #selector(applyPressed)
+        populateShapes()
         interactionModePopup.target = self
         interactionModePopup.action = #selector(applyPressed)
         populateInteractionModes()
+        multiKeyActivationModePopup.target = self
+        multiKeyActivationModePopup.action = #selector(applyPressed)
+        populateMultiKeyActivationModes()
 
-        let stack = NSStackView()
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 10
-        stack.translatesAutoresizingMaskIntoConstraints = false
+        let header = NSStackView(views: [
+            titleLabel,
+            NSView(),
+        ])
+        header.orientation = .horizontal
+        header.alignment = .centerY
+        header.spacing = 6
+        header.edgeInsets = NSEdgeInsets(top: 4, left: 6, bottom: 4, right: 6)
+        header.translatesAutoresizingMaskIntoConstraints = false
 
-        stack.addArrangedSubview(titleLabel)
-        stack.addArrangedSubview(makeRow(label: "Label:", control: labelField))
-        stack.addArrangedSubview(makeLabelStyleRow())
-        stack.addArrangedSubview(makeRow(label: "Key:", control: keyRecorder))
-        stack.addArrangedSubview(makeRow(label: "Color:", control: colorWell))
-        stack.addArrangedSubview(makeRow(label: "X (px):", control: xField))
-        stack.addArrangedSubview(makeRow(label: "Y (px):", control: yField))
-        stack.addArrangedSubview(makeRow(label: "Mode:", control: interactionModePopup))
-        stack.addArrangedSubview(enabledCheckbox)
-        stack.addArrangedSubview(makeSizeRow())
-        stack.addArrangedSubview(applyButton)
+        contentStack.orientation = .vertical
+        contentStack.alignment = .leading
+        contentStack.spacing = 10
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
 
-        addSubview(stack)
+        contentStack.addArrangedSubview(makeRow(label: "Label:", control: labelField))
+        contentStack.addArrangedSubview(makeLabelStyleRow())
+        contentStack.addArrangedSubview(makeRow(label: "Key:", control: keyRecorder))
+        contentStack.addArrangedSubview(makeRow(label: "Color:", control: colorWell))
+        contentStack.addArrangedSubview(makeRow(label: "X (px):", control: xField))
+        contentStack.addArrangedSubview(makeRow(label: "Y (px):", control: yField))
+        contentStack.addArrangedSubview(makeRow(label: "Shape:", control: shapePopup))
+        contentStack.addArrangedSubview(makeRow(label: "Mode:", control: interactionModePopup))
+        let multiKeyRow = makeRow(label: "Keys:", control: multiKeyActivationModePopup)
+        multiKeyActivationModeRow = multiKeyRow
+        contentStack.addArrangedSubview(multiKeyRow)
+        contentStack.addArrangedSubview(enabledCheckbox)
+        contentStack.addArrangedSubview(makeSizeRow())
+        contentStack.addArrangedSubview(applyButton)
+        contentStack.addArrangedSubview(deleteButton)
+
+        addSubview(header)
+        addSubview(contentStack)
 
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: 8),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            header.topAnchor.constraint(equalTo: topAnchor),
+            header.leadingAnchor.constraint(equalTo: leadingAnchor),
+            header.trailingAnchor.constraint(equalTo: trailingAnchor),
+            header.heightAnchor.constraint(equalToConstant: 32),
+            contentStack.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 8),
+            contentStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            contentStack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -8),
         ])
 
         labelField.bezelStyle = .roundedBezel
@@ -197,14 +247,14 @@ final class ButtonDetailPanel: NSView {
         row.orientation = .horizontal
         row.spacing = 4
         row.addArrangedSubview(makeFieldLabel("Size:"))
-        row.addArrangedSubview(widthLabel)
+        row.addArrangedSubview(widthField)
 
         let separator = NSTextField(labelWithString: "×")
         separator.font = .systemFont(ofSize: 12)
         row.addArrangedSubview(separator)
-        row.addArrangedSubview(heightLabel)
+        row.addArrangedSubview(heightField)
 
-        let note = NSTextField(labelWithString: "(drag corner in preview)")
+        let note = NSTextField(labelWithString: "px")
         note.font = .systemFont(ofSize: 10)
         note.textColor = .tertiaryLabelColor
         row.addArrangedSubview(note)
@@ -233,6 +283,14 @@ final class ButtonDetailPanel: NSView {
         emitChange()
     }
 
+    @objc private func deletePressed() {
+        guard let button else {
+            return
+        }
+
+        onDelete?(button)
+    }
+
     private func populateInteractionModes() {
         interactionModePopup.removeAllItems()
 
@@ -242,6 +300,28 @@ final class ButtonDetailPanel: NSView {
         }
 
         interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
+    }
+
+    private func populateMultiKeyActivationModes() {
+        multiKeyActivationModePopup.removeAllItems()
+
+        for mode in MultiKeyActivationMode.allCases {
+            multiKeyActivationModePopup.addItem(withTitle: mode.displayName)
+            multiKeyActivationModePopup.lastItem?.tag = mode.tag
+        }
+
+        multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
+    }
+
+    private func populateShapes() {
+        shapePopup.removeAllItems()
+
+        for shape in ButtonShape.allCases {
+            shapePopup.addItem(withTitle: shape.displayName)
+            shapePopup.lastItem?.tag = shape.tag
+        }
+
+        shapePopup.selectItem(withTag: ButtonShape.roundedRectangle.tag)
     }
 
     private func emitChange() {
@@ -257,11 +337,40 @@ final class ButtonDetailPanel: NSView {
         config.colorHex = colorWell.color.hexString
         config.x = Double(xField.stringValue) ?? config.x
         config.y = Double(yField.stringValue) ?? config.y
+        config.editorWidth = sizeValue(from: widthField.stringValue, fallback: config.editorWidth > 0 ? config.editorWidth : config.width)
+        config.editorHeight = sizeValue(from: heightField.stringValue, fallback: config.editorHeight > 0 ? config.editorHeight : config.height)
+        config.shape = ButtonShape(tag: shapePopup.selectedTag()) ?? .roundedRectangle
         config.enabled = enabledCheckbox.state == .on
         config.interactionMode = ButtonInteractionMode(tag: interactionModePopup.selectedTag()) ?? .momentary
+        if config.interactionMode == .toggleHold {
+            config.multiKeyActivationMode = MultiKeyActivationMode(tag: multiKeyActivationModePopup.selectedTag()) ?? .sequential
+        } else {
+            config.multiKeyActivationMode = .sequential
+            multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
+        }
 
         self.config = config
+        updateMultiKeyActivationModeVisibility()
         onChanged?(button, config)
+    }
+
+    private func applyKeyBindings(_ bindings: [ButtonKeyBinding]) {
+        guard !bindings.isEmpty else {
+            return
+        }
+
+        config?.keyBindings = bindings
+        config?.keyCode = bindings[0].keyCode
+        config?.keyModifiers = bindings[0].keyModifiers
+        config?.multiKeyActivationMode = .sequential
+        multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
+        updateMultiKeyActivationModeVisibility(for: bindings)
+    }
+
+    private func updateMultiKeyActivationModeVisibility(for bindings: [ButtonKeyBinding]? = nil) {
+        let currentBindings = bindings ?? config?.keyBindings ?? []
+        let interactionMode = ButtonInteractionMode(tag: interactionModePopup.selectedTag()) ?? config?.interactionMode ?? .momentary
+        multiKeyActivationModeRow?.isHidden = currentBindings.count <= 1 || interactionMode != .toggleHold
     }
 
     private func clampedLabelSize(from stringValue: String, fallback: Double) -> Double {
@@ -272,6 +381,14 @@ final class ButtonDetailPanel: NSView {
         return min(max(parsedValue, 6), 36)
     }
 
+    private func sizeValue(from stringValue: String, fallback: Double) -> Double {
+        guard let parsedValue = Double(stringValue), parsedValue.isFinite else {
+            return fallback
+        }
+
+        return parsedValue
+    }
+
     private func syncLabelSizeControls(to size: Double) {
         let clampedSize = min(max(size, 6), 36)
         labelSizeField.stringValue = "\(Int(clampedSize))"
@@ -279,9 +396,44 @@ final class ButtonDetailPanel: NSView {
     }
 }
 
+private extension ButtonShape {
+    static var allCases: [ButtonShape] {
+        [.roundedRectangle, .oval]
+    }
+
+    var displayName: String {
+        switch self {
+        case .roundedRectangle:
+            return "Rounded Rectangle"
+        case .oval:
+            return "Circle/Oval"
+        }
+    }
+
+    var tag: Int {
+        switch self {
+        case .roundedRectangle:
+            return 0
+        case .oval:
+            return 1
+        }
+    }
+
+    init?(tag: Int) {
+        switch tag {
+        case 0:
+            self = .roundedRectangle
+        case 1:
+            self = .oval
+        default:
+            return nil
+        }
+    }
+}
+
 private extension ButtonInteractionMode {
     static var allCases: [ButtonInteractionMode] {
-        [.momentary, .toggleHold]
+        [.momentary, .toggleHold, .turbo]
     }
 
     var displayName: String {
@@ -290,6 +442,8 @@ private extension ButtonInteractionMode {
             return "Momentary"
         case .toggleHold:
             return "Toggle Hold"
+        case .turbo:
+            return "Turbo"
         }
     }
 
@@ -299,6 +453,8 @@ private extension ButtonInteractionMode {
             return 0
         case .toggleHold:
             return 1
+        case .turbo:
+            return 2
         }
     }
 
@@ -308,6 +464,43 @@ private extension ButtonInteractionMode {
             self = .momentary
         case 1:
             self = .toggleHold
+        case 2:
+            self = .turbo
+        default:
+            return nil
+        }
+    }
+}
+
+private extension MultiKeyActivationMode {
+    static var allCases: [MultiKeyActivationMode] {
+        [.sequential, .simultaneous]
+    }
+
+    var displayName: String {
+        switch self {
+        case .sequential:
+            return "Sequential"
+        case .simultaneous:
+            return "Simultaneous"
+        }
+    }
+
+    var tag: Int {
+        switch self {
+        case .sequential:
+            return 0
+        case .simultaneous:
+            return 1
+        }
+    }
+
+    init?(tag: Int) {
+        switch tag {
+        case 0:
+            self = .sequential
+        case 1:
+            self = .simultaneous
         default:
             return nil
         }
