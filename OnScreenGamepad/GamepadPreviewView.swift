@@ -72,6 +72,12 @@ final class GamepadPreviewView: NSView {
     var onGeometryChanged: (([GamepadButton: ButtonEditorGeometry]) -> CanvasGeometryChangeResult)?
     var onGeometryChangeCompleted: ((_ before: [GamepadButton: CGRect], _ after: [GamepadButton: CGRect]) -> Void)?
     var maximumWorkspaceSize = CGSize(width: 1000, height: 1000)
+    var workspaceOrigin = CGPoint.zero {
+        didSet {
+            needsDisplay = true
+            window?.invalidateCursorRects(for: self)
+        }
+    }
     var usesCenteredOrigin = false {
         didSet { needsDisplay = true }
     }
@@ -629,41 +635,47 @@ final class GamepadPreviewView: NSView {
     }
 
     private func canvasFrame(for modelFrame: CGRect) -> CGRect {
+        var canvasFrame = modelFrame.offsetBy(dx: workspaceOrigin.x, dy: workspaceOrigin.y)
         guard usesCenteredOrigin else {
-            return modelFrame
+            return canvasFrame
         }
 
-        return modelFrame.offsetBy(
+        canvasFrame = modelFrame.offsetBy(
             dx: maximumWorkspaceSize.width / 2,
             dy: maximumWorkspaceSize.height / 2
         )
+        return canvasFrame.offsetBy(dx: workspaceOrigin.x, dy: workspaceOrigin.y)
     }
 
     private func modelPoint(forCanvasPoint point: CGPoint) -> CGPoint {
+        let workspacePoint = CGPoint(
+            x: point.x - workspaceOrigin.x,
+            y: point.y - workspaceOrigin.y
+        )
         guard usesCenteredOrigin else {
-            return point
+            return workspacePoint
         }
 
         return CGPoint(
-            x: point.x - (maximumWorkspaceSize.width / 2),
-            y: point.y - (maximumWorkspaceSize.height / 2)
+            x: workspacePoint.x - (maximumWorkspaceSize.width / 2),
+            y: workspacePoint.y - (maximumWorkspaceSize.height / 2)
         )
     }
 
     private func canvasX(forModelX x: CGFloat) -> CGFloat {
         guard usesCenteredOrigin else {
-            return x
+            return x + workspaceOrigin.x
         }
 
-        return x + (maximumWorkspaceSize.width / 2)
+        return x + (maximumWorkspaceSize.width / 2) + workspaceOrigin.x
     }
 
     private func canvasY(forModelY y: CGFloat) -> CGFloat {
         guard usesCenteredOrigin else {
-            return y
+            return y + workspaceOrigin.y
         }
 
-        return y + (maximumWorkspaceSize.height / 2)
+        return y + (maximumWorkspaceSize.height / 2) + workspaceOrigin.y
     }
 }
 

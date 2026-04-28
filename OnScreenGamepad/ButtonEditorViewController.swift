@@ -38,6 +38,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             didSet { needsDisplay = true }
         }
         private let workspaceSize = CGSize(width: 1000, height: 1000)
+        private(set) var workspaceOrigin = CGPoint.zero
 
         init(previewView: GamepadPreviewView) {
             self.previewView = previewView
@@ -58,10 +59,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
             guard showsGrid else { return }
 
-            drawGrid(spacing: 10, color: NSColor.white.withAlphaComponent(0.05))
-            drawGrid(spacing: 50, color: NSColor.white.withAlphaComponent(0.10))
+            let workspaceRect = CGRect(origin: workspaceOrigin, size: workspaceSize)
+            drawGrid(in: workspaceRect, spacing: 10, color: NSColor.white.withAlphaComponent(0.05))
+            drawGrid(in: workspaceRect, spacing: 50, color: NSColor.white.withAlphaComponent(0.10))
 
-            let workspaceBorder = NSBezierPath(rect: bounds.insetBy(dx: 0.5, dy: 0.5))
+            let workspaceBorder = NSBezierPath(rect: workspaceRect.insetBy(dx: 0.5, dy: 0.5))
             NSColor.white.withAlphaComponent(0.18).setStroke()
             workspaceBorder.lineWidth = 1
             workspaceBorder.stroke()
@@ -72,29 +74,37 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             previewView.frame = bounds
         }
 
-        func updateCanvasSize() {
-            if frame.size != workspaceSize {
-                frame = CGRect(origin: .zero, size: workspaceSize)
+        func updateCanvasSize(visibleSize: CGSize) {
+            let nextSize = CGSize(
+                width: max(workspaceSize.width, visibleSize.width),
+                height: workspaceSize.height
+            )
+            let nextWorkspaceOrigin = CGPoint(x: max(0, (nextSize.width - workspaceSize.width) / 2), y: 0)
+
+            if frame.size != nextSize {
+                frame = CGRect(origin: .zero, size: nextSize)
             }
+            workspaceOrigin = nextWorkspaceOrigin
+            previewView.workspaceOrigin = nextWorkspaceOrigin
 
             needsLayout = true
             needsDisplay = true
         }
 
-        private func drawGrid(spacing: CGFloat, color: NSColor) {
+        private func drawGrid(in rect: CGRect, spacing: CGFloat, color: NSColor) {
             let path = NSBezierPath()
 
-            var x: CGFloat = 0
-            while x <= bounds.width {
-                path.move(to: CGPoint(x: x, y: 0))
-                path.line(to: CGPoint(x: x, y: bounds.height))
+            var x = rect.minX
+            while x <= rect.maxX {
+                path.move(to: CGPoint(x: x, y: rect.minY))
+                path.line(to: CGPoint(x: x, y: rect.maxY))
                 x += spacing
             }
 
-            var y: CGFloat = 0
-            while y <= bounds.height {
-                path.move(to: CGPoint(x: 0, y: y))
-                path.line(to: CGPoint(x: bounds.width, y: y))
+            var y = rect.minY
+            while y <= rect.maxY {
+                path.move(to: CGPoint(x: rect.minX, y: y))
+                path.line(to: CGPoint(x: rect.maxX, y: y))
                 y += spacing
             }
 
@@ -124,6 +134,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private var isInspectorCollapsed = false
     private var lastExpandedInspectorWidth = SplitMetrics.defaultInspectorWidth
     private var hasRestoredInspectorLayout = false
+    private var isApplyingInspectorLayout = false
+    private var lastObservedEditorSplitWidth: CGFloat = 0
 
     private let nameField = NSTextField()
     private let opacitySlider = NSSlider()
@@ -389,8 +401,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     private func setInspectorWidth(_ width: CGFloat) {
         let dividerPosition = editorSplitView.bounds.width - editorSplitView.dividerThickness - width
+        isApplyingInspectorLayout = true
         editorSplitView.setPosition(max(SplitMetrics.minimumPreviewWidth, dividerPosition), ofDividerAt: 0)
         editorSplitView.layoutSubtreeIfNeeded()
+        isApplyingInspectorLayout = false
     }
 
     func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
@@ -422,6 +436,21 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             return
         }
 
+        let splitWidth = splitView.bounds.width
+        let didResizeContainer = abs(splitWidth - lastObservedEditorSplitWidth) > 0.5
+        lastObservedEditorSplitWidth = splitWidth
+
+        if didResizeContainer {
+            if !isInspectorCollapsed {
+                setInspectorWidth(lastExpandedInspectorWidth)
+            }
+            return
+        }
+
+        guard !isApplyingInspectorLayout else {
+            return
+        }
+
         let inspectorWidth = detailPanel.frame.width
         syncInspectorStateFromCurrentWidth(inspectorWidth: inspectorWidth)
     }
@@ -449,6 +478,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         detailPanel.setCollapsed(false)
         detailPanel.isHidden = isInspectorCollapsed
         editorSplitView.adjustSubviews()
+        lastObservedEditorSplitWidth = editorSplitView.bounds.width
 
         if !isInspectorCollapsed {
             setInspectorWidth(lastExpandedInspectorWidth)
@@ -828,7 +858,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     private func updatePreviewCanvasLayout() {
         previewCanvasView.showsGrid = showGridCheckbox.state == .on
-        previewCanvasView.updateCanvasSize()
+        previewCanvasView.updateCanvasSize(visibleSize: previewScrollView.contentView.bounds.size)
         previewCanvasView.layoutSubtreeIfNeeded()
     }
 
@@ -1675,7 +1705,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private func scrollPreviewToProfileContent() {
         guard let contentBounds = canvasContentBounds(for: profile) else {
             let origin = CGPoint(
-                x: max(0, (Self.maximumWorkspaceSize.width - previewScrollView.contentView.bounds.width) / 2),
+                x: max(0, previewCanvasView.workspaceOrigin.x - ((previewScrollView.contentView.bounds.width - Self.maximumWorkspaceSize.width) / 2)),
                 y: max(0, (Self.maximumWorkspaceSize.height - previewScrollView.contentView.bounds.height) / 2)
             )
             previewScrollView.contentView.scroll(to: origin)
@@ -1708,12 +1738,15 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         }
 
         guard profile.editorCoordinateMode == .centered else {
-            return contentBounds
+            return contentBounds.offsetBy(
+                dx: previewCanvasView.workspaceOrigin.x,
+                dy: previewCanvasView.workspaceOrigin.y
+            )
         }
 
         return contentBounds.offsetBy(
-            dx: Self.maximumWorkspaceSize.width / 2,
-            dy: Self.maximumWorkspaceSize.height / 2
+            dx: (Self.maximumWorkspaceSize.width / 2) + previewCanvasView.workspaceOrigin.x,
+            dy: (Self.maximumWorkspaceSize.height / 2) + previewCanvasView.workspaceOrigin.y
         )
     }
 
