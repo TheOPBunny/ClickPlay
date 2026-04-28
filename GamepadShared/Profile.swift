@@ -20,7 +20,7 @@ enum MultiKeyActivationMode: String, Codable {
     case simultaneous
 }
 
-struct ButtonKeyBinding: Codable, Equatable {
+struct ButtonKeyBinding: Codable, Hashable {
     var keyCode: Int
     var keyModifiers: Int
 }
