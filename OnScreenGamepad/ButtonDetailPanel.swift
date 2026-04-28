@@ -342,7 +342,12 @@ final class ButtonDetailPanel: NSView {
         config.shape = ButtonShape(tag: shapePopup.selectedTag()) ?? .roundedRectangle
         config.enabled = enabledCheckbox.state == .on
         config.interactionMode = ButtonInteractionMode(tag: interactionModePopup.selectedTag()) ?? .momentary
-        config.multiKeyActivationMode = MultiKeyActivationMode(tag: multiKeyActivationModePopup.selectedTag()) ?? .sequential
+        if config.interactionMode == .toggleHold {
+            config.multiKeyActivationMode = MultiKeyActivationMode(tag: multiKeyActivationModePopup.selectedTag()) ?? .sequential
+        } else {
+            config.multiKeyActivationMode = .sequential
+            multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
+        }
 
         self.config = config
         updateMultiKeyActivationModeVisibility()
@@ -364,7 +369,8 @@ final class ButtonDetailPanel: NSView {
 
     private func updateMultiKeyActivationModeVisibility(for bindings: [ButtonKeyBinding]? = nil) {
         let currentBindings = bindings ?? config?.keyBindings ?? []
-        multiKeyActivationModeRow?.isHidden = currentBindings.count <= 1
+        let interactionMode = ButtonInteractionMode(tag: interactionModePopup.selectedTag()) ?? config?.interactionMode ?? .momentary
+        multiKeyActivationModeRow?.isHidden = currentBindings.count <= 1 || interactionMode != .toggleHold
     }
 
     private func clampedLabelSize(from stringValue: String, fallback: Double) -> Double {
