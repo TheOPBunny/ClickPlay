@@ -80,7 +80,7 @@ final class GamepadButtonView: NSView {
         ])
 
         updateAppearance(animated: false)
-        NSLog("[Button \(button.rawValue)] Created frame will be set by parent, keyCode=\(config.keyCode)")
+        NSLog("[Button \(button.rawValue)] Created frame will be set by parent, keyBindings=\(config.keyBindings.map(\.keyCode))")
     }
 
     override func layout() {
@@ -150,14 +150,14 @@ final class GamepadButtonView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard !usesToggleHold, !usesCompatibilityTap else { return }
+        guard !usesSequentialMultiKey, !usesToggleHold, !usesCompatibilityTap else { return }
         let inside = containsInteractivePoint(convert(event.locationInWindow, from: nil))
         if inside != isPressed { setPressed(inside) }
     }
 
     override func mouseExited(with event: NSEvent) {
         NSLog("[Button \(button.rawValue)] mouseExited")
-        guard !usesToggleHold, !usesCompatibilityTap else { return }
+        guard !usesSequentialMultiKey, !usesToggleHold, !usesCompatibilityTap else { return }
         if isPressed { setPressed(false) }
     }
 
@@ -169,7 +169,16 @@ final class GamepadButtonView: NSView {
         compatibilityModeEnabled && config.interactionMode == .momentary
     }
 
+    private var usesSequentialMultiKey: Bool {
+        config.keyBindings.count > 1 && config.multiKeyActivationMode == .sequential
+    }
+
     private func handlePressStarted() {
+        if usesSequentialMultiKey {
+            playSequentialBindings()
+            return
+        }
+
         if usesToggleHold {
             setPressed(!isPressed)
             return
@@ -185,7 +194,7 @@ final class GamepadButtonView: NSView {
     }
 
     private func handlePressEnded() {
-        guard !usesToggleHold, !usesCompatibilityTap else { return }
+        guard !usesSequentialMultiKey, !usesToggleHold, !usesCompatibilityTap else { return }
         setPressed(false)
     }
 
@@ -200,12 +209,36 @@ final class GamepadButtonView: NSView {
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration, execute: workItem)
     }
 
+    private func playSequentialBindings() {
+        autoReleaseWorkItem?.cancel()
+
+        isPressed = true
+        updateAppearance(animated: true)
+
+        NSLog("[Button \(button.rawValue)] playSequential keyBindings=\(config.keyBindings.map(\.keyCode)) mode=\(config.interactionMode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
+        for binding in config.keyBindings {
+            let keyCode = CGKeyCode(binding.keyCode)
+            let modifiers = NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
+            KeyInjector.shared.pressRaw(keyCode, modifiers: modifiers)
+            KeyInjector.shared.releaseRaw(keyCode, modifiers: modifiers)
+        }
+
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.isPressed = false
+            self?.updateAppearance(animated: true)
+            self?.autoReleaseWorkItem = nil
+        }
+        autoReleaseWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration, execute: workItem)
+    }
+
     private func setPressed(_ pressed: Bool) {
         guard pressed != isPressed else { return }
         isPressed = pressed
-        let keyCode = CGKeyCode(config.keyCode)
-        let modifiers = NSEvent.ModifierFlags(rawValue: UInt(config.keyModifiers))
-        NSLog("[Button \(button.rawValue)] setPressed=\(pressed) keyCode=\(keyCode) modifiers=\(config.keyModifiers) mode=\(config.interactionMode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
+        let binding = config.keyBindings.first ?? ButtonKeyBinding(keyCode: config.keyCode, keyModifiers: config.keyModifiers)
+        let keyCode = CGKeyCode(binding.keyCode)
+        let modifiers = NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
+        NSLog("[Button \(button.rawValue)] setPressed=\(pressed) keyCode=\(keyCode) modifiers=\(binding.keyModifiers) mode=\(config.interactionMode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
         if pressed {
             pressedBinding = (keyCode: keyCode, modifiers: modifiers)
             KeyInjector.shared.pressRaw(keyCode, modifiers: modifiers)

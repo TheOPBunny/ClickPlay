@@ -1071,6 +1071,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 || lhs.colorHex != rhs.colorHex
                 || lhs.keyCode != rhs.keyCode
                 || lhs.keyModifiers != rhs.keyModifiers
+                || lhs.keyBindings != rhs.keyBindings
+                || lhs.multiKeyActivationMode != rhs.multiKeyActivationMode
                 || lhs.label != rhs.label
                 || lhs.labelFontSize != rhs.labelFontSize
                 || lhs.labelBold != rhs.labelBold

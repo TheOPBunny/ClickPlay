@@ -42,7 +42,7 @@ final class ButtonDetailPanel: NSView {
         config = nil
         button = nil
         [labelField, labelSizeField, xField, yField, widthField, heightField].forEach { $0.stringValue = "" }
-        keyRecorder.setKey(code: 49)
+        keyRecorder.setKeyBindings([ButtonKeyBinding(keyCode: 49, keyModifiers: 0)])
         labelBoldCheckbox.state = .off
         labelItalicCheckbox.state = .off
         shapePopup.selectItem(withTag: ButtonShape.roundedRectangle.tag)
@@ -69,10 +69,7 @@ final class ButtonDetailPanel: NSView {
         shapePopup.selectItem(withTag: config.shape.tag)
         enabledCheckbox.state = config.enabled ? .on : .off
         interactionModePopup.selectItem(withTag: config.interactionMode.tag)
-        keyRecorder.setKey(
-            code: config.keyCode,
-            modifiers: NSEvent.ModifierFlags(rawValue: UInt(config.keyModifiers))
-        )
+        keyRecorder.setKeyBindings(config.keyBindings)
     }
 
     func refreshPosition(x: Double, y: Double, config: ButtonConfig) {
@@ -109,9 +106,8 @@ final class ButtonDetailPanel: NSView {
         keyRecorder.translatesAutoresizingMaskIntoConstraints = false
         keyRecorder.widthAnchor.constraint(equalToConstant: 150).isActive = true
         keyRecorder.heightAnchor.constraint(equalToConstant: 28).isActive = true
-        keyRecorder.onKeyRecorded = { [weak self] code, modifiers in
-            self?.config?.keyCode = code
-            self?.config?.keyModifiers = Int(modifiers.rawValue)
+        keyRecorder.onKeyRecorded = { [weak self] bindings in
+            self?.applyKeyBindings(bindings)
             self?.emitChange()
         }
 
@@ -326,6 +322,17 @@ final class ButtonDetailPanel: NSView {
 
         self.config = config
         onChanged?(button, config)
+    }
+
+    private func applyKeyBindings(_ bindings: [ButtonKeyBinding]) {
+        guard !bindings.isEmpty else {
+            return
+        }
+
+        config?.keyBindings = bindings
+        config?.keyCode = bindings[0].keyCode
+        config?.keyModifiers = bindings[0].keyModifiers
+        config?.multiKeyActivationMode = .sequential
     }
 
     private func clampedLabelSize(from stringValue: String, fallback: Double) -> Double {

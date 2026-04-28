@@ -15,6 +15,16 @@ enum EditorCoordinateMode: String, Codable {
     case centered
 }
 
+enum MultiKeyActivationMode: String, Codable {
+    case sequential
+    case simultaneous
+}
+
+struct ButtonKeyBinding: Codable, Equatable {
+    var keyCode: Int
+    var keyModifiers: Int
+}
+
 // MARK: - ButtonConfig
 // Per-button layout and appearance settings stored in a profile.
 
@@ -28,6 +38,8 @@ struct ButtonConfig: Codable {
     var colorHex: String    // "#RRGGBB"
     var keyCode: Int        // CGKeyCode raw value
     var keyModifiers: Int   // NSEvent.ModifierFlags raw value
+    var keyBindings: [ButtonKeyBinding]
+    var multiKeyActivationMode: MultiKeyActivationMode
     var label: String       // display label (can differ from button name)
     var labelFontSize: Double
     var labelBold: Bool
@@ -46,6 +58,8 @@ struct ButtonConfig: Codable {
         case colorHex
         case keyCode
         case keyModifiers
+        case keyBindings
+        case multiKeyActivationMode
         case label
         case labelFontSize
         case labelBold
@@ -65,6 +79,8 @@ struct ButtonConfig: Codable {
         colorHex: String,
         keyCode: Int,
         keyModifiers: Int = 0,
+        keyBindings: [ButtonKeyBinding]? = nil,
+        multiKeyActivationMode: MultiKeyActivationMode = .sequential,
         label: String,
         labelFontSize: Double = 11,
         labelBold: Bool = true,
@@ -82,6 +98,14 @@ struct ButtonConfig: Codable {
         self.colorHex = colorHex
         self.keyCode = keyCode
         self.keyModifiers = keyModifiers
+        self.keyBindings = Self.normalizedKeyBindings(
+            keyBindings ?? [ButtonKeyBinding(keyCode: keyCode, keyModifiers: keyModifiers)],
+            fallbackKeyCode: keyCode,
+            fallbackKeyModifiers: keyModifiers
+        )
+        self.multiKeyActivationMode = multiKeyActivationMode
+        self.keyCode = self.keyBindings[0].keyCode
+        self.keyModifiers = self.keyBindings[0].keyModifiers
         self.label = label
         self.labelFontSize = labelFontSize
         self.labelBold = labelBold
@@ -100,8 +124,16 @@ struct ButtonConfig: Codable {
         editorWidth = try container.decodeIfPresent(Double.self, forKey: .editorWidth) ?? 0
         editorHeight = try container.decodeIfPresent(Double.self, forKey: .editorHeight) ?? 0
         colorHex = try container.decode(String.self, forKey: .colorHex)
-        keyCode = try container.decode(Int.self, forKey: .keyCode)
-        keyModifiers = try container.decodeIfPresent(Int.self, forKey: .keyModifiers) ?? 0
+        let decodedKeyCode = try container.decodeIfPresent(Int.self, forKey: .keyCode) ?? 49
+        let decodedKeyModifiers = try container.decodeIfPresent(Int.self, forKey: .keyModifiers) ?? 0
+        keyBindings = Self.normalizedKeyBindings(
+            try container.decodeIfPresent([ButtonKeyBinding].self, forKey: .keyBindings),
+            fallbackKeyCode: decodedKeyCode,
+            fallbackKeyModifiers: decodedKeyModifiers
+        )
+        keyCode = keyBindings[0].keyCode
+        keyModifiers = keyBindings[0].keyModifiers
+        multiKeyActivationMode = try container.decodeIfPresent(MultiKeyActivationMode.self, forKey: .multiKeyActivationMode) ?? .sequential
         label = try container.decode(String.self, forKey: .label)
         labelFontSize = try container.decodeIfPresent(Double.self, forKey: .labelFontSize) ?? 11
         labelBold = try container.decodeIfPresent(Bool.self, forKey: .labelBold) ?? true
@@ -109,6 +141,47 @@ struct ButtonConfig: Codable {
         shape = try container.decodeIfPresent(ButtonShape.self, forKey: .shape) ?? .roundedRectangle
         enabled = try container.decode(Bool.self, forKey: .enabled)
         interactionMode = try container.decodeIfPresent(ButtonInteractionMode.self, forKey: .interactionMode) ?? .momentary
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        let normalizedBindings = Self.normalizedKeyBindings(
+            keyBindings,
+            fallbackKeyCode: keyCode,
+            fallbackKeyModifiers: keyModifiers
+        )
+        let firstBinding = normalizedBindings[0]
+
+        try container.encode(x, forKey: .x)
+        try container.encode(y, forKey: .y)
+        try container.encode(width, forKey: .width)
+        try container.encode(height, forKey: .height)
+        try container.encode(editorWidth, forKey: .editorWidth)
+        try container.encode(editorHeight, forKey: .editorHeight)
+        try container.encode(colorHex, forKey: .colorHex)
+        try container.encode(firstBinding.keyCode, forKey: .keyCode)
+        try container.encode(firstBinding.keyModifiers, forKey: .keyModifiers)
+        try container.encode(normalizedBindings, forKey: .keyBindings)
+        try container.encode(multiKeyActivationMode, forKey: .multiKeyActivationMode)
+        try container.encode(label, forKey: .label)
+        try container.encode(labelFontSize, forKey: .labelFontSize)
+        try container.encode(labelBold, forKey: .labelBold)
+        try container.encode(labelItalic, forKey: .labelItalic)
+        try container.encode(shape, forKey: .shape)
+        try container.encode(enabled, forKey: .enabled)
+        try container.encode(interactionMode, forKey: .interactionMode)
+    }
+
+    private static func normalizedKeyBindings(
+        _ bindings: [ButtonKeyBinding]?,
+        fallbackKeyCode: Int,
+        fallbackKeyModifiers: Int
+    ) -> [ButtonKeyBinding] {
+        guard let bindings, !bindings.isEmpty else {
+            return [ButtonKeyBinding(keyCode: fallbackKeyCode, keyModifiers: fallbackKeyModifiers)]
+        }
+
+        return bindings
     }
 }
 
@@ -344,10 +417,7 @@ extension NSColor {
 extension ButtonConfig {
     var resolvedSortLabel: String {
         let displayLabel = resolvedDisplayLabel
-        return displayLabel.isEmpty ? Self.keyDisplayName(
-            code: keyCode,
-            modifiers: NSEvent.ModifierFlags(rawValue: UInt(keyModifiers))
-        ) : displayLabel
+        return displayLabel.isEmpty ? keyBindingsDisplayName : displayLabel
     }
 
     var resolvedLabelFont: NSFont {
@@ -375,7 +445,24 @@ extension ButtonConfig {
             return label
         }
 
-        return Self.keyDisplayName(code: keyCode, modifiers: NSEvent.ModifierFlags(rawValue: UInt(keyModifiers)))
+        return keyBindingsDisplayName
+    }
+
+    var keyBindingsDisplayName: String {
+        guard keyBindings.count > 1 else {
+            let binding = keyBindings.first ?? ButtonKeyBinding(keyCode: keyCode, keyModifiers: keyModifiers)
+            return Self.keyDisplayName(
+                code: binding.keyCode,
+                modifiers: NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
+            )
+        }
+
+        return "[" + keyBindings.map { binding in
+            Self.keyDisplayName(
+                code: binding.keyCode,
+                modifiers: NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
+            )
+        }.joined() + "]"
     }
 
     static func keyDisplayName(code: Int, modifiers: NSEvent.ModifierFlags) -> String {
