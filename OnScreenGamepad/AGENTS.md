@@ -6,15 +6,15 @@ OnScreenGamepad is a macOS AppKit status-bar utility that displays an always-on-
 This is currently a functional prototype. Prefer improving the existing architecture over introducing major framework changes.
 
 ## Architecture
-- `OnScreenGamepad/main.swift`: App entry point.
-- `OnScreenGamepad/AppDelegate.swift`: app lifecycle, status bar item and menu, Accessibility permission flow, gamepad launch/show/hide, profile switching.
-- `OnScreenGamepad/GamepadWindow.swift`: borderless non-activating overlay panel and toggle pill window.
-- `OnScreenGamepad/GamepadContentView.swift`: translucent HUD container, drag-to-move behavior, button layout from active profile.
-- `OnScreenGamepad/GamepadButtonView.swift`: per-button mouse handling, pressed state, visual updates, key injection trigger.
-- `OnScreenGamepad/KeyInjector.swift`: low-level keyboard event posting and held-key tracking.
-- `OnScreenGamepad/KeyMapping.swift`: logical button identities.
-- `OnScreenGamepad/Profile.swift`: profile and button config models, default layout, color helpers.
-- `OnScreenGamepad/ProfileStore.swift`: profile persistence and active profile management.
+- `main.swift`: App entry point.
+- `AppDelegate.swift`: app lifecycle, status bar item and menu, Accessibility permission flow, gamepad launch/show/hide, profile switching.
+- `GamepadWindow.swift`: borderless non-activating overlay panel and toggle pill window.
+- `GamepadContentView.swift`: translucent HUD container, drag-to-move behavior, button layout from active profile.
+- `GamepadButtonView.swift`: per-button mouse handling, pressed state, visual updates, key injection trigger.
+- `KeyInjector.swift`: low-level keyboard event posting and held-key tracking.
+- `../GamepadShared/KeyMapping.swift`: logical button identities.
+- `../GamepadShared/Profile.swift`: profile and button config models, default layout, color helpers.
+- `../GamepadShared/ProfileStore.swift`: profile persistence and active profile management.
 
 ## Non-Negotiable Constraints
 - The app must remain usable while another app or game stays focused.
