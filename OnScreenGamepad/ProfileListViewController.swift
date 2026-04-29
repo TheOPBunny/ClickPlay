@@ -227,11 +227,11 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
 
     private func addSubProfile(fromTemplate: Bool) {
         guard let parentID = selectedParentID(),
-              let subProfile = ProfileStore.shared.addSubProfile(to: parentID, fromTemplate: fromTemplate) else {
+              ProfileStore.shared.addSubProfile(to: parentID, fromTemplate: fromTemplate) != nil else {
             return
         }
 
-        onProfileSelected?(subProfile)
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
     }
 
     @objc private func duplicateSelection() {
@@ -240,10 +240,10 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         }
 
         if let parentID = item.parentID {
-            guard let duplicatedSubProfile = ProfileStore.shared.duplicateSubProfile(item.profileID, in: parentID) else {
+            guard ProfileStore.shared.duplicateSubProfile(item.profileID, in: parentID) != nil else {
                 return
             }
-            onProfileSelected?(duplicatedSubProfile)
+            onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
             return
         }
 

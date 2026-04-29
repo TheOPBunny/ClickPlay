@@ -279,6 +279,9 @@ final class ProfileStore {
             }
 
             guard subProfiles.count > 1 else {
+                for key in buttons.keys where GamepadButton(key).isSubProfileSwitch {
+                    buttons.removeValue(forKey: key)
+                }
                 reconciledSubProfile.buttons = buttons
                 return reconciledSubProfile
             }
