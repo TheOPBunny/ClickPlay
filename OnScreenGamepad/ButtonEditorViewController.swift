@@ -568,7 +568,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             menuItem.title = editorUndoManager.redoMenuItemTitle
             return editorUndoManager.canRedo
         case #selector(cut(_:)), #selector(copy(_:)), #selector(delete(_:)):
-            return !selectedIDs.isEmpty && !isTextInputFirstResponder
+            if menuItem.action == #selector(copy(_:)) {
+                return !selectedIDs.isEmpty && !isTextInputFirstResponder
+            }
+
+            return !deletableSelectedIDs.isEmpty && !isTextInputFirstResponder
         case #selector(paste(_:)):
             return canPasteButtons && !isTextInputFirstResponder
         case #selector(alignLeft(_:)), #selector(alignCenterX(_:)), #selector(alignRight(_:)),
@@ -614,6 +618,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             config.x += offset
             config.y -= offset
             config.enabled = true
+            config.action = .keyboard
             config = configByApplyingGeometryClamp(config)
             profile.buttons[button.rawValue] = config
             insertedStates[button] = config
@@ -728,6 +733,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     private func deleteButton(_ button: GamepadButton) {
+        guard !isProtectedSwitchButton(button) else {
+            return
+        }
+
         let previousConfig = profile.buttons[button.rawValue]
         profile.buttons.removeValue(forKey: button.rawValue)
         registerButtonStateUndo(button: button, before: previousConfig, after: nil, actionName: "Delete Button")
@@ -791,7 +800,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     private func deleteSelectedButtons(actionName: String) {
-        let buttonsToDelete = selectedIDs
+        let buttonsToDelete = deletableSelectedIDs
         guard !buttonsToDelete.isEmpty else {
             return
         }
@@ -1011,6 +1020,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         oppositeState: ButtonConfig?,
         actionName: String
     ) {
+        if isProtectedSwitchButton(button), state == nil {
+            return
+        }
+
         if let state {
             profile.buttons[button.rawValue] = configByApplyingGeometryClamp(state)
         } else {
@@ -1042,6 +1055,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         actionName: String
     ) {
         for (button, state) in states {
+            if isProtectedSwitchButton(button), state == nil {
+                continue
+            }
+
             if let state {
                 profile.buttons[button.rawValue] = configByApplyingGeometryClamp(state)
             } else {
@@ -1083,7 +1100,16 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 || lhs.shape != rhs.shape
                 || lhs.enabled != rhs.enabled
                 || lhs.interactionMode != rhs.interactionMode
+                || lhs.action != rhs.action
         }
+    }
+
+    private var deletableSelectedIDs: Set<GamepadButton> {
+        selectedIDs.filter { !isProtectedSwitchButton($0) }
+    }
+
+    private func isProtectedSwitchButton(_ button: GamepadButton) -> Bool {
+        profile.buttons[button.rawValue]?.action.isProtectedSwitch == true
     }
 
     private func applyCanvasFrames(_ frames: [GamepadButton: CGRect], oppositeFrames: [GamepadButton: CGRect]) {
