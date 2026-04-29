@@ -1343,7 +1343,9 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         let fittedHeight = max(1, fittedSize.height)
         savedProfile.padWidth = fittedWidth
         savedProfile.padHeight = fittedHeight
-        let contentBounds = buttonContentBounds(for: editableProfile)
+        guard let contentBounds = buttonContentBounds(for: editableProfile) else {
+            return savedProfile
+        }
 
         for button in savedProfile.orderedButtonIDs {
             guard var config = savedProfile.buttons[button.rawValue] else {
@@ -1352,14 +1354,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
             switch editableProfile.editorCoordinateMode {
             case .legacyTopLeft:
-                guard let contentBounds else {
-                    continue
-                }
                 config.x = (config.x - contentBounds.minX) / fittedWidth
                 config.y = (config.y - contentBounds.minY) / fittedHeight
             case .centered:
-                config.x = (config.x + fittedWidth / 2) / fittedWidth
-                config.y = (config.y + fittedHeight / 2) / fittedHeight
+                config.x = (config.x - contentBounds.minX) / fittedWidth
+                config.y = (config.y - contentBounds.minY) / fittedHeight
             }
             let editorWidth = config.editorWidth > 0 ? config.editorWidth : config.width
             let editorHeight = config.editorHeight > 0 ? config.editorHeight : config.height
@@ -1726,10 +1725,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         case .legacyTopLeft:
             return contentBounds.size
         case .centered:
-            return CGSize(
-                width: max(abs(contentBounds.minX), abs(contentBounds.maxX)) * 2,
-                height: max(abs(contentBounds.minY), abs(contentBounds.maxY)) * 2
-            )
+            return contentBounds.size
         }
     }
 
