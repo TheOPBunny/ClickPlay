@@ -25,6 +25,7 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 - [x] Fade the gamepad to 100% transparency after a configurable period of inactivity.
 - [x] Use system corner dragging to resize.
 - [x] Merge the old `GamepadConfigurator` workflow into `OnScreenGamepad`.
+- [ ] Add mouse event actions for left click, right click, and drag/drop toggle.
 - [ ] Decide when to fully delete the archived standalone `GamepadConfigurator` fallback.
 
 ## Configurator
