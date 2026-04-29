@@ -45,6 +45,7 @@ final class GamepadButtonView: NSView {
     let button: GamepadButton
     private var config: ButtonConfig
     private var compatibilityModeEnabled: Bool
+    private var activeSubProfileID: UUID?
     private var pressedBinding: (keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)?
     private var pressedBindings: [(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)] = []
     private let shapeLayer = CAShapeLayer()
@@ -54,10 +55,11 @@ final class GamepadButtonView: NSView {
     private var autoReleaseWorkItem: DispatchWorkItem?
     private var sequenceRepeatWorkItem: DispatchWorkItem?
 
-    init(button: GamepadButton, config: ButtonConfig, compatibilityModeEnabled: Bool) {
+    init(button: GamepadButton, config: ButtonConfig, compatibilityModeEnabled: Bool, activeSubProfileID: UUID?) {
         self.button = button
         self.config = config
         self.compatibilityModeEnabled = compatibilityModeEnabled
+        self.activeSubProfileID = activeSubProfileID
         super.init(frame: .zero)
         setup()
     }
@@ -90,16 +92,23 @@ final class GamepadButtonView: NSView {
         updateShapePath()
     }
 
-    func updateConfig(_ newConfig: ButtonConfig, compatibilityModeEnabled: Bool) {
+    func updateConfig(_ newConfig: ButtonConfig, compatibilityModeEnabled: Bool, activeSubProfileID: UUID?) {
         releaseIfNeeded()
         config = newConfig
         self.compatibilityModeEnabled = compatibilityModeEnabled
+        self.activeSubProfileID = activeSubProfileID
         label.stringValue = config.resolvedDisplayLabel
         label.font = config.resolvedLabelFont
         updateAppearance(animated: false)
     }
 
     func releaseIfNeeded() {
+        if isSubProfileSwitch {
+            isPressed = false
+            updateAppearance(animated: false)
+            return
+        }
+
         let hadSequentialRepeat = sequenceRepeatWorkItem != nil
         let hadScheduledVisualRelease = autoReleaseWorkItem != nil
         autoReleaseWorkItem?.cancel()
@@ -158,15 +167,34 @@ final class GamepadButtonView: NSView {
         }
 
         NSLog("[Button \(button.rawValue)] mouseDown ✓")
+        if isSubProfileSwitch {
+            handleSubProfileSwitchPressStarted()
+            return
+        }
+
         handlePressStarted()
     }
 
     override func mouseUp(with event: NSEvent) {
         NSLog("[Button \(button.rawValue)] mouseUp ✓")
+        if isSubProfileSwitch {
+            handleSubProfileSwitchPressEnded(inside: containsInteractivePoint(convert(event.locationInWindow, from: nil)))
+            return
+        }
+
         handlePressEnded()
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if isSubProfileSwitch {
+            let inside = containsInteractivePoint(convert(event.locationInWindow, from: nil))
+            if inside != isPressed {
+                isPressed = inside
+                updateAppearance(animated: true)
+            }
+            return
+        }
+
         guard !usesTurbo, !usesSequentialMultiKey, !usesToggleHold, !usesCompatibilityTap else { return }
         let inside = containsInteractivePoint(convert(event.locationInWindow, from: nil))
         if inside != isPressed {
@@ -176,8 +204,52 @@ final class GamepadButtonView: NSView {
 
     override func mouseExited(with event: NSEvent) {
         NSLog("[Button \(button.rawValue)] mouseExited")
+        if isSubProfileSwitch {
+            if isPressed {
+                isPressed = false
+                updateAppearance(animated: true)
+            }
+            return
+        }
+
         guard !usesTurbo, !usesSequentialMultiKey, !usesToggleHold, !usesCompatibilityTap else { return }
         if isPressed { setCurrentPressed(false) }
+    }
+
+    private var isSubProfileSwitch: Bool {
+        config.action.targetSubProfileID != nil
+    }
+
+    private var isCurrentSubProfileSwitch: Bool {
+        guard let targetID = config.action.targetSubProfileID else {
+            return false
+        }
+
+        return targetID == activeSubProfileID
+    }
+
+    private func handleSubProfileSwitchPressStarted() {
+        guard !isCurrentSubProfileSwitch else {
+            return
+        }
+
+        isPressed = true
+        updateAppearance(animated: true)
+    }
+
+    private func handleSubProfileSwitchPressEnded(inside: Bool) {
+        defer {
+            if isPressed {
+                isPressed = false
+                updateAppearance(animated: true)
+            }
+        }
+
+        guard inside, !isCurrentSubProfileSwitch, let targetID = config.action.targetSubProfileID else {
+            return
+        }
+
+        ProfileStore.shared.setActiveSubProfile(targetID)
     }
 
     private var usesToggleHold: Bool {
@@ -477,7 +549,8 @@ final class GamepadButtonView: NSView {
 
     private func updateAppearance(animated: Bool) {
         let base = NSColor(hex: config.colorHex)
-        let target = isPressed ? base.withAlphaComponent(1.0) : base.withAlphaComponent(0.75)
+        let defaultAlpha = isCurrentSubProfileSwitch ? 0.32 : 0.75
+        let target = isPressed ? base.withAlphaComponent(1.0) : base.withAlphaComponent(defaultAlpha)
         let scale: CGFloat = isPressed ? 0.92 : 1.0
         updateShapePath()
         if animated {

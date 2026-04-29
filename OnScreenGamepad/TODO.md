@@ -18,13 +18,14 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 
 - [x] Add a built-in drop-down menu for switching profiles.
 - [x] Add transparency controls to that same menu instead of a separate transparency menu.
-- [ ] Support layered profiles so a profile can contain sub-profiles.
-- [ ] Add buttons on the gamepad to quickly swap between sub-profiles.
+- [x] Support layered profiles so a profile can contain sub-profiles.
+- [x] Add buttons on the gamepad to quickly swap between sub-profiles.
 - [x] Add a per-profile "Compatibility Mode" that makes momentary button presses last 33 ms.
 - [x] Add an option for buttons to toggle into a held-down state on press.
 - [x] Fade the gamepad to 100% transparency after a configurable period of inactivity.
 - [x] Use system corner dragging to resize.
 - [x] Merge the old `GamepadConfigurator` workflow into `OnScreenGamepad`.
+- [ ] Add mouse event actions for left click, right click, and drag/drop toggle.
 - [ ] Decide when to fully delete the archived standalone `GamepadConfigurator` fallback.
 
 ## Configurator
@@ -49,7 +50,7 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 - [ ] Add a visual cue for buttons being toggle held.
 - [x] Add a "turbo" option so pressing a button repeatedly sends its key until pressed again.
 - [x] Center text on buttons.
-- [ ] Investigate whether macOS Accessibility dwell actions can be activated.
+- [x] Investigate whether macOS Accessibility dwell actions can be activated.
 - [x] If a label is empty, use the key as the label.
 - [x] Add label styling controls for text size, bold, and italic.
 - [ ] Fix button label vertical centering, especially in circle/oval buttons. Likely fix: stop centering by `NSAttributedString.size()` height alone and compute the text baseline from `NSFont.ascender`, `descender`, and `capHeight` in both the live button label view and configurator preview drawing.

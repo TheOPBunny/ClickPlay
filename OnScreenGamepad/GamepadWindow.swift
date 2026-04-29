@@ -47,7 +47,8 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
 
     convenience init() {
         let screen = NSScreen.main ?? NSScreen.screens[0]
-        let profile = ProfileStore.shared.activeProfile
+        var profile = ProfileStore.shared.activeResolvedProfile
+        profile.name = ProfileStore.shared.activeResolvedProfileTitle
         let size = GamepadContentView.windowSize(for: profile, minimized: false)
         let origin = NSPoint(
             x: screen.visibleFrame.minX + (screen.visibleFrame.width - size.width) / 2,
@@ -125,7 +126,8 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     }
 
     func reloadProfile() {
-        let profile = ProfileStore.shared.activeProfile
+        var profile = ProfileStore.shared.activeResolvedProfile
+        profile.name = ProfileStore.shared.activeResolvedProfileTitle
         updateResizeConstraints()
         resizeForCurrentState(using: profile)
         (contentView as? GamepadContentView)?.reload(profile: profile, minimized: isMinimized)
@@ -140,7 +142,8 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
 
     private func toggleMinimized() {
         isMinimized.toggle()
-        let profile = ProfileStore.shared.activeProfile
+        var profile = ProfileStore.shared.activeResolvedProfile
+        profile.name = ProfileStore.shared.activeResolvedProfileTitle
         updateResizeConstraints()
         resizeForCurrentState(using: profile)
         (contentView as? GamepadContentView)?.setMinimized(isMinimized)
@@ -249,7 +252,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     }
 
     private func applyCurrentAlpha(animated: Bool) {
-        let targetAlpha = isFadedForInactivity ? 0.0 : ProfileStore.shared.activeProfile.opacity
+        let targetAlpha = isFadedForInactivity ? 0.0 : ProfileStore.shared.activeResolvedProfile.opacity
 
         guard animated else {
             alphaValue = targetAlpha

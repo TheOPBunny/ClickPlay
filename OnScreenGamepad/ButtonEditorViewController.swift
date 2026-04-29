@@ -124,7 +124,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private static let snapThreshold: CGFloat = 5
     private static let pasteboardType = NSPasteboard.PasteboardType("com.onscreengamepad.canvas-buttons")
 
-    private var profile = ProfileStore.shared.activeProfile
+    private var profile = ProfileStore.shared.activeResolvedProfile
     private var canvasObjects: [CanvasButtonObject] = []
     private var selectedIDs = Set<GamepadButton>()
     private var localClipboard: [ClipboardButton] = []
@@ -166,7 +166,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         super.viewDidLoad()
         loadInspectorDefaults()
         buildLayout()
-        load(profile: ProfileStore.shared.activeProfile)
+        load(profile: ProfileStore.shared.activeResolvedProfile)
     }
 
     override func viewDidLayout() {
@@ -194,10 +194,13 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     func refreshFromStoreIfNeeded() {
-        if let updatedProfile = ProfileStore.shared.profiles.first(where: { $0.id == profile.id }) {
+        if let parentProfile = ProfileStore.shared.parentProfile(containingSubProfileID: profile.id),
+           let updatedProfile = parentProfile.subProfiles.first(where: { $0.id == profile.id }) {
+            load(profile: updatedProfile)
+        } else if let updatedProfile = ProfileStore.shared.profiles.first(where: { $0.id == profile.id }) {
             load(profile: updatedProfile)
         } else {
-            load(profile: ProfileStore.shared.activeProfile)
+            load(profile: ProfileStore.shared.activeResolvedProfile)
         }
     }
 
@@ -565,7 +568,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             menuItem.title = editorUndoManager.redoMenuItemTitle
             return editorUndoManager.canRedo
         case #selector(cut(_:)), #selector(copy(_:)), #selector(delete(_:)):
-            return !selectedIDs.isEmpty && !isTextInputFirstResponder
+            if menuItem.action == #selector(copy(_:)) {
+                return !selectedIDs.isEmpty && !isTextInputFirstResponder
+            }
+
+            return !deletableSelectedIDs.isEmpty && !isTextInputFirstResponder
         case #selector(paste(_:)):
             return canPasteButtons && !isTextInputFirstResponder
         case #selector(alignLeft(_:)), #selector(alignCenterX(_:)), #selector(alignRight(_:)),
@@ -611,6 +618,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             config.x += offset
             config.y -= offset
             config.enabled = true
+            config.action = .keyboard
             config = configByApplyingGeometryClamp(config)
             profile.buttons[button.rawValue] = config
             insertedStates[button] = config
@@ -725,6 +733,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     private func deleteButton(_ button: GamepadButton) {
+        guard !isProtectedSwitchButton(button) else {
+            return
+        }
+
         let previousConfig = profile.buttons[button.rawValue]
         profile.buttons.removeValue(forKey: button.rawValue)
         registerButtonStateUndo(button: button, before: previousConfig, after: nil, actionName: "Delete Button")
@@ -788,7 +800,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     private func deleteSelectedButtons(actionName: String) {
-        let buttonsToDelete = selectedIDs
+        let buttonsToDelete = deletableSelectedIDs
         guard !buttonsToDelete.isEmpty else {
             return
         }
@@ -1008,6 +1020,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         oppositeState: ButtonConfig?,
         actionName: String
     ) {
+        if isProtectedSwitchButton(button), state == nil {
+            return
+        }
+
         if let state {
             profile.buttons[button.rawValue] = configByApplyingGeometryClamp(state)
         } else {
@@ -1039,6 +1055,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         actionName: String
     ) {
         for (button, state) in states {
+            if isProtectedSwitchButton(button), state == nil {
+                continue
+            }
+
             if let state {
                 profile.buttons[button.rawValue] = configByApplyingGeometryClamp(state)
             } else {
@@ -1080,7 +1100,16 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 || lhs.shape != rhs.shape
                 || lhs.enabled != rhs.enabled
                 || lhs.interactionMode != rhs.interactionMode
+                || lhs.action != rhs.action
         }
+    }
+
+    private var deletableSelectedIDs: Set<GamepadButton> {
+        selectedIDs.filter { !isProtectedSwitchButton($0) }
+    }
+
+    private func isProtectedSwitchButton(_ button: GamepadButton) -> Bool {
+        profile.buttons[button.rawValue]?.action.isProtectedSwitch == true
     }
 
     private func applyCanvasFrames(_ frames: [GamepadButton: CGRect], oppositeFrames: [GamepadButton: CGRect]) {
@@ -1314,7 +1343,9 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         let fittedHeight = max(1, fittedSize.height)
         savedProfile.padWidth = fittedWidth
         savedProfile.padHeight = fittedHeight
-        let contentBounds = buttonContentBounds(for: editableProfile)
+        guard let contentBounds = buttonContentBounds(for: editableProfile) else {
+            return savedProfile
+        }
 
         for button in savedProfile.orderedButtonIDs {
             guard var config = savedProfile.buttons[button.rawValue] else {
@@ -1323,14 +1354,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
             switch editableProfile.editorCoordinateMode {
             case .legacyTopLeft:
-                guard let contentBounds else {
-                    continue
-                }
                 config.x = (config.x - contentBounds.minX) / fittedWidth
                 config.y = (config.y - contentBounds.minY) / fittedHeight
             case .centered:
-                config.x = (config.x + fittedWidth / 2) / fittedWidth
-                config.y = (config.y + fittedHeight / 2) / fittedHeight
+                config.x = (config.x - contentBounds.minX) / fittedWidth
+                config.y = (config.y - contentBounds.minY) / fittedHeight
             }
             let editorWidth = config.editorWidth > 0 ? config.editorWidth : config.width
             let editorHeight = config.editorHeight > 0 ? config.editorHeight : config.height
@@ -1697,10 +1725,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         case .legacyTopLeft:
             return contentBounds.size
         case .centered:
-            return CGSize(
-                width: max(abs(contentBounds.minX), abs(contentBounds.maxX)) * 2,
-                height: max(abs(contentBounds.minY), abs(contentBounds.maxY)) * 2
-            )
+            return contentBounds.size
         }
     }
 

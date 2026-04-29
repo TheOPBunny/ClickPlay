@@ -196,7 +196,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func makeTransparencyMenu() -> NSMenu {
         let transparencyMenu = NSMenu(title: "Transparency")
-        let currentOpacity = ProfileStore.shared.activeProfile.opacity
+        let currentOpacity = ProfileStore.shared.activeResolvedProfile.opacity
 
         for opacity in supportedOpacityValues {
             let percentage = Int(opacity * 100)
@@ -259,11 +259,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func setActiveProfileOpacity(_ sender: NSMenuItem) {
         guard let opacity = sender.representedObject as? Double else { return }
 
-        var profile = ProfileStore.shared.activeProfile
+        var profile = ProfileStore.shared.activeResolvedProfile
         guard abs(profile.opacity - opacity) >= 0.001 else { return }
 
         profile.opacity = opacity
-        ProfileStore.shared.upsert(profile)
+        if let parentProfile = ProfileStore.shared.parentProfile(containingSubProfileID: profile.id) {
+            ProfileStore.shared.upsertSubProfile(profile, in: parentProfile.id)
+        } else {
+            ProfileStore.shared.upsert(profile)
+        }
     }
 
     @objc func setGlobalFadeTimeout(_ sender: NSMenuItem) {

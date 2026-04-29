@@ -1,10 +1,24 @@
 import Cocoa
 
-final class ProfileListViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
+final class ProfileListViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
 
     var onProfileSelected: ((Profile) -> Void)?
 
-    private let tableView = NSTableView()
+    private final class SidebarItem: NSObject {
+        let profileID: UUID
+        let parentID: UUID?
+
+        init(profileID: UUID, parentID: UUID?) {
+            self.profileID = profileID
+            self.parentID = parentID
+        }
+
+        var isSubProfile: Bool {
+            parentID != nil
+        }
+    }
+
+    private let outlineView = NSOutlineView()
     private let scrollView = NSScrollView()
     private let titleLabel = NSTextField(labelWithString: "Profiles")
     private let bar = NSStackView()
@@ -25,14 +39,15 @@ final class ProfileListViewController: NSViewController, NSTableViewDataSource, 
         let nameColumn = NSTableColumn(identifier: .init("name"))
         nameColumn.title = "Profiles"
 
-        tableView.addTableColumn(nameColumn)
-        tableView.headerView = nil
-        tableView.dataSource = self
-        tableView.delegate = self
-        tableView.rowHeight = 28
-        tableView.usesAlternatingRowBackgroundColors = true
+        outlineView.addTableColumn(nameColumn)
+        outlineView.outlineTableColumn = nameColumn
+        outlineView.headerView = nil
+        outlineView.dataSource = self
+        outlineView.delegate = self
+        outlineView.rowHeight = 28
+        outlineView.usesAlternatingRowBackgroundColors = true
 
-        scrollView.documentView = tableView
+        scrollView.documentView = outlineView
         scrollView.hasVerticalScroller = true
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
@@ -50,8 +65,8 @@ final class ProfileListViewController: NSViewController, NSTableViewDataSource, 
         header.translatesAutoresizingMaskIntoConstraints = false
 
         bar.addArrangedSubview(makeButton(title: "+", action: #selector(showAddProfileMenu(_:))))
-        bar.addArrangedSubview(makeButton(title: "⎘", action: #selector(duplicateProfile)))
-        bar.addArrangedSubview(makeButton(title: "−", action: #selector(deleteProfile)))
+        bar.addArrangedSubview(makeButton(title: "⎘", action: #selector(duplicateSelection)))
+        bar.addArrangedSubview(makeButton(title: "−", action: #selector(deleteSelection)))
         bar.addArrangedSubview(NSView())
         bar.orientation = .horizontal
         bar.spacing = 4
@@ -90,49 +105,68 @@ final class ProfileListViewController: NSViewController, NSTableViewDataSource, 
         isReloadingSelection = true
         defer { isReloadingSelection = false }
 
-        tableView.reloadData()
-
-        guard let index = profiles.firstIndex(where: { $0.id == ProfileStore.shared.activeProfileID }) else {
-            tableView.deselectAll(nil)
-            return
-        }
-
-        if tableView.selectedRow == index {
-            return
-        }
-
-        tableView.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
+        outlineView.reloadData()
+        expandAllProfiles()
+        selectActiveSubProfile()
     }
 
-    func numberOfRows(in tableView: NSTableView) -> Int {
-        profiles.count
+    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
+        guard let item = item as? SidebarItem else {
+            return profiles.count
+        }
+
+        return profile(with: item.profileID)?.subProfiles.count ?? 0
     }
 
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let label = NSTextField(labelWithString: profiles[row].name)
-        label.font = .systemFont(ofSize: 13)
+    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
+        if let item = item as? SidebarItem,
+           let profile = profile(with: item.profileID) {
+            return SidebarItem(profileID: profile.subProfiles[index].id, parentID: profile.id)
+        }
+
+        return SidebarItem(profileID: profiles[index].id, parentID: nil)
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
+        guard let item = item as? SidebarItem, !item.isSubProfile else {
+            return false
+        }
+
+        return !(profile(with: item.profileID)?.subProfiles.isEmpty ?? true)
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
+        guard let item = item as? SidebarItem else {
+            return nil
+        }
+
+        let resolvedName = item.isSubProfile
+            ? subProfile(with: item.profileID, parentID: item.parentID)?.name
+            : profile(with: item.profileID)?.name
+        let label = NSTextField(labelWithString: resolvedName ?? "")
+        label.font = item.isSubProfile ? .systemFont(ofSize: 13) : .boldSystemFont(ofSize: 13)
+        label.lineBreakMode = .byTruncatingTail
         return label
     }
 
-    func tableViewSelectionDidChange(_ notification: Notification) {
+    func outlineViewSelectionDidChange(_ notification: Notification) {
         if isReloadingSelection {
             return
         }
 
-        let row = tableView.selectedRow
-        guard row >= 0 else {
+        guard let item = outlineView.item(atRow: outlineView.selectedRow) as? SidebarItem else {
             return
         }
 
-        let profile = profiles[row]
-
-        if profile.id == ProfileStore.shared.activeProfileID {
-            onProfileSelected?(profile)
+        if let parentID = item.parentID,
+           let subProfile = subProfile(with: item.profileID, parentID: parentID) {
+            ProfileStore.shared.setActiveSubProfile(subProfile.id, in: parentID)
+            onProfileSelected?(subProfile)
             return
         }
 
-        ProfileStore.shared.setActive(profile.id)
-        onProfileSelected?(profile)
+        ProfileStore.shared.setActive(item.profileID)
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
     }
 
     private func makeButton(title: String, action: Selector) -> NSButton {
@@ -144,54 +178,144 @@ final class ProfileListViewController: NSViewController, NSTableViewDataSource, 
     @objc private func showAddProfileMenu(_ sender: NSButton) {
         let menu = NSMenu()
 
-        let templateItem = NSMenuItem(title: "New from Template", action: #selector(addProfileFromTemplate), keyEquivalent: "")
-        templateItem.target = self
-        menu.addItem(templateItem)
+        let templateProfileItem = NSMenuItem(title: "New Profile from Template", action: #selector(addProfileFromTemplate), keyEquivalent: "")
+        templateProfileItem.target = self
+        menu.addItem(templateProfileItem)
 
-        let blankItem = NSMenuItem(title: "New Blank", action: #selector(addBlankProfile), keyEquivalent: "")
-        blankItem.target = self
-        menu.addItem(blankItem)
+        let blankProfileItem = NSMenuItem(title: "New Blank Profile", action: #selector(addBlankProfile), keyEquivalent: "")
+        blankProfileItem.target = self
+        menu.addItem(blankProfileItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        let templateLayerItem = NSMenuItem(title: "New Layer from Template", action: #selector(addSubProfileFromTemplate), keyEquivalent: "")
+        templateLayerItem.target = self
+        templateLayerItem.isEnabled = selectedParentID() != nil
+        menu.addItem(templateLayerItem)
+
+        let blankLayerItem = NSMenuItem(title: "New Blank Layer", action: #selector(addBlankSubProfile), keyEquivalent: "")
+        blankLayerItem.target = self
+        blankLayerItem.isEnabled = selectedParentID() != nil
+        menu.addItem(blankLayerItem)
 
         menu.popUp(positioning: nil, at: CGPoint(x: 0, y: sender.bounds.maxY + 2), in: sender)
     }
 
     @objc private func addProfileFromTemplate() {
-        let profile = Profile.makeStarterTemplate(name: "Profile \(profiles.count + 1)")
+        let profile = Profile.makeStarterTemplate(name: "Profile \(profiles.count + 1)").asTopLevelContainer()
         add(profile: profile)
     }
 
     @objc private func addBlankProfile() {
-        let profile = Profile.makeBlank(name: "Profile \(profiles.count + 1)")
+        let profile = Profile.makeBlank(name: "Profile \(profiles.count + 1)").asTopLevelContainer()
         add(profile: profile)
+    }
+
+    @objc private func addSubProfileFromTemplate() {
+        addSubProfile(fromTemplate: true)
+    }
+
+    @objc private func addBlankSubProfile() {
+        addSubProfile(fromTemplate: false)
     }
 
     private func add(profile: Profile) {
         ProfileStore.shared.upsert(profile)
         ProfileStore.shared.setActive(profile.id)
-        onProfileSelected?(profile)
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
     }
 
-    @objc private func duplicateProfile() {
-        let row = tableView.selectedRow
-        guard row >= 0 else {
+    private func addSubProfile(fromTemplate: Bool) {
+        guard let parentID = selectedParentID(),
+              ProfileStore.shared.addSubProfile(to: parentID, fromTemplate: fromTemplate) != nil else {
             return
         }
 
-        guard let duplicatedProfile = ProfileStore.shared.duplicate(profiles[row].id) else {
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+    }
+
+    @objc private func duplicateSelection() {
+        guard let item = outlineView.item(atRow: outlineView.selectedRow) as? SidebarItem else {
+            return
+        }
+
+        if let parentID = item.parentID {
+            guard ProfileStore.shared.duplicateSubProfile(item.profileID, in: parentID) != nil else {
+                return
+            }
+            onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+            return
+        }
+
+        guard let duplicatedProfile = ProfileStore.shared.duplicate(item.profileID) else {
             return
         }
 
         ProfileStore.shared.setActive(duplicatedProfile.id)
-        onProfileSelected?(duplicatedProfile)
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
     }
 
-    @objc private func deleteProfile() {
-        let row = tableView.selectedRow
-        guard row >= 0 else {
+    @objc private func deleteSelection() {
+        guard let item = outlineView.item(atRow: outlineView.selectedRow) as? SidebarItem else {
             return
         }
 
-        ProfileStore.shared.delete(profiles[row].id)
-        onProfileSelected?(ProfileStore.shared.activeProfile)
+        if let parentID = item.parentID {
+            ProfileStore.shared.deleteSubProfile(item.profileID, in: parentID)
+            onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+            return
+        }
+
+        ProfileStore.shared.delete(item.profileID)
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+    }
+
+    private func expandAllProfiles() {
+        var row = 0
+        while row < outlineView.numberOfRows {
+            if let item = outlineView.item(atRow: row) {
+                outlineView.expandItem(item)
+            }
+            row += 1
+        }
+    }
+
+    private func selectActiveSubProfile() {
+        let activeProfile = ProfileStore.shared.activeProfile
+        let selectedID = activeProfile.activeSubProfileID ?? activeProfile.subProfiles.first?.id ?? activeProfile.id
+
+        for row in 0..<outlineView.numberOfRows {
+            guard let item = outlineView.item(atRow: row) as? SidebarItem else {
+                continue
+            }
+
+            if item.profileID == selectedID {
+                outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+                return
+            }
+        }
+
+        outlineView.deselectAll(nil)
+    }
+
+    private func selectedParentID() -> UUID? {
+        guard let item = outlineView.item(atRow: outlineView.selectedRow) as? SidebarItem else {
+            return ProfileStore.shared.activeProfileID
+        }
+
+        return item.parentID ?? item.profileID
+    }
+
+    private func profile(with id: UUID) -> Profile? {
+        profiles.first { $0.id == id }
+    }
+
+    private func subProfile(with id: UUID, parentID: UUID?) -> Profile? {
+        guard let parentID,
+              let profile = profile(with: parentID) else {
+            return nil
+        }
+
+        return profile.subProfiles.first { $0.id == id }
     }
 }
