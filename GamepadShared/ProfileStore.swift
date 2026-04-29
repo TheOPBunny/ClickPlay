@@ -67,12 +67,17 @@ final class ProfileStore {
             return profile
         }
 
+        var resolvedProfile: Profile
         if let activeSubProfileID = profile.activeSubProfileID,
            let activeSubProfile = profile.subProfiles.first(where: { $0.id == activeSubProfileID }) {
-            return activeSubProfile
+            resolvedProfile = activeSubProfile
+        } else {
+            resolvedProfile = profile.subProfiles[0]
         }
 
-        return profile.subProfiles[0]
+        resolvedProfile.displayPadWidth = profile.displayPadWidth
+        resolvedProfile.displayPadHeight = profile.displayPadHeight
+        return resolvedProfile
     }
 
     func resolvedProfileTitle(for profile: Profile) -> String {
@@ -137,13 +142,8 @@ final class ProfileStore {
 
     func updateActiveProfileDisplaySize(width: Double, height: Double) {
         guard let idx = profiles.firstIndex(where: { $0.id == activeProfileID }) else { return }
-        if let subProfileIndex = activeSubProfileIndex(in: profiles[idx]) {
-            profiles[idx].subProfiles[subProfileIndex].displayPadWidth = width
-            profiles[idx].subProfiles[subProfileIndex].displayPadHeight = height
-        } else {
-            profiles[idx].displayPadWidth = width
-            profiles[idx].displayPadHeight = height
-        }
+        profiles[idx].displayPadWidth = width
+        profiles[idx].displayPadHeight = height
         save()
     }
 
@@ -276,6 +276,11 @@ final class ProfileStore {
                     buttons.removeValue(forKey: key)
                     continue
                 }
+            }
+
+            guard subProfiles.count > 1 else {
+                reconciledSubProfile.buttons = buttons
+                return reconciledSubProfile
             }
 
             for (index, targetSubProfile) in subProfiles.enumerated() {
