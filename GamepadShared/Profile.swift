@@ -199,6 +199,8 @@ struct Profile: Codable, Identifiable {
     var displayPadWidth: Double
     var displayPadHeight: Double
     var buttons: [String: ButtonConfig]              // keyed by GamepadButton.rawValue
+    var subProfiles: [Profile]
+    var activeSubProfileID: UUID?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -211,6 +213,8 @@ struct Profile: Codable, Identifiable {
         case displayPadWidth
         case displayPadHeight
         case buttons
+        case subProfiles
+        case activeSubProfileID
     }
 
     init(
@@ -223,7 +227,9 @@ struct Profile: Codable, Identifiable {
         padHeight: Double,
         displayPadWidth: Double? = nil,
         displayPadHeight: Double? = nil,
-        buttons: [String: ButtonConfig]
+        buttons: [String: ButtonConfig],
+        subProfiles: [Profile] = [],
+        activeSubProfileID: UUID? = nil
     ) {
         self.id = id
         self.name = name
@@ -235,6 +241,8 @@ struct Profile: Codable, Identifiable {
         self.displayPadWidth = displayPadWidth ?? padWidth
         self.displayPadHeight = displayPadHeight ?? padHeight
         self.buttons = buttons
+        self.subProfiles = subProfiles
+        self.activeSubProfileID = activeSubProfileID
     }
 
     init(from decoder: Decoder) throws {
@@ -249,6 +257,8 @@ struct Profile: Codable, Identifiable {
         displayPadWidth = try container.decodeIfPresent(Double.self, forKey: .displayPadWidth) ?? padWidth
         displayPadHeight = try container.decodeIfPresent(Double.self, forKey: .displayPadHeight) ?? padHeight
         buttons = try container.decode([String: ButtonConfig].self, forKey: .buttons)
+        subProfiles = try container.decodeIfPresent([Profile].self, forKey: .subProfiles) ?? []
+        activeSubProfileID = try container.decodeIfPresent(UUID.self, forKey: .activeSubProfileID)
     }
 
     var orderedButtonIDs: [GamepadButton] {
@@ -292,7 +302,60 @@ struct Profile: Codable, Identifiable {
         }
 
         normalizedProfile.buttons = normalizedButtons
+        normalizedProfile.subProfiles = subProfiles.map { $0.normalizedForSaving() }
         return normalizedProfile
+    }
+
+    func asTopLevelContainer(baseLayerName: String = "Base") -> Profile {
+        if !subProfiles.isEmpty {
+            return normalizedActiveSubProfileSelection()
+        }
+
+        var baseLayer = self
+        baseLayer.id = UUID()
+        baseLayer.name = baseLayerName
+        baseLayer.subProfiles = []
+        baseLayer.activeSubProfileID = nil
+
+        var container = self
+        container.buttons = [:]
+        container.subProfiles = [baseLayer]
+        container.activeSubProfileID = baseLayer.id
+        return container
+    }
+
+    func normalizedActiveSubProfileSelection() -> Profile {
+        var normalizedProfile = self
+        if normalizedProfile.subProfiles.isEmpty {
+            normalizedProfile.activeSubProfileID = nil
+            return normalizedProfile
+        }
+
+        if let activeSubProfileID,
+           normalizedProfile.subProfiles.contains(where: { $0.id == activeSubProfileID }) {
+            normalizedProfile.activeSubProfileID = activeSubProfileID
+        } else {
+            normalizedProfile.activeSubProfileID = normalizedProfile.subProfiles[0].id
+        }
+
+        return normalizedProfile
+    }
+
+    func copyWithNewIDs(nameSuffix: String = " Copy") -> Profile {
+        var copiedProfile = self
+        copiedProfile.id = UUID()
+        copiedProfile.name += nameSuffix
+        copiedProfile.subProfiles = subProfiles.map { $0.copyWithNewIDs(nameSuffix: "") }
+
+        if let activeSubProfileID,
+           let sourceIndex = subProfiles.firstIndex(where: { $0.id == activeSubProfileID }),
+           copiedProfile.subProfiles.indices.contains(sourceIndex) {
+            copiedProfile.activeSubProfileID = copiedProfile.subProfiles[sourceIndex].id
+        } else {
+            copiedProfile.activeSubProfileID = copiedProfile.subProfiles.first?.id
+        }
+
+        return copiedProfile
     }
 
     static func makeBlank(name: String = "Blank Profile") -> Profile {
