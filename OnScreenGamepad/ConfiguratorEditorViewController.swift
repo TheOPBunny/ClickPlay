@@ -51,7 +51,11 @@ final class ConfiguratorViewController: NSViewController, NSSplitViewDelegate {
 
         editorViewController.onProfileSaved = { [weak self] profile in
             self?.shouldSkipNextEditorRefresh = true
-            ProfileStore.shared.upsert(profile)
+            if let parentProfile = ProfileStore.shared.parentProfile(containingSubProfileID: profile.id) {
+                ProfileStore.shared.upsertSubProfile(profile, in: parentProfile.id)
+            } else {
+                ProfileStore.shared.upsert(profile)
+            }
         }
 
         addChild(profileListViewController)
@@ -88,7 +92,7 @@ final class ConfiguratorViewController: NSViewController, NSSplitViewDelegate {
             self.editorViewController.refreshFromStoreIfNeeded()
         }
 
-        editorViewController.load(profile: ProfileStore.shared.activeProfile)
+        editorViewController.load(profile: ProfileStore.shared.activeResolvedProfile)
     }
 
     override func viewDidLayout() {

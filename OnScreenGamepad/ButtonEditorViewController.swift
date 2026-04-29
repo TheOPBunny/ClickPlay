@@ -124,7 +124,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private static let snapThreshold: CGFloat = 5
     private static let pasteboardType = NSPasteboard.PasteboardType("com.onscreengamepad.canvas-buttons")
 
-    private var profile = ProfileStore.shared.activeProfile
+    private var profile = ProfileStore.shared.activeResolvedProfile
     private var canvasObjects: [CanvasButtonObject] = []
     private var selectedIDs = Set<GamepadButton>()
     private var localClipboard: [ClipboardButton] = []
@@ -166,7 +166,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         super.viewDidLoad()
         loadInspectorDefaults()
         buildLayout()
-        load(profile: ProfileStore.shared.activeProfile)
+        load(profile: ProfileStore.shared.activeResolvedProfile)
     }
 
     override func viewDidLayout() {
@@ -194,10 +194,13 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     func refreshFromStoreIfNeeded() {
-        if let updatedProfile = ProfileStore.shared.profiles.first(where: { $0.id == profile.id }) {
+        if let parentProfile = ProfileStore.shared.parentProfile(containingSubProfileID: profile.id),
+           let updatedProfile = parentProfile.subProfiles.first(where: { $0.id == profile.id }) {
+            load(profile: updatedProfile)
+        } else if let updatedProfile = ProfileStore.shared.profiles.first(where: { $0.id == profile.id }) {
             load(profile: updatedProfile)
         } else {
-            load(profile: ProfileStore.shared.activeProfile)
+            load(profile: ProfileStore.shared.activeResolvedProfile)
         }
     }
 

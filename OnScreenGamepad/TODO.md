@@ -18,7 +18,7 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 
 - [x] Add a built-in drop-down menu for switching profiles.
 - [x] Add transparency controls to that same menu instead of a separate transparency menu.
-- [ ] Support layered profiles so a profile can contain sub-profiles.
+- [x] Support layered profiles so a profile can contain sub-profiles.
 - [ ] Add buttons on the gamepad to quickly swap between sub-profiles.
 - [x] Add a per-profile "Compatibility Mode" that makes momentary button presses last 33 ms.
 - [x] Add an option for buttons to toggle into a held-down state on press.
