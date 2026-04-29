@@ -26,6 +26,61 @@ struct ButtonKeyBinding: Codable, Hashable {
     var keyModifiers: Int
 }
 
+enum ButtonAction: Codable, Equatable {
+    case keyboard
+    case subProfileSwitch(UUID)
+
+    private enum CodingKeys: String, CodingKey {
+        case type
+        case targetSubProfileID
+    }
+
+    private enum ActionType: String, Codable {
+        case keyboard
+        case subProfileSwitch
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try container.decodeIfPresent(ActionType.self, forKey: .type) ?? .keyboard
+
+        switch type {
+        case .keyboard:
+            self = .keyboard
+        case .subProfileSwitch:
+            if let targetID = try container.decodeIfPresent(UUID.self, forKey: .targetSubProfileID) {
+                self = .subProfileSwitch(targetID)
+            } else {
+                self = .keyboard
+            }
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+
+        switch self {
+        case .keyboard:
+            try container.encode(ActionType.keyboard, forKey: .type)
+        case .subProfileSwitch(let targetID):
+            try container.encode(ActionType.subProfileSwitch, forKey: .type)
+            try container.encode(targetID, forKey: .targetSubProfileID)
+        }
+    }
+
+    var targetSubProfileID: UUID? {
+        if case .subProfileSwitch(let targetID) = self {
+            return targetID
+        }
+
+        return nil
+    }
+
+    var isProtectedSwitch: Bool {
+        targetSubProfileID != nil
+    }
+}
+
 // MARK: - ButtonConfig
 // Per-button layout and appearance settings stored in a profile.
 
@@ -48,6 +103,7 @@ struct ButtonConfig: Codable {
     var shape: ButtonShape
     var enabled: Bool
     var interactionMode: ButtonInteractionMode
+    var action: ButtonAction
 
     private enum CodingKeys: String, CodingKey {
         case x
@@ -68,6 +124,7 @@ struct ButtonConfig: Codable {
         case shape
         case enabled
         case interactionMode
+        case action
     }
 
     init(
@@ -88,7 +145,8 @@ struct ButtonConfig: Codable {
         labelItalic: Bool = false,
         shape: ButtonShape = .roundedRectangle,
         enabled: Bool,
-        interactionMode: ButtonInteractionMode = .momentary
+        interactionMode: ButtonInteractionMode = .momentary,
+        action: ButtonAction = .keyboard
     ) {
         self.x = x
         self.y = y
@@ -114,6 +172,7 @@ struct ButtonConfig: Codable {
         self.shape = shape
         self.enabled = enabled
         self.interactionMode = interactionMode
+        self.action = action
     }
 
     init(from decoder: Decoder) throws {
@@ -142,6 +201,7 @@ struct ButtonConfig: Codable {
         shape = try container.decodeIfPresent(ButtonShape.self, forKey: .shape) ?? .roundedRectangle
         enabled = try container.decode(Bool.self, forKey: .enabled)
         interactionMode = try container.decodeIfPresent(ButtonInteractionMode.self, forKey: .interactionMode) ?? .momentary
+        action = try container.decodeIfPresent(ButtonAction.self, forKey: .action) ?? .keyboard
     }
 
     func encode(to encoder: Encoder) throws {
@@ -171,6 +231,7 @@ struct ButtonConfig: Codable {
         try container.encode(shape, forKey: .shape)
         try container.encode(enabled, forKey: .enabled)
         try container.encode(interactionMode, forKey: .interactionMode)
+        try container.encode(action, forKey: .action)
     }
 
     private static func normalizedKeyBindings(
@@ -297,7 +358,7 @@ struct Profile: Codable, Identifiable {
                 continue
             }
 
-            let key = button.isGenerated ? button.rawValue : GamepadButton.generated().rawValue
+            let key = (button.isGenerated || button.isSubProfileSwitch) ? button.rawValue : GamepadButton.generated().rawValue
             normalizedButtons[key] = config
         }
 
@@ -345,7 +406,13 @@ struct Profile: Codable, Identifiable {
         var copiedProfile = self
         copiedProfile.id = UUID()
         copiedProfile.name += nameSuffix
-        copiedProfile.subProfiles = subProfiles.map { $0.copyWithNewIDs(nameSuffix: "") }
+        let copiedSubProfiles = subProfiles.map { $0.copyWithNewIDs(nameSuffix: "") }
+        let copiedSubProfileIDsBySourceID = Dictionary(
+            uniqueKeysWithValues: zip(subProfiles.map(\.id), copiedSubProfiles.map(\.id))
+        )
+        copiedProfile.subProfiles = copiedSubProfiles.map { subProfile in
+            subProfile.remappingSubProfileSwitches(using: copiedSubProfileIDsBySourceID)
+        }
 
         if let activeSubProfileID,
            let sourceIndex = subProfiles.firstIndex(where: { $0.id == activeSubProfileID }),
@@ -356,6 +423,35 @@ struct Profile: Codable, Identifiable {
         }
 
         return copiedProfile
+    }
+
+    private func remappingSubProfileSwitches(using copiedIDsBySourceID: [UUID: UUID]) -> Profile {
+        guard !copiedIDsBySourceID.isEmpty else {
+            return self
+        }
+
+        var remappedProfile = self
+        var remappedButtons: [String: ButtonConfig] = [:]
+
+        for (key, var config) in buttons {
+            let button = GamepadButton(key)
+            if let sourceTargetID = button.subProfileSwitchTargetID,
+               let copiedTargetID = copiedIDsBySourceID[sourceTargetID] {
+                config.action = .subProfileSwitch(copiedTargetID)
+                remappedButtons[GamepadButton.subProfileSwitch(targetID: copiedTargetID).rawValue] = config
+                continue
+            }
+
+            if let sourceTargetID = config.action.targetSubProfileID,
+               let copiedTargetID = copiedIDsBySourceID[sourceTargetID] {
+                config.action = .subProfileSwitch(copiedTargetID)
+            }
+
+            remappedButtons[key] = config
+        }
+
+        remappedProfile.buttons = remappedButtons
+        return remappedProfile
     }
 
     static func makeBlank(name: String = "Blank Profile") -> Profile {

@@ -12,6 +12,7 @@ final class ButtonDetailPanel: NSView {
     private let contentStack = NSStackView()
     private let labelField = NSTextField()
     private let keyRecorder = KeyRecorderButton()
+    private var keyRow: NSStackView?
     private let colorWell = NSColorWell()
     private let labelSizeField = NSTextField()
     private let labelSizeStepper = NSStepper()
@@ -23,6 +24,7 @@ final class ButtonDetailPanel: NSView {
     private let heightField = NSTextField()
     private let shapePopup = NSPopUpButton()
     private let interactionModePopup = NSPopUpButton()
+    private var interactionModeRow: NSStackView?
     private let multiKeyActivationModePopup = NSPopUpButton()
     private var multiKeyActivationModeRow: NSStackView?
     private let enabledCheckbox = NSButton(checkboxWithTitle: "Enabled", target: nil, action: nil)
@@ -53,6 +55,7 @@ final class ButtonDetailPanel: NSView {
         updateMultiKeyActivationModeVisibility()
         applyButton.isEnabled = false
         deleteButton.isEnabled = false
+        setProtectedSwitchControlsHidden(false)
     }
 
     func load(button: GamepadButton, config: ButtonConfig) {
@@ -60,7 +63,8 @@ final class ButtonDetailPanel: NSView {
         self.config = config
         applyButton.isEnabled = true
         deleteButton.isEnabled = true
-        titleLabel.stringValue = "Editing: \(config.resolvedDisplayLabel)"
+        let isProtectedSwitch = config.action.isProtectedSwitch
+        titleLabel.stringValue = isProtectedSwitch ? "Editing switch: \(config.resolvedDisplayLabel)" : "Editing: \(config.resolvedDisplayLabel)"
         labelField.stringValue = config.label
         syncLabelSizeControls(to: config.labelFontSize)
         labelBoldCheckbox.state = config.labelBold ? .on : .off
@@ -76,6 +80,7 @@ final class ButtonDetailPanel: NSView {
         multiKeyActivationModePopup.selectItem(withTag: config.multiKeyActivationMode.tag)
         updateMultiKeyActivationModeVisibility()
         keyRecorder.setKeyBindings(config.keyBindings)
+        setProtectedSwitchControlsHidden(isProtectedSwitch)
     }
 
     func refreshPosition(x: Double, y: Double, config: ButtonConfig) {
@@ -177,12 +182,16 @@ final class ButtonDetailPanel: NSView {
 
         contentStack.addArrangedSubview(makeRow(label: "Label:", control: labelField))
         contentStack.addArrangedSubview(makeLabelStyleRow())
-        contentStack.addArrangedSubview(makeRow(label: "Key:", control: keyRecorder))
+        let keyRow = makeRow(label: "Key:", control: keyRecorder)
+        self.keyRow = keyRow
+        contentStack.addArrangedSubview(keyRow)
         contentStack.addArrangedSubview(makeRow(label: "Color:", control: colorWell))
         contentStack.addArrangedSubview(makeRow(label: "X (px):", control: xField))
         contentStack.addArrangedSubview(makeRow(label: "Y (px):", control: yField))
         contentStack.addArrangedSubview(makeRow(label: "Shape:", control: shapePopup))
-        contentStack.addArrangedSubview(makeRow(label: "Mode:", control: interactionModePopup))
+        let interactionModeRow = makeRow(label: "Mode:", control: interactionModePopup)
+        self.interactionModeRow = interactionModeRow
+        contentStack.addArrangedSubview(interactionModeRow)
         let multiKeyRow = makeRow(label: "Keys:", control: multiKeyActivationModePopup)
         multiKeyActivationModeRow = multiKeyRow
         contentStack.addArrangedSubview(multiKeyRow)
@@ -340,13 +349,22 @@ final class ButtonDetailPanel: NSView {
         config.editorWidth = sizeValue(from: widthField.stringValue, fallback: config.editorWidth > 0 ? config.editorWidth : config.width)
         config.editorHeight = sizeValue(from: heightField.stringValue, fallback: config.editorHeight > 0 ? config.editorHeight : config.height)
         config.shape = ButtonShape(tag: shapePopup.selectedTag()) ?? .roundedRectangle
-        config.enabled = enabledCheckbox.state == .on
-        config.interactionMode = ButtonInteractionMode(tag: interactionModePopup.selectedTag()) ?? .momentary
-        if config.interactionMode == .toggleHold {
-            config.multiKeyActivationMode = MultiKeyActivationMode(tag: multiKeyActivationModePopup.selectedTag()) ?? .sequential
-        } else {
+        if config.action.isProtectedSwitch {
+            config.enabled = true
+            config.interactionMode = .momentary
             config.multiKeyActivationMode = .sequential
+            enabledCheckbox.state = .on
+            interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
             multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
+        } else {
+            config.enabled = enabledCheckbox.state == .on
+            config.interactionMode = ButtonInteractionMode(tag: interactionModePopup.selectedTag()) ?? .momentary
+            if config.interactionMode == .toggleHold {
+                config.multiKeyActivationMode = MultiKeyActivationMode(tag: multiKeyActivationModePopup.selectedTag()) ?? .sequential
+            } else {
+                config.multiKeyActivationMode = .sequential
+                multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
+            }
         }
 
         self.config = config
@@ -355,6 +373,10 @@ final class ButtonDetailPanel: NSView {
     }
 
     private func applyKeyBindings(_ bindings: [ButtonKeyBinding]) {
+        guard config?.action.isProtectedSwitch != true else {
+            return
+        }
+
         guard !bindings.isEmpty else {
             return
         }
@@ -371,6 +393,19 @@ final class ButtonDetailPanel: NSView {
         let currentBindings = bindings ?? config?.keyBindings ?? []
         let interactionMode = ButtonInteractionMode(tag: interactionModePopup.selectedTag()) ?? config?.interactionMode ?? .momentary
         multiKeyActivationModeRow?.isHidden = currentBindings.count <= 1 || interactionMode != .toggleHold
+    }
+
+    private func setProtectedSwitchControlsHidden(_ hidden: Bool) {
+        keyRow?.isHidden = hidden
+        interactionModeRow?.isHidden = hidden
+        if hidden {
+            multiKeyActivationModeRow?.isHidden = true
+        } else {
+            updateMultiKeyActivationModeVisibility()
+        }
+        enabledCheckbox.isHidden = hidden
+        deleteButton.isHidden = hidden
+        deleteButton.isEnabled = !hidden && button != nil
     }
 
     private func clampedLabelSize(from stringValue: String, fallback: Double) -> Double {

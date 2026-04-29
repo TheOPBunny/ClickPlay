@@ -44,7 +44,23 @@ struct GamepadButton: RawRepresentable, Hashable, Codable {
         GamepadButton("button:\(UUID().uuidString)")
     }
 
+    static func subProfileSwitch(targetID: UUID) -> GamepadButton {
+        GamepadButton("subProfileSwitch:\(targetID.uuidString)")
+    }
+
     var isGenerated: Bool {
         rawValue.hasPrefix("button:")
+    }
+
+    var isSubProfileSwitch: Bool {
+        rawValue.hasPrefix("subProfileSwitch:")
+    }
+
+    var subProfileSwitchTargetID: UUID? {
+        guard isSubProfileSwitch else {
+            return nil
+        }
+
+        return UUID(uuidString: String(rawValue.dropFirst("subProfileSwitch:".count)))
     }
 }
