@@ -1,6 +1,13 @@
 import Cocoa
 
 final class ButtonDetailPanel: NSView {
+    private enum JoystickBindingDirection {
+        case up
+        case down
+        case left
+        case right
+    }
+
 
     var onChanged: ((GamepadButton, ButtonConfig) -> Void)?
     var onDelete: ((GamepadButton) -> Void)?
@@ -11,9 +18,20 @@ final class ButtonDetailPanel: NSView {
     private let titleLabel = NSTextField(labelWithString: "Select a button")
     private let contentStack = NSStackView()
     private let labelField = NSTextField()
+    private let buttonTypePopup = NSPopUpButton()
+    private var buttonTypeRow: NSStackView?
     private let keyRecorder = KeyRecorderButton()
     private let keyClearButton = NSButton(title: "Clear", target: nil, action: nil)
     private var keyRow: NSStackView?
+    private let joystickUpRecorder = KeyRecorderButton()
+    private let joystickDownRecorder = KeyRecorderButton()
+    private let joystickLeftRecorder = KeyRecorderButton()
+    private let joystickRightRecorder = KeyRecorderButton()
+    private var joystickSectionLabel: NSTextField?
+    private var joystickUpRow: NSStackView?
+    private var joystickDownRow: NSStackView?
+    private var joystickLeftRow: NSStackView?
+    private var joystickRightRow: NSStackView?
     private let rightClickRecorder = KeyRecorderButton()
     private let rightClickFallbackCheckbox = NSButton(checkboxWithTitle: "Use left-click key when unset", target: nil, action: nil)
     private let rightClickModePopup = NSPopUpButton()
@@ -55,7 +73,12 @@ final class ButtonDetailPanel: NSView {
         config = nil
         button = nil
         [labelField, labelSizeField, xField, yField, widthField, heightField].forEach { $0.stringValue = "" }
+        buttonTypePopup.selectItem(withTag: ButtonType.keyboard.tag)
         keyRecorder.setKeyBindings([ButtonKeyBinding(keyCode: 49, keyModifiers: 0)])
+        joystickUpRecorder.setKeyBindings([JoystickConfig.defaultBindings.up])
+        joystickDownRecorder.setKeyBindings([JoystickConfig.defaultBindings.down])
+        joystickLeftRecorder.setKeyBindings([JoystickConfig.defaultBindings.left])
+        joystickRightRecorder.setKeyBindings([JoystickConfig.defaultBindings.right])
         rightClickRecorder.setOptionalKeyBindings(nil)
         rightClickFallbackCheckbox.state = .on
         rightClickModePopup.selectItem(withTag: Self.sameAsLeftModeTag)
@@ -67,7 +90,7 @@ final class ButtonDetailPanel: NSView {
         updateMultiKeyActivationModeVisibility()
         applyButton.isEnabled = false
         deleteButton.isEnabled = false
-        setProtectedSwitchControlsHidden(false)
+        updateControlVisibility()
     }
 
     func load(button: GamepadButton, config: ButtonConfig) {
@@ -78,6 +101,7 @@ final class ButtonDetailPanel: NSView {
         let isProtectedSwitch = config.action.isProtectedSwitch
         titleLabel.stringValue = isProtectedSwitch ? "Editing switch: \(config.resolvedDisplayLabel)" : "Editing: \(config.resolvedDisplayLabel)"
         labelField.stringValue = config.label
+        buttonTypePopup.selectItem(withTag: config.type.tag)
         syncLabelSizeControls(to: config.labelFontSize)
         labelBoldCheckbox.state = config.labelBold ? .on : .off
         labelItalicCheckbox.state = config.labelItalic ? .on : .off
@@ -93,9 +117,13 @@ final class ButtonDetailPanel: NSView {
         rightClickRecorder.setOptionalKeyBindings(config.rightClickKeyBindings)
         rightClickFallbackCheckbox.state = config.rightClickFallsBackToPrimary ? .on : .off
         rightClickModePopup.selectItem(withTag: config.rightClickInteractionMode?.tag ?? Self.sameAsLeftModeTag)
+        joystickUpRecorder.setKeyBindings([config.joystick.up])
+        joystickDownRecorder.setKeyBindings([config.joystick.down])
+        joystickLeftRecorder.setKeyBindings([config.joystick.left])
+        joystickRightRecorder.setKeyBindings([config.joystick.right])
         updateMultiKeyActivationModeVisibility()
         keyRecorder.setKeyBindings(config.keyBindings)
-        setProtectedSwitchControlsHidden(isProtectedSwitch)
+        updateControlVisibility()
     }
 
     func refreshPosition(x: Double, y: Double, config: ButtonConfig) {
@@ -136,6 +164,10 @@ final class ButtonDetailPanel: NSView {
             self?.applyKeyBindings(bindings)
             self?.emitChange()
         }
+        configureJoystickRecorder(joystickUpRecorder, direction: .up)
+        configureJoystickRecorder(joystickDownRecorder, direction: .down)
+        configureJoystickRecorder(joystickLeftRecorder, direction: .left)
+        configureJoystickRecorder(joystickRightRecorder, direction: .right)
         keyClearButton.bezelStyle = .rounded
         keyClearButton.target = self
         keyClearButton.action = #selector(clearPrimaryKey)
@@ -185,6 +217,9 @@ final class ButtonDetailPanel: NSView {
         shapePopup.target = self
         shapePopup.action = #selector(applyPressed)
         populateShapes()
+        buttonTypePopup.target = self
+        buttonTypePopup.action = #selector(applyPressed)
+        populateButtonTypes()
         interactionModePopup.target = self
         interactionModePopup.action = #selector(applyPressed)
         populateInteractionModes()
@@ -216,10 +251,21 @@ final class ButtonDetailPanel: NSView {
         contentStack.translatesAutoresizingMaskIntoConstraints = false
 
         contentStack.addArrangedSubview(makeRow(label: "Label:", control: labelField))
+        let buttonTypeRow = makeRow(label: "Type:", control: buttonTypePopup)
+        self.buttonTypeRow = buttonTypeRow
+        contentStack.addArrangedSubview(buttonTypeRow)
         contentStack.addArrangedSubview(makeLabelStyleRow())
         let keyRow = makeKeyRow()
         self.keyRow = keyRow
         contentStack.addArrangedSubview(keyRow)
+        let joystickSectionLabel = makeSectionLabel("Joystick")
+        self.joystickSectionLabel = joystickSectionLabel
+        contentStack.addArrangedSubview(joystickSectionLabel)
+        joystickUpRow = makeJoystickKeyRow(label: "Up:", recorder: joystickUpRecorder)
+        joystickDownRow = makeJoystickKeyRow(label: "Down:", recorder: joystickDownRecorder)
+        joystickLeftRow = makeJoystickKeyRow(label: "Left:", recorder: joystickLeftRecorder)
+        joystickRightRow = makeJoystickKeyRow(label: "Right:", recorder: joystickRightRecorder)
+        [joystickUpRow, joystickDownRow, joystickLeftRow, joystickRightRow].compactMap { $0 }.forEach(contentStack.addArrangedSubview)
         contentStack.addArrangedSubview(makeRow(label: "Color:", control: colorWell))
         contentStack.addArrangedSubview(makeRow(label: "X (px):", control: xField))
         contentStack.addArrangedSubview(makeRow(label: "Y (px):", control: yField))
@@ -326,6 +372,17 @@ final class ButtonDetailPanel: NSView {
         return row
     }
 
+    private func makeJoystickKeyRow(label: String, recorder: KeyRecorderButton) -> NSStackView {
+        recorder.translatesAutoresizingMaskIntoConstraints = false
+        recorder.widthAnchor.constraint(equalToConstant: 110).isActive = true
+        recorder.heightAnchor.constraint(equalToConstant: 28).isActive = true
+
+        let row = NSStackView(views: [makeFieldLabel(label), recorder])
+        row.orientation = .horizontal
+        row.spacing = 8
+        return row
+    }
+
     private func makeSizeRow() -> NSStackView {
         let row = NSStackView()
         row.orientation = .horizontal
@@ -396,6 +453,17 @@ final class ButtonDetailPanel: NSView {
         interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
     }
 
+    private func populateButtonTypes() {
+        buttonTypePopup.removeAllItems()
+
+        for type in ButtonType.allCases {
+            buttonTypePopup.addItem(withTitle: type.displayName)
+            buttonTypePopup.lastItem?.tag = type.tag
+        }
+
+        buttonTypePopup.selectItem(withTag: ButtonType.keyboard.tag)
+    }
+
     private func populateMultiKeyActivationModes() {
         multiKeyActivationModePopup.removeAllItems()
 
@@ -436,6 +504,7 @@ final class ButtonDetailPanel: NSView {
             return
         }
 
+        config.type = ButtonType(tag: buttonTypePopup.selectedTag()) ?? .keyboard
         config.label = labelField.stringValue
         config.labelFontSize = clampedLabelSize(from: labelSizeField.stringValue, fallback: config.labelFontSize)
         syncLabelSizeControls(to: config.labelFontSize)
@@ -448,6 +517,7 @@ final class ButtonDetailPanel: NSView {
         config.editorHeight = sizeValue(from: heightField.stringValue, fallback: config.editorHeight > 0 ? config.editorHeight : config.height)
         config.shape = ButtonShape(tag: shapePopup.selectedTag()) ?? .roundedRectangle
         if config.action.isProtectedSwitch {
+            config.type = .keyboard
             config.enabled = true
             config.interactionMode = .momentary
             config.multiKeyActivationMode = .sequential
@@ -460,6 +530,21 @@ final class ButtonDetailPanel: NSView {
             rightClickRecorder.setOptionalKeyBindings(nil)
             rightClickFallbackCheckbox.state = .on
             rightClickModePopup.selectItem(withTag: Self.sameAsLeftModeTag)
+            buttonTypePopup.selectItem(withTag: ButtonType.keyboard.tag)
+        } else if config.type == .joystick {
+            config.enabled = enabledCheckbox.state == .on
+            config.shape = .oval
+            config.interactionMode = .momentary
+            config.multiKeyActivationMode = .sequential
+            config.rightClickKeyBindings = nil
+            config.rightClickFallsBackToPrimary = false
+            config.rightClickInteractionMode = nil
+            interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
+            multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
+            rightClickRecorder.setOptionalKeyBindings(nil)
+            rightClickFallbackCheckbox.state = .off
+            rightClickModePopup.selectItem(withTag: Self.sameAsLeftModeTag)
+            shapePopup.selectItem(withTag: ButtonShape.oval.tag)
         } else {
             config.enabled = enabledCheckbox.state == .on
             config.interactionMode = ButtonInteractionMode(tag: interactionModePopup.selectedTag()) ?? .momentary
@@ -475,6 +560,7 @@ final class ButtonDetailPanel: NSView {
 
         self.config = config
         updateMultiKeyActivationModeVisibility()
+        updateControlVisibility()
         onChanged?(button, config)
     }
 
@@ -504,27 +590,70 @@ final class ButtonDetailPanel: NSView {
         rightClickRecorder.setOptionalKeyBindings(config?.rightClickKeyBindings)
     }
 
+    private func configureJoystickRecorder(_ recorder: KeyRecorderButton, direction: JoystickBindingDirection) {
+        recorder.onKeyRecorded = { [weak self] bindings in
+            guard let binding = bindings.first else {
+                return
+            }
+
+            self?.applyJoystickBinding(binding, direction: direction)
+            self?.emitChange()
+        }
+    }
+
+    private func applyJoystickBinding(_ binding: ButtonKeyBinding, direction: JoystickBindingDirection) {
+        guard config?.action.isProtectedSwitch != true else {
+            return
+        }
+
+        switch direction {
+        case .up:
+            config?.joystick.up = binding
+            joystickUpRecorder.setKeyBindings([binding])
+        case .down:
+            config?.joystick.down = binding
+            joystickDownRecorder.setKeyBindings([binding])
+        case .left:
+            config?.joystick.left = binding
+            joystickLeftRecorder.setKeyBindings([binding])
+        case .right:
+            config?.joystick.right = binding
+            joystickRightRecorder.setKeyBindings([binding])
+        }
+    }
+
     private func updateMultiKeyActivationModeVisibility(for bindings: [ButtonKeyBinding]? = nil) {
         let currentBindings = bindings ?? config?.keyBindings ?? []
         let interactionMode = ButtonInteractionMode(tag: interactionModePopup.selectedTag()) ?? config?.interactionMode ?? .momentary
         multiKeyActivationModeRow?.isHidden = currentBindings.count <= 1 || interactionMode != .toggleHold
     }
 
-    private func setProtectedSwitchControlsHidden(_ hidden: Bool) {
-        keyRow?.isHidden = hidden
-        interactionModeRow?.isHidden = hidden
-        rightClickSectionLabel?.isHidden = hidden
-        rightClickKeyRow?.isHidden = hidden
-        rightClickFallbackRow?.isHidden = hidden
-        rightClickModeRow?.isHidden = hidden
-        if hidden {
+    private func updateControlVisibility() {
+        let isProtectedSwitch = config?.action.isProtectedSwitch == true
+        let isJoystick = config?.type == .joystick
+        let hidesKeyboardControls = isProtectedSwitch || isJoystick
+
+        buttonTypeRow?.isHidden = isProtectedSwitch
+        keyRow?.isHidden = hidesKeyboardControls
+        interactionModeRow?.isHidden = hidesKeyboardControls
+        rightClickSectionLabel?.isHidden = hidesKeyboardControls
+        rightClickKeyRow?.isHidden = hidesKeyboardControls
+        rightClickFallbackRow?.isHidden = hidesKeyboardControls
+        rightClickModeRow?.isHidden = hidesKeyboardControls
+        joystickSectionLabel?.isHidden = !isJoystick || isProtectedSwitch
+        joystickUpRow?.isHidden = !isJoystick || isProtectedSwitch
+        joystickDownRow?.isHidden = !isJoystick || isProtectedSwitch
+        joystickLeftRow?.isHidden = !isJoystick || isProtectedSwitch
+        joystickRightRow?.isHidden = !isJoystick || isProtectedSwitch
+
+        if hidesKeyboardControls {
             multiKeyActivationModeRow?.isHidden = true
         } else {
             updateMultiKeyActivationModeVisibility()
         }
-        enabledCheckbox.isHidden = hidden
-        deleteButton.isHidden = hidden
-        deleteButton.isEnabled = !hidden && button != nil
+        enabledCheckbox.isHidden = isProtectedSwitch
+        deleteButton.isHidden = isProtectedSwitch
+        deleteButton.isEnabled = !isProtectedSwitch && button != nil
     }
 
     private func clampedLabelSize(from stringValue: String, fallback: Double) -> Double {
@@ -553,6 +682,41 @@ final class ButtonDetailPanel: NSView {
 private extension ButtonDetailPanel {
     static let sameAsLeftModeTag = -1
     static let defaultKeyBinding = ButtonKeyBinding(keyCode: 49, keyModifiers: 0)
+}
+
+private extension ButtonType {
+    static var allCases: [ButtonType] {
+        [.keyboard, .joystick]
+    }
+
+    var displayName: String {
+        switch self {
+        case .keyboard:
+            return "Keyboard"
+        case .joystick:
+            return "Joystick"
+        }
+    }
+
+    var tag: Int {
+        switch self {
+        case .keyboard:
+            return 0
+        case .joystick:
+            return 1
+        }
+    }
+
+    init?(tag: Int) {
+        switch tag {
+        case 0:
+            self = .keyboard
+        case 1:
+            self = .joystick
+        default:
+            return nil
+        }
+    }
 }
 
 private extension ButtonShape {

@@ -136,6 +136,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     }
 
     @objc private func hideOverlay() {
+        (contentView as? GamepadContentView)?.releaseAllInputs()
         inactivityTimer?.invalidate()
         orderOut(nil)
     }
