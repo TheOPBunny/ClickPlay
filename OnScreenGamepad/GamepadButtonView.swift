@@ -88,6 +88,8 @@ final class GamepadButtonView: NSView {
     private var joystickOffset = CGPoint.zero
     private var activeJoystickDirection: JoystickDirection?
     private var activeJoystickBindings: [(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)] = []
+    private var joystickLocalMonitor: Any?
+    private var joystickGlobalMonitor: Any?
     private var trackingArea: NSTrackingArea?
     var onJoystickCaptureChanged: ((Bool) -> Void)?
 
@@ -175,7 +177,7 @@ final class GamepadButtonView: NSView {
         if let ta = trackingArea { removeTrackingArea(ta) }
         trackingArea = NSTrackingArea(
             rect: bounds,
-            options: [.activeAlways, .mouseEnteredAndExited, .inVisibleRect],
+            options: [.activeAlways, .mouseEnteredAndExited, .mouseMoved, .inVisibleRect],
             owner: self,
             userInfo: nil
         )
@@ -204,7 +206,6 @@ final class GamepadButtonView: NSView {
     override func mouseUp(with event: NSEvent) {
         NSLog("[Button \(button.rawValue)] mouseUp")
         if config.type == .joystick {
-            releaseJoystickCapture(warpCursorToCenter: true)
             return
         }
 
@@ -247,7 +248,7 @@ final class GamepadButtonView: NSView {
 
     override func mouseDragged(with event: NSEvent) {
         if config.type == .joystick {
-            updateJoystickCapture(with: event)
+            updateJoystickCapture(fromWindowLocation: event.locationInWindow)
             return
         }
 
@@ -292,6 +293,12 @@ final class GamepadButtonView: NSView {
 
         releaseMomentaryOnExit(source: .primary)
         releaseMomentaryOnExit(source: .secondary)
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        if config.type == .joystick {
+            updateJoystickCapture(fromWindowLocation: event.locationInWindow)
+        }
     }
 
     private var isSubProfileSwitch: Bool {
@@ -347,27 +354,36 @@ final class GamepadButtonView: NSView {
         joystickOffset = .zero
         activeJoystickDirection = nil
         activeJoystickBindings = []
-        CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
+        installJoystickEventMonitors()
         onJoystickCaptureChanged?(true)
         updateAppearance(animated: true)
-        updateJoystickCapture(with: event)
+        updateJoystickCapture(fromWindowLocation: event.locationInWindow)
         NSLog("[Button \(button.rawValue)] joystickCaptureStarted")
     }
 
-    private func updateJoystickCapture(with event: NSEvent) {
+    private func updateJoystickCaptureFromCurrentMouseLocation() {
+        guard let window else {
+            return
+        }
+
+        let windowPoint = window.convertPoint(fromScreen: NSEvent.mouseLocation)
+        updateJoystickCapture(fromWindowLocation: windowPoint)
+    }
+
+    private func updateJoystickCapture(fromWindowLocation windowLocation: CGPoint) {
         guard isJoystickCaptured else {
             return
         }
 
-        let radius = max(Self.joystickDeadzoneRadius, min(bounds.width, bounds.height) * 0.36)
-        joystickOffset.x = min(max(joystickOffset.x + event.deltaX, -radius), radius)
-        joystickOffset.y = min(max(joystickOffset.y + event.deltaY, -radius), radius)
+        let localPoint = convert(windowLocation, from: nil)
+        joystickOffset = clampedJoystickOffset(for: localPoint)
 
         let nextDirection = joystickDirection(for: joystickOffset)
         if nextDirection != activeJoystickDirection {
             setActiveJoystickDirection(nextDirection)
         }
 
+        confineCursorToJoystickRadius()
         updateAppearance(animated: false)
     }
 
@@ -382,7 +398,7 @@ final class GamepadButtonView: NSView {
 
         if isJoystickCaptured {
             isJoystickCaptured = false
-            CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
+            removeJoystickEventMonitors()
             if warpCursorToCenter {
                 warpCursorToJoystickCenter()
             }
@@ -391,6 +407,60 @@ final class GamepadButtonView: NSView {
         }
 
         updateAppearance(animated: true)
+    }
+
+    private func installJoystickEventMonitors() {
+        removeJoystickEventMonitors()
+
+        joystickLocalMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDown, .rightMouseDragged]
+        ) { [weak self] event in
+            guard let self, self.isJoystickCaptured else {
+                return event
+            }
+
+            switch event.type {
+            case .rightMouseDown, .rightMouseDragged:
+                self.releaseJoystickCapture(warpCursorToCenter: true)
+            case .mouseMoved, .leftMouseDragged:
+                self.updateJoystickCapture(fromWindowLocation: event.locationInWindow)
+            default:
+                break
+            }
+
+            return event
+        }
+
+        joystickGlobalMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDown, .rightMouseDragged]
+        ) { [weak self] event in
+            DispatchQueue.main.async {
+                guard let self, self.isJoystickCaptured else {
+                    return
+                }
+
+                switch event.type {
+                case .rightMouseDown, .rightMouseDragged:
+                    self.releaseJoystickCapture(warpCursorToCenter: true)
+                case .mouseMoved, .leftMouseDragged:
+                    self.updateJoystickCaptureFromCurrentMouseLocation()
+                default:
+                    break
+                }
+            }
+        }
+    }
+
+    private func removeJoystickEventMonitors() {
+        if let joystickLocalMonitor {
+            NSEvent.removeMonitor(joystickLocalMonitor)
+            self.joystickLocalMonitor = nil
+        }
+
+        if let joystickGlobalMonitor {
+            NSEvent.removeMonitor(joystickGlobalMonitor)
+            self.joystickGlobalMonitor = nil
+        }
     }
 
     private func joystickDirection(for offset: CGPoint) -> JoystickDirection? {
@@ -466,12 +536,23 @@ final class GamepadButtonView: NSView {
     }
 
     private func warpCursorToJoystickCenter() {
+        warpCursor(to: CGPoint(x: bounds.midX, y: bounds.midY))
+    }
+
+    private func confineCursorToJoystickRadius() {
+        let cursorPoint = CGPoint(
+            x: bounds.midX + joystickOffset.x,
+            y: bounds.midY + joystickOffset.y
+        )
+        warpCursor(to: cursorPoint)
+    }
+
+    private func warpCursor(to localPoint: CGPoint) {
         guard let window, let screen = window.screen else {
             return
         }
 
-        let localCenter = CGPoint(x: bounds.midX, y: bounds.midY)
-        let windowPoint = convert(localCenter, to: nil)
+        let windowPoint = convert(localPoint, to: nil)
         let screenPoint = window.convertPoint(toScreen: windowPoint)
         let quartzPoint = CGPoint(
             x: screenPoint.x,
@@ -933,6 +1014,19 @@ final class GamepadButtonView: NSView {
         joystickKnobLayer.fillColor = baseColor.withAlphaComponent(isJoystickCaptured ? 0.95 : 0.72).cgColor
         joystickKnobLayer.strokeColor = NSColor.white.withAlphaComponent(0.78).cgColor
         joystickKnobLayer.lineWidth = 1
+    }
+
+    private func clampedJoystickOffset(for point: CGPoint) -> CGPoint {
+        let radius = max(Self.joystickDeadzoneRadius, min(bounds.width, bounds.height) * 0.42)
+        let offset = CGPoint(x: point.x - bounds.midX, y: point.y - bounds.midY)
+        let distance = hypot(offset.x, offset.y)
+
+        guard distance > radius, distance > 0 else {
+            return offset
+        }
+
+        let scale = radius / distance
+        return CGPoint(x: offset.x * scale, y: offset.y * scale)
     }
 
     private func clampedJoystickOffset(maximum: CGFloat) -> CGPoint {
