@@ -24,6 +24,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
     private let bar = NSStackView()
     private var isReloadingSelection = false
     private var isCollapsed = false
+    private var templateManagerWindowController: NSWindowController?
 
     private var profiles: [Profile] {
         ProfileStore.shared.profiles
@@ -67,6 +68,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         bar.addArrangedSubview(makeButton(title: "+", action: #selector(showAddProfileMenu(_:))))
         bar.addArrangedSubview(makeButton(title: "⎘", action: #selector(duplicateSelection)))
         bar.addArrangedSubview(makeButton(title: "−", action: #selector(deleteSelection)))
+        bar.addArrangedSubview(makeButton(title: "...", action: #selector(showTemplateMenu(_:))))
         bar.addArrangedSubview(NSView())
         bar.orientation = .horizontal
         bar.spacing = 4
@@ -178,8 +180,8 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
     @objc private func showAddProfileMenu(_ sender: NSButton) {
         let menu = NSMenu()
 
-        let templateProfileItem = NSMenuItem(title: "New Profile from Template", action: #selector(addProfileFromTemplate), keyEquivalent: "")
-        templateProfileItem.target = self
+        let templateProfileItem = NSMenuItem(title: "New Profile from Template", action: nil, keyEquivalent: "")
+        templateProfileItem.submenu = makeTemplateSubmenu(kind: .profile)
         menu.addItem(templateProfileItem)
 
         let blankProfileItem = NSMenuItem(title: "New Blank Profile", action: #selector(addBlankProfile), keyEquivalent: "")
@@ -188,8 +190,8 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
 
         menu.addItem(NSMenuItem.separator())
 
-        let templateLayerItem = NSMenuItem(title: "New Layer from Template", action: #selector(addSubProfileFromTemplate), keyEquivalent: "")
-        templateLayerItem.target = self
+        let templateLayerItem = NSMenuItem(title: "New Layer from Template", action: nil, keyEquivalent: "")
+        templateLayerItem.submenu = makeTemplateSubmenu(kind: .layer)
         templateLayerItem.isEnabled = selectedParentID() != nil
         menu.addItem(templateLayerItem)
 
@@ -201,22 +203,99 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         menu.popUp(positioning: nil, at: CGPoint(x: 0, y: sender.bounds.maxY + 2), in: sender)
     }
 
-    @objc private func addProfileFromTemplate() {
-        let profile = Profile.makeStarterTemplate(name: "Profile \(profiles.count + 1)").asTopLevelContainer()
-        add(profile: profile)
-    }
-
     @objc private func addBlankProfile() {
         let profile = Profile.makeBlank(name: "Profile \(profiles.count + 1)").asTopLevelContainer()
         add(profile: profile)
     }
 
-    @objc private func addSubProfileFromTemplate() {
-        addSubProfile(fromTemplate: true)
-    }
-
     @objc private func addBlankSubProfile() {
         addSubProfile(fromTemplate: false)
+    }
+
+    @objc private func addProfileFromSavedTemplate(_ sender: NSMenuItem) {
+        guard let templateID = representedTemplateID(sender) else { return }
+        let existingNames = Set(profiles.map(\.name))
+        let baseName = ProfileTemplateStore.shared.templates(kind: .profile)
+            .first { $0.id == templateID }?.name ?? "Profile"
+        let name = uniqueName(baseName, existingNames: existingNames)
+        guard let profile = ProfileTemplateStore.shared.makeProfile(fromTemplateID: templateID, name: name) else {
+            return
+        }
+        add(profile: profile)
+    }
+
+    @objc private func addSubProfileFromSavedTemplate(_ sender: NSMenuItem) {
+        guard let parentID = selectedParentID(),
+              let templateID = representedTemplateID(sender),
+              let parentProfile = profile(with: parentID) else {
+            return
+        }
+        let existingNames = Set(parentProfile.subProfiles.map(\.name))
+        let baseName = ProfileTemplateStore.shared.templates(kind: .layer)
+            .first { $0.id == templateID }?.name ?? "Layer"
+        let name = uniqueName(baseName, existingNames: existingNames)
+        guard let layer = ProfileTemplateStore.shared.makeLayer(fromTemplateID: templateID, name: name),
+              ProfileStore.shared.addSubProfile(layer, to: parentID) != nil else {
+            return
+        }
+
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+    }
+
+    @objc private func showTemplateMenu(_ sender: NSButton) {
+        let menu = NSMenu()
+
+        let saveItem = NSMenuItem(title: "Save Current as Template...", action: #selector(saveCurrentAsTemplate), keyEquivalent: "")
+        saveItem.target = self
+        saveItem.isEnabled = selectedSidebarItem() != nil
+        menu.addItem(saveItem)
+
+        let manageItem = NSMenuItem(title: "Manage Templates...", action: #selector(showTemplateManager), keyEquivalent: "")
+        manageItem.target = self
+        menu.addItem(manageItem)
+
+        menu.popUp(positioning: nil, at: CGPoint(x: 0, y: sender.bounds.maxY + 2), in: sender)
+    }
+
+    @objc private func saveCurrentAsTemplate() {
+        guard let item = selectedSidebarItem(),
+              let selectedProfile = profile(for: item) else {
+            return
+        }
+
+        let kind: ProfileTemplateKind = item.isSubProfile ? .layer : .profile
+        let prompt = item.isSubProfile ? "Save Layer Template" : "Save Profile Template"
+        guard let name = promptForName(title: prompt, message: "Choose a name for this template.", defaultName: selectedProfile.name) else {
+            return
+        }
+
+        ProfileTemplateStore.shared.saveTemplate(named: name, kind: kind, profile: selectedProfile)
+    }
+
+    @objc private func showTemplateManager() {
+        if let templateManagerWindowController {
+            templateManagerWindowController.showWindow(self)
+            templateManagerWindowController.window?.makeKeyAndOrderFront(self)
+            return
+        }
+
+        let controller = TemplateManagerViewController()
+        let window = NSWindow(contentViewController: controller)
+        window.title = "Manage Templates"
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.setContentSize(NSSize(width: 520, height: 360))
+        window.minSize = NSSize(width: 420, height: 280)
+        let windowController = NSWindowController(window: window)
+        windowController.shouldCascadeWindows = true
+        templateManagerWindowController = windowController
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            self?.templateManagerWindowController = nil
+        }
+        windowController.showWindow(self)
     }
 
     private func add(profile: Profile) {
@@ -306,6 +385,84 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         return item.parentID ?? item.profileID
     }
 
+    private func selectedSidebarItem() -> SidebarItem? {
+        outlineView.item(atRow: outlineView.selectedRow) as? SidebarItem
+    }
+
+    private func profile(for item: SidebarItem) -> Profile? {
+        if let parentID = item.parentID {
+            return subProfile(with: item.profileID, parentID: parentID)
+        }
+
+        return profile(with: item.profileID)
+    }
+
+    private func makeTemplateSubmenu(kind: ProfileTemplateKind) -> NSMenu {
+        let menu = NSMenu()
+        let templates = ProfileTemplateStore.shared.templates(kind: kind)
+
+        guard !templates.isEmpty else {
+            let emptyItem = NSMenuItem(title: "No Saved Templates", action: nil, keyEquivalent: "")
+            emptyItem.isEnabled = false
+            menu.addItem(emptyItem)
+            return menu
+        }
+
+        for template in templates {
+            let selector = kind == .profile
+                ? #selector(addProfileFromSavedTemplate(_:))
+                : #selector(addSubProfileFromSavedTemplate(_:))
+            let item = NSMenuItem(title: template.name, action: selector, keyEquivalent: "")
+            item.target = self
+            item.representedObject = template.id.uuidString
+            menu.addItem(item)
+        }
+
+        return menu
+    }
+
+    private func representedTemplateID(_ sender: NSMenuItem) -> UUID? {
+        guard let idString = sender.representedObject as? String else { return nil }
+        return UUID(uuidString: idString)
+    }
+
+    private func uniqueName(_ baseName: String, existingNames: Set<String>) -> String {
+        let trimmedBaseName = baseName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedBaseName = trimmedBaseName.isEmpty ? "Untitled" : trimmedBaseName
+        guard existingNames.contains(resolvedBaseName) else {
+            return resolvedBaseName
+        }
+
+        var index = 2
+        while true {
+            let candidate = "\(resolvedBaseName) \(index)"
+            if !existingNames.contains(candidate) {
+                return candidate
+            }
+            index += 1
+        }
+    }
+
+    private func promptForName(title: String, message: String, defaultName: String) -> String? {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+
+        let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        textField.stringValue = defaultName
+        textField.selectText(nil)
+        alert.accessoryView = textField
+
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            return nil
+        }
+
+        let trimmed = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? defaultName : trimmed
+    }
+
     private func profile(with id: UUID) -> Profile? {
         profiles.first { $0.id == id }
     }
@@ -317,5 +474,174 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         }
 
         return profile.subProfiles.first { $0.id == id }
+    }
+}
+
+private final class TemplateManagerViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
+
+    private let segmentedControl = NSSegmentedControl(labels: ["Profiles", "Layers"], trackingMode: .selectOne, target: nil, action: nil)
+    private let tableView = NSTableView()
+    private let scrollView = NSScrollView()
+    private let renameButton = NSButton(title: "Rename", target: nil, action: nil)
+    private let deleteButton = NSButton(title: "Delete", target: nil, action: nil)
+    private let emptyLabel = NSTextField(labelWithString: "No saved templates")
+    private var templatesDidChangeObserver: NSObjectProtocol?
+
+    private var selectedKind: ProfileTemplateKind {
+        segmentedControl.selectedSegment == 1 ? .layer : .profile
+    }
+
+    private var visibleTemplates: [ProfileTemplate] {
+        ProfileTemplateStore.shared.templates(kind: selectedKind)
+    }
+
+    override func loadView() {
+        view = NSView(frame: NSRect(x: 0, y: 0, width: 520, height: 360))
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        segmentedControl.target = self
+        segmentedControl.action = #selector(changeTemplateKind)
+        segmentedControl.selectedSegment = 0
+        segmentedControl.translatesAutoresizingMaskIntoConstraints = false
+
+        let nameColumn = NSTableColumn(identifier: .init("name"))
+        nameColumn.title = "Name"
+        nameColumn.resizingMask = .autoresizingMask
+        tableView.addTableColumn(nameColumn)
+        tableView.headerView = nil
+        tableView.dataSource = self
+        tableView.delegate = self
+        tableView.rowHeight = 28
+        tableView.usesAlternatingRowBackgroundColors = true
+
+        scrollView.documentView = tableView
+        scrollView.hasVerticalScroller = true
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+
+        renameButton.target = self
+        renameButton.action = #selector(renameSelectedTemplate)
+        renameButton.bezelStyle = .rounded
+
+        deleteButton.target = self
+        deleteButton.action = #selector(deleteSelectedTemplate)
+        deleteButton.bezelStyle = .rounded
+
+        let buttonBar = NSStackView(views: [NSView(), renameButton, deleteButton])
+        buttonBar.orientation = .horizontal
+        buttonBar.spacing = 8
+        buttonBar.translatesAutoresizingMaskIntoConstraints = false
+
+        emptyLabel.textColor = .secondaryLabelColor
+        emptyLabel.alignment = .center
+        emptyLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        view.addSubview(segmentedControl)
+        view.addSubview(scrollView)
+        view.addSubview(emptyLabel)
+        view.addSubview(buttonBar)
+
+        NSLayoutConstraint.activate([
+            segmentedControl.topAnchor.constraint(equalTo: view.topAnchor, constant: 14),
+            segmentedControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14),
+            segmentedControl.widthAnchor.constraint(equalToConstant: 180),
+
+            scrollView.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 12),
+            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14),
+            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -14),
+            scrollView.bottomAnchor.constraint(equalTo: buttonBar.topAnchor, constant: -12),
+
+            emptyLabel.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
+            emptyLabel.centerYAnchor.constraint(equalTo: scrollView.centerYAnchor),
+
+            buttonBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14),
+            buttonBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -14),
+            buttonBar.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -14),
+            buttonBar.heightAnchor.constraint(equalToConstant: 30),
+        ])
+
+        templatesDidChangeObserver = NotificationCenter.default.addObserver(
+            forName: ProfileTemplateStore.templatesDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.reload()
+        }
+
+        reload()
+    }
+
+    deinit {
+        if let templatesDidChangeObserver {
+            NotificationCenter.default.removeObserver(templatesDidChangeObserver)
+        }
+    }
+
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        visibleTemplates.count
+    }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        guard visibleTemplates.indices.contains(row) else { return nil }
+        let label = NSTextField(labelWithString: visibleTemplates[row].name)
+        label.lineBreakMode = .byTruncatingTail
+        return label
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        updateButtonState()
+    }
+
+    @objc private func changeTemplateKind() {
+        reload()
+    }
+
+    @objc private func renameSelectedTemplate() {
+        guard let template = selectedTemplate() else { return }
+        let alert = NSAlert()
+        alert.messageText = "Rename Template"
+        alert.informativeText = "Choose a new name for this template."
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+
+        let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        textField.stringValue = template.name
+        textField.selectText(nil)
+        alert.accessoryView = textField
+
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            return
+        }
+
+        ProfileTemplateStore.shared.renameTemplate(id: template.id, to: textField.stringValue)
+    }
+
+    @objc private func deleteSelectedTemplate() {
+        guard let template = selectedTemplate() else { return }
+        ProfileTemplateStore.shared.deleteTemplate(id: template.id)
+    }
+
+    private func selectedTemplate() -> ProfileTemplate? {
+        let row = tableView.selectedRow
+        guard visibleTemplates.indices.contains(row) else {
+            return nil
+        }
+
+        return visibleTemplates[row]
+    }
+
+    private func reload() {
+        tableView.reloadData()
+        tableView.deselectAll(nil)
+        emptyLabel.isHidden = !visibleTemplates.isEmpty
+        updateButtonState()
+    }
+
+    private func updateButtonState() {
+        let hasSelection = selectedTemplate() != nil
+        renameButton.isEnabled = hasSelection
+        deleteButton.isEnabled = hasSelection
     }
 }
