@@ -12,6 +12,7 @@ final class ButtonDetailPanel: NSView {
     private let contentStack = NSStackView()
     private let labelField = NSTextField()
     private let keyRecorder = KeyRecorderButton()
+    private let keyClearButton = NSButton(title: "Clear", target: nil, action: nil)
     private var keyRow: NSStackView?
     private let rightClickRecorder = KeyRecorderButton()
     private let rightClickFallbackCheckbox = NSButton(checkboxWithTitle: "Use left-click key when unset", target: nil, action: nil)
@@ -135,6 +136,9 @@ final class ButtonDetailPanel: NSView {
             self?.applyKeyBindings(bindings)
             self?.emitChange()
         }
+        keyClearButton.bezelStyle = .rounded
+        keyClearButton.target = self
+        keyClearButton.action = #selector(clearPrimaryKey)
         rightClickRecorder.allowsEmptyDisplay = true
         rightClickRecorder.emptyTitle = "Not Set"
         rightClickRecorder.translatesAutoresizingMaskIntoConstraints = false
@@ -213,7 +217,7 @@ final class ButtonDetailPanel: NSView {
 
         contentStack.addArrangedSubview(makeRow(label: "Label:", control: labelField))
         contentStack.addArrangedSubview(makeLabelStyleRow())
-        let keyRow = makeRow(label: "Key:", control: keyRecorder)
+        let keyRow = makeKeyRow()
         self.keyRow = keyRow
         contentStack.addArrangedSubview(keyRow)
         contentStack.addArrangedSubview(makeRow(label: "Color:", control: colorWell))
@@ -300,6 +304,17 @@ final class ButtonDetailPanel: NSView {
         return label
     }
 
+    private func makeKeyRow() -> NSStackView {
+        let controls = NSStackView(views: [keyRecorder, keyClearButton])
+        controls.orientation = .horizontal
+        controls.spacing = 6
+
+        let row = NSStackView(views: [makeFieldLabel("Key:"), controls])
+        row.orientation = .horizontal
+        row.spacing = 8
+        return row
+    }
+
     private func makeRightClickKeyRow() -> NSStackView {
         let controls = NSStackView(views: [rightClickRecorder, rightClickClearButton])
         controls.orientation = .horizontal
@@ -349,6 +364,11 @@ final class ButtonDetailPanel: NSView {
 
     @objc private func labelSizeStepperChanged() {
         labelSizeField.stringValue = "\(Int(labelSizeStepper.doubleValue))"
+        emitChange()
+    }
+
+    @objc private func clearPrimaryKey() {
+        applyKeyBindings([Self.defaultKeyBinding])
         emitChange()
     }
 
@@ -532,6 +552,7 @@ final class ButtonDetailPanel: NSView {
 
 private extension ButtonDetailPanel {
     static let sameAsLeftModeTag = -1
+    static let defaultKeyBinding = ButtonKeyBinding(keyCode: 49, keyModifiers: 0)
 }
 
 private extension ButtonShape {
