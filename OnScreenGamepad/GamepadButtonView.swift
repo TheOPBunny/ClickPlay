@@ -72,6 +72,7 @@ final class GamepadButtonView: NSView {
 
     private static let compatibilityTapDuration: TimeInterval = 0.033
     private static let joystickDeadzoneRadius: CGFloat = 18
+    private static let joystickIdleReturnDelay: TimeInterval = 0.16
 
     let button: GamepadButton
     private var config: ButtonConfig
@@ -90,6 +91,7 @@ final class GamepadButtonView: NSView {
     private var activeJoystickBindings: [(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)] = []
     private var joystickLocalMonitor: Any?
     private var joystickGlobalMonitor: Any?
+    private var joystickIdleReturnWorkItem: DispatchWorkItem?
     private var trackingArea: NSTrackingArea?
     var onJoystickCaptureChanged: ((Bool) -> Void)?
 
@@ -357,7 +359,7 @@ final class GamepadButtonView: NSView {
         installJoystickEventMonitors()
         onJoystickCaptureChanged?(true)
         updateAppearance(animated: true)
-        updateJoystickCapture(fromWindowLocation: event.locationInWindow)
+        warpCursorToJoystickCenter()
         NSLog("[Button \(button.rawValue)] joystickCaptureStarted")
     }
 
@@ -376,6 +378,7 @@ final class GamepadButtonView: NSView {
         }
 
         let localPoint = convert(windowLocation, from: nil)
+        let rawOffset = CGPoint(x: localPoint.x - bounds.midX, y: localPoint.y - bounds.midY)
         joystickOffset = clampedJoystickOffset(for: localPoint)
 
         let nextDirection = joystickDirection(for: joystickOffset)
@@ -383,7 +386,10 @@ final class GamepadButtonView: NSView {
             setActiveJoystickDirection(nextDirection)
         }
 
-        confineCursorToJoystickRadius()
+        if hypot(rawOffset.x, rawOffset.y) > joystickRadius {
+            confineCursorToJoystickRadius()
+        }
+        scheduleJoystickIdleReturnIfNeeded()
         updateAppearance(animated: false)
     }
 
@@ -395,6 +401,8 @@ final class GamepadButtonView: NSView {
         releaseActiveJoystickBindings()
         activeJoystickDirection = nil
         joystickOffset = .zero
+        joystickIdleReturnWorkItem?.cancel()
+        joystickIdleReturnWorkItem = nil
 
         if isJoystickCaptured {
             isJoystickCaptured = false
@@ -452,6 +460,9 @@ final class GamepadButtonView: NSView {
     }
 
     private func removeJoystickEventMonitors() {
+        joystickIdleReturnWorkItem?.cancel()
+        joystickIdleReturnWorkItem = nil
+
         if let joystickLocalMonitor {
             NSEvent.removeMonitor(joystickLocalMonitor)
             self.joystickLocalMonitor = nil
@@ -461,6 +472,33 @@ final class GamepadButtonView: NSView {
             NSEvent.removeMonitor(joystickGlobalMonitor)
             self.joystickGlobalMonitor = nil
         }
+    }
+
+    private func scheduleJoystickIdleReturnIfNeeded() {
+        joystickIdleReturnWorkItem?.cancel()
+
+        guard hypot(joystickOffset.x, joystickOffset.y) > 0.5 else {
+            joystickIdleReturnWorkItem = nil
+            return
+        }
+
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.returnJoystickToDeadzone()
+        }
+        joystickIdleReturnWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.joystickIdleReturnDelay, execute: workItem)
+    }
+
+    private func returnJoystickToDeadzone() {
+        guard isJoystickCaptured else {
+            return
+        }
+
+        joystickIdleReturnWorkItem = nil
+        joystickOffset = .zero
+        setActiveJoystickDirection(nil)
+        warpCursorToJoystickCenter()
+        updateAppearance(animated: true)
     }
 
     private func joystickDirection(for offset: CGPoint) -> JoystickDirection? {
@@ -1017,16 +1055,19 @@ final class GamepadButtonView: NSView {
     }
 
     private func clampedJoystickOffset(for point: CGPoint) -> CGPoint {
-        let radius = max(Self.joystickDeadzoneRadius, min(bounds.width, bounds.height) * 0.42)
         let offset = CGPoint(x: point.x - bounds.midX, y: point.y - bounds.midY)
         let distance = hypot(offset.x, offset.y)
 
-        guard distance > radius, distance > 0 else {
+        guard distance > joystickRadius, distance > 0 else {
             return offset
         }
 
-        let scale = radius / distance
+        let scale = joystickRadius / distance
         return CGPoint(x: offset.x * scale, y: offset.y * scale)
+    }
+
+    private var joystickRadius: CGFloat {
+        max(Self.joystickDeadzoneRadius, min(bounds.width, bounds.height) * 0.42)
     }
 
     private func clampedJoystickOffset(maximum: CGFloat) -> CGPoint {
