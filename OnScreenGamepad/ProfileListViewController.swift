@@ -212,6 +212,15 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         addSubProfile(fromTemplate: false)
     }
 
+    @objc private func addDefaultTemplateProfile() {
+        let profile = Profile.makeStarterTemplate(name: "Profile \(profiles.count + 1)").asTopLevelContainer()
+        add(profile: profile)
+    }
+
+    @objc private func addDefaultTemplateSubProfile() {
+        addSubProfile(fromTemplate: true)
+    }
+
     @objc private func addProfileFromSavedTemplate(_ sender: NSMenuItem) {
         guard let templateID = representedTemplateID(sender) else { return }
         let existingNames = Set(profiles.map(\.name))
@@ -401,13 +410,22 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         let menu = NSMenu()
         let templates = ProfileTemplateStore.shared.templates(kind: kind)
 
+        let defaultSelector = kind == .profile
+            ? #selector(addDefaultTemplateProfile)
+            : #selector(addDefaultTemplateSubProfile)
+        let defaultItem = NSMenuItem(title: "Default Template", action: defaultSelector, keyEquivalent: "")
+        defaultItem.target = self
+        menu.addItem(defaultItem)
+
         guard !templates.isEmpty else {
+            menu.addItem(NSMenuItem.separator())
             let emptyItem = NSMenuItem(title: "No Saved Templates", action: nil, keyEquivalent: "")
             emptyItem.isEnabled = false
             menu.addItem(emptyItem)
             return menu
         }
 
+        menu.addItem(NSMenuItem.separator())
         for template in templates {
             let selector = kind == .profile
                 ? #selector(addProfileFromSavedTemplate(_:))
