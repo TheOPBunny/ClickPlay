@@ -11,6 +11,11 @@ enum ButtonShape: String, Codable {
     case oval
 }
 
+enum ButtonType: String, Codable {
+    case keyboard
+    case joystick
+}
+
 enum EditorCoordinateMode: String, Codable {
     case legacyTopLeft
     case centered
@@ -24,6 +29,20 @@ enum MultiKeyActivationMode: String, Codable {
 struct ButtonKeyBinding: Codable, Hashable {
     var keyCode: Int
     var keyModifiers: Int
+}
+
+struct JoystickConfig: Codable, Equatable {
+    var up: ButtonKeyBinding
+    var down: ButtonKeyBinding
+    var left: ButtonKeyBinding
+    var right: ButtonKeyBinding
+
+    static let defaultBindings = JoystickConfig(
+        up: ButtonKeyBinding(keyCode: 13, keyModifiers: 0),
+        down: ButtonKeyBinding(keyCode: 1, keyModifiers: 0),
+        left: ButtonKeyBinding(keyCode: 0, keyModifiers: 0),
+        right: ButtonKeyBinding(keyCode: 2, keyModifiers: 0)
+    )
 }
 
 enum ButtonAction: Codable, Equatable {
@@ -85,6 +104,7 @@ enum ButtonAction: Codable, Equatable {
 // Per-button layout and appearance settings stored in a profile.
 
 struct ButtonConfig: Codable {
+    var type: ButtonType
     var x: Double           // center X, as fraction of pad width  (0.0–1.0)
     var y: Double           // center Y, as fraction of pad height (0.0–1.0)
     var width: Double       // as fraction of pad width
@@ -107,8 +127,10 @@ struct ButtonConfig: Codable {
     var rightClickFallsBackToPrimary: Bool
     var rightClickInteractionMode: ButtonInteractionMode?
     var action: ButtonAction
+    var joystick: JoystickConfig
 
     private enum CodingKeys: String, CodingKey {
+        case type
         case x
         case y
         case width
@@ -131,9 +153,11 @@ struct ButtonConfig: Codable {
         case rightClickFallsBackToPrimary
         case rightClickInteractionMode
         case action
+        case joystick
     }
 
     init(
+        type: ButtonType = .keyboard,
         x: Double,
         y: Double,
         width: Double,
@@ -155,8 +179,10 @@ struct ButtonConfig: Codable {
         rightClickKeyBindings: [ButtonKeyBinding]? = nil,
         rightClickFallsBackToPrimary: Bool = true,
         rightClickInteractionMode: ButtonInteractionMode? = nil,
-        action: ButtonAction = .keyboard
+        action: ButtonAction = .keyboard,
+        joystick: JoystickConfig = .defaultBindings
     ) {
+        self.type = type
         self.x = x
         self.y = y
         self.width = width
@@ -185,10 +211,12 @@ struct ButtonConfig: Codable {
         self.rightClickFallsBackToPrimary = rightClickFallsBackToPrimary
         self.rightClickInteractionMode = rightClickInteractionMode
         self.action = action
+        self.joystick = joystick
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decodeIfPresent(ButtonType.self, forKey: .type) ?? .keyboard
         x = try container.decode(Double.self, forKey: .x)
         y = try container.decode(Double.self, forKey: .y)
         width = try container.decode(Double.self, forKey: .width)
@@ -218,6 +246,7 @@ struct ButtonConfig: Codable {
         rightClickFallsBackToPrimary = try container.decodeIfPresent(Bool.self, forKey: .rightClickFallsBackToPrimary) ?? true
         rightClickInteractionMode = try container.decodeIfPresent(ButtonInteractionMode.self, forKey: .rightClickInteractionMode)
         action = try container.decodeIfPresent(ButtonAction.self, forKey: .action) ?? .keyboard
+        joystick = try container.decodeIfPresent(JoystickConfig.self, forKey: .joystick) ?? .defaultBindings
     }
 
     func encode(to encoder: Encoder) throws {
@@ -229,6 +258,7 @@ struct ButtonConfig: Codable {
         )
         let firstBinding = normalizedBindings[0]
 
+        try container.encode(type, forKey: .type)
         try container.encode(x, forKey: .x)
         try container.encode(y, forKey: .y)
         try container.encode(width, forKey: .width)
@@ -251,6 +281,7 @@ struct ButtonConfig: Codable {
         try container.encode(rightClickFallsBackToPrimary, forKey: .rightClickFallsBackToPrimary)
         try container.encodeIfPresent(rightClickInteractionMode, forKey: .rightClickInteractionMode)
         try container.encode(action, forKey: .action)
+        try container.encode(joystick, forKey: .joystick)
     }
 
     private static func normalizedKeyBindings(

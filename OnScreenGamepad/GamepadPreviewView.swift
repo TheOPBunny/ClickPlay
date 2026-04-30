@@ -9,6 +9,7 @@ struct CanvasButtonObject {
     var labelBold: Bool
     var labelItalic: Bool
     var shape: ButtonShape
+    var type: ButtonType
     var isEnabled: Bool
     var isSelected: Bool
 }
@@ -482,6 +483,11 @@ final class GamepadPreviewView: NSView {
 
     private func drawButton(_ object: CanvasButtonObject) {
         let canvasFrame = canvasFrame(for: object.frame)
+        if object.type == .joystick {
+            drawJoystick(object, in: canvasFrame)
+            return
+        }
+
         let path = buttonPath(for: object.shape, in: canvasFrame)
         NSColor(hex: object.colorHex).withAlphaComponent(0.85).setFill()
         path.fill()
@@ -500,6 +506,44 @@ final class GamepadPreviewView: NSView {
 
         for corner in ResizeCorner.allCases {
             drawResizeHandle(handleRect(for: corner, objectFrame: canvasFrame))
+        }
+    }
+
+    private func drawJoystick(_ object: CanvasButtonObject, in frame: CGRect) {
+        let path = NSBezierPath(ovalIn: frame)
+        NSColor(hex: object.colorHex).withAlphaComponent(0.36).setFill()
+        path.fill()
+        NSColor.white.withAlphaComponent(0.35).setStroke()
+        path.lineWidth = 2
+        path.stroke()
+
+        let knobDiameter = max(16, min(frame.width, frame.height) * 0.34)
+        let knobRect = CGRect(
+            x: frame.midX - knobDiameter / 2,
+            y: frame.midY - knobDiameter / 2,
+            width: knobDiameter,
+            height: knobDiameter
+        )
+        let knobPath = NSBezierPath(ovalIn: knobRect)
+        NSColor(hex: object.colorHex).withAlphaComponent(0.88).setFill()
+        knobPath.fill()
+        NSColor.white.withAlphaComponent(0.72).setStroke()
+        knobPath.lineWidth = 1
+        knobPath.stroke()
+
+        drawLabel(for: object, in: frame)
+
+        guard object.isSelected else {
+            return
+        }
+
+        NSColor.white.setStroke()
+        path.lineWidth = 2
+        path.stroke()
+        drawSelectionGlow(for: .oval, in: frame)
+
+        for corner in ResizeCorner.allCases {
+            drawResizeHandle(handleRect(for: corner, objectFrame: frame))
         }
     }
 

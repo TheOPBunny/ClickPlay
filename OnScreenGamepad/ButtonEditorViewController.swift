@@ -237,6 +237,9 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         let addButton = NSButton(title: "Add Button", target: self, action: #selector(addButtonPressed))
         addButton.bezelStyle = .rounded
 
+        let addJoystickButton = NSButton(title: "Add Joystick", target: self, action: #selector(addJoystickPressed))
+        addJoystickButton.bezelStyle = .rounded
+
         let leftSidebarToggleButton = SidebarToggleButton()
         leftSidebarToggleButton.side = .left
         leftSidebarToggleButton.toolTip = "Toggle Profiles Sidebar"
@@ -265,6 +268,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             NSView(),
             rightInspectorToggleButton,
             addButton,
+            addJoystickButton,
             saveButton,
         ])
         topBar.orientation = .horizontal
@@ -533,6 +537,29 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         )
     }
 
+    private func makeNewJoystickConfig() -> ButtonConfig {
+        ButtonConfig(
+            type: .joystick,
+            x: 0,
+            y: 0,
+            width: 96,
+            height: 96,
+            editorWidth: 96,
+            editorHeight: 96,
+            colorHex: "#35A889",
+            keyCode: 13,
+            keyModifiers: 0,
+            label: "Joystick",
+            shape: .oval,
+            enabled: true,
+            interactionMode: .momentary,
+            rightClickKeyBindings: nil,
+            rightClickFallsBackToPrimary: false,
+            rightClickInteractionMode: nil,
+            joystick: .defaultBindings
+        )
+    }
+
     private func nextCustomButtonLabel() -> String {
         let nextNumber = profile.buttons.values.reduce(0) { currentMax, config in
             let label = config.label.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -704,6 +731,20 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         let config = makeNewButtonConfig()
         profile.buttons[button.rawValue] = config
         registerButtonStateUndo(button: button, before: nil, after: config, actionName: "Add Button")
+        syncWorkspaceAfterGeometryChange(selectedButton: button)
+        previewView.reload(objects: canvasObjects, keepSelection: false)
+        previewView.select(button: button)
+    }
+
+    @objc private func addJoystickPressed() {
+        guard confirmAddingButtonIfNeeded() else {
+            return
+        }
+
+        let button = GamepadButton.generated()
+        let config = makeNewJoystickConfig()
+        profile.buttons[button.rawValue] = config
+        registerButtonStateUndo(button: button, before: nil, after: config, actionName: "Add Joystick")
         syncWorkspaceAfterGeometryChange(selectedButton: button)
         previewView.reload(objects: canvasObjects, keepSelection: false)
         previewView.select(button: button)
@@ -909,6 +950,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 labelBold: config.labelBold,
                 labelItalic: config.labelItalic,
                 shape: config.shape,
+                type: config.type,
                 isEnabled: config.enabled,
                 isSelected: false
             )
@@ -961,6 +1003,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             labelBold: config.labelBold,
             labelItalic: config.labelItalic,
             shape: config.shape,
+            type: config.type,
             isEnabled: config.enabled,
             isSelected: false
         )
@@ -1089,6 +1132,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 || lhs.editorWidth != rhs.editorWidth
                 || lhs.editorHeight != rhs.editorHeight
                 || lhs.colorHex != rhs.colorHex
+                || lhs.type != rhs.type
                 || lhs.keyCode != rhs.keyCode
                 || lhs.keyModifiers != rhs.keyModifiers
                 || lhs.keyBindings != rhs.keyBindings
@@ -1100,6 +1144,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 || lhs.shape != rhs.shape
                 || lhs.enabled != rhs.enabled
                 || lhs.interactionMode != rhs.interactionMode
+                || lhs.joystick != rhs.joystick
                 || lhs.action != rhs.action
         }
     }

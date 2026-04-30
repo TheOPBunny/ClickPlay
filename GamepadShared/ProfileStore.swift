@@ -461,6 +461,7 @@ final class ProfileStore {
                     config.label = targetSubProfile.name
                 }
 
+                config.type = .keyboard
                 config.enabled = true
                 config.action = .subProfileSwitch(targetSubProfile.id)
                 config.interactionMode = .momentary
