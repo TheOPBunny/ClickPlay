@@ -40,20 +40,37 @@ final class GamepadButtonView: NSView {
         }
     }
 
+    private enum PressSource {
+        case primary
+        case secondary
+    }
+
+    private final class PressState {
+        var pressedBinding: (keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)?
+        var pressedBindings: [(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)] = []
+        var isPressed = false
+        var autoReleaseWorkItem: DispatchWorkItem?
+        var sequenceRepeatWorkItem: DispatchWorkItem?
+    }
+
+    private struct ResolvedInput {
+        let bindings: [ButtonKeyBinding]
+        let mode: ButtonInteractionMode
+        let multiKeyActivationMode: MultiKeyActivationMode
+    }
+
     private static let compatibilityTapDuration: TimeInterval = 0.033
 
     let button: GamepadButton
     private var config: ButtonConfig
     private var compatibilityModeEnabled: Bool
     private var activeSubProfileID: UUID?
-    private var pressedBinding: (keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)?
-    private var pressedBindings: [(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)] = []
+    private let primaryState = PressState()
+    private let secondaryState = PressState()
     private let shapeLayer = CAShapeLayer()
     private let label = CenteredLabelView(frame: .zero)
-    private var isPressed = false
+    private var isSwitchPressed = false
     private var trackingArea: NSTrackingArea?
-    private var autoReleaseWorkItem: DispatchWorkItem?
-    private var sequenceRepeatWorkItem: DispatchWorkItem?
 
     init(button: GamepadButton, config: ButtonConfig, compatibilityModeEnabled: Bool, activeSubProfileID: UUID?) {
         self.button = button
@@ -104,40 +121,19 @@ final class GamepadButtonView: NSView {
 
     func releaseIfNeeded() {
         if isSubProfileSwitch {
-            isPressed = false
+            isSwitchPressed = false
             updateAppearance(animated: false)
             return
         }
 
-        let hadSequentialRepeat = sequenceRepeatWorkItem != nil
-        let hadScheduledVisualRelease = autoReleaseWorkItem != nil
-        autoReleaseWorkItem?.cancel()
-        autoReleaseWorkItem = nil
-        sequenceRepeatWorkItem?.cancel()
-        sequenceRepeatWorkItem = nil
-
-        guard let pressedBinding else {
-            if !pressedBindings.isEmpty {
-                releasePressedBindings()
-                return
-            }
-
-            if hadSequentialRepeat || hadScheduledVisualRelease {
-                isPressed = false
-                updateAppearance(animated: false)
-            }
-            return
-        }
-
-        KeyInjector.shared.releaseRaw(pressedBinding.keyCode, modifiers: pressedBinding.modifiers)
-        self.pressedBinding = nil
-        isPressed = false
+        releaseState(primaryState)
+        releaseState(secondaryState)
         updateAppearance(animated: false)
     }
 
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
-        NSLog("[Button \(button.rawValue)] acceptsFirstMouse called → true")
+        NSLog("[Button \(button.rawValue)] acceptsFirstMouse called -> true")
         return true
     }
 
@@ -166,54 +162,76 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        NSLog("[Button \(button.rawValue)] mouseDown ✓")
+        NSLog("[Button \(button.rawValue)] mouseDown")
         if isSubProfileSwitch {
             handleSubProfileSwitchPressStarted()
             return
         }
 
-        handlePressStarted()
+        handlePressStarted(source: .primary)
     }
 
     override func mouseUp(with event: NSEvent) {
-        NSLog("[Button \(button.rawValue)] mouseUp ✓")
+        NSLog("[Button \(button.rawValue)] mouseUp")
         if isSubProfileSwitch {
             handleSubProfileSwitchPressEnded(inside: containsInteractivePoint(convert(event.locationInWindow, from: nil)))
             return
         }
 
-        handlePressEnded()
+        handlePressEnded(source: .primary)
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        guard containsInteractivePoint(convert(event.locationInWindow, from: nil)), !isSubProfileSwitch else {
+            return
+        }
+
+        NSLog("[Button \(button.rawValue)] rightMouseDown")
+        handlePressStarted(source: .secondary)
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        guard !isSubProfileSwitch else {
+            return
+        }
+
+        NSLog("[Button \(button.rawValue)] rightMouseUp")
+        handlePressEnded(source: .secondary)
     }
 
     override func mouseDragged(with event: NSEvent) {
         if isSubProfileSwitch {
             let inside = containsInteractivePoint(convert(event.locationInWindow, from: nil))
-            if inside != isPressed {
-                isPressed = inside
+            if inside != isSwitchPressed {
+                isSwitchPressed = inside
                 updateAppearance(animated: true)
             }
             return
         }
 
-        guard !usesTurbo, !usesSequentialMultiKey, !usesToggleHold, !usesCompatibilityTap else { return }
-        let inside = containsInteractivePoint(convert(event.locationInWindow, from: nil))
-        if inside != isPressed {
-            setCurrentPressed(inside)
+        handleDrag(source: .primary, event: event)
+    }
+
+    override func rightMouseDragged(with event: NSEvent) {
+        guard !isSubProfileSwitch else {
+            return
         }
+
+        handleDrag(source: .secondary, event: event)
     }
 
     override func mouseExited(with event: NSEvent) {
         NSLog("[Button \(button.rawValue)] mouseExited")
         if isSubProfileSwitch {
-            if isPressed {
-                isPressed = false
+            if isSwitchPressed {
+                isSwitchPressed = false
                 updateAppearance(animated: true)
             }
             return
         }
 
-        guard !usesTurbo, !usesSequentialMultiKey, !usesToggleHold, !usesCompatibilityTap else { return }
-        if isPressed { setCurrentPressed(false) }
+        releaseMomentaryOnExit(source: .primary)
+        releaseMomentaryOnExit(source: .secondary)
     }
 
     private var isSubProfileSwitch: Bool {
@@ -228,19 +246,23 @@ final class GamepadButtonView: NSView {
         return targetID == activeSubProfileID
     }
 
+    private var isVisuallyPressed: Bool {
+        isSwitchPressed || primaryState.isPressed || secondaryState.isPressed
+    }
+
     private func handleSubProfileSwitchPressStarted() {
         guard !isCurrentSubProfileSwitch else {
             return
         }
 
-        isPressed = true
+        isSwitchPressed = true
         updateAppearance(animated: true)
     }
 
     private func handleSubProfileSwitchPressEnded(inside: Bool) {
         defer {
-            if isPressed {
-                isPressed = false
+            if isSwitchPressed {
+                isSwitchPressed = false
                 updateAppearance(animated: true)
             }
         }
@@ -252,138 +274,218 @@ final class GamepadButtonView: NSView {
         ProfileStore.shared.setActiveSubProfile(targetID)
     }
 
-    private var usesToggleHold: Bool {
-        config.interactionMode == .toggleHold
-    }
-
-    private var usesTurbo: Bool {
-        config.interactionMode == .turbo
-    }
-
-    private var usesCompatibilityTap: Bool {
-        compatibilityModeEnabled && config.interactionMode == .momentary
-    }
-
-    private var usesSequentialMultiKey: Bool {
-        config.keyBindings.count > 1 && config.multiKeyActivationMode == .sequential
-    }
-
-    private var usesSimultaneousMultiKey: Bool {
-        config.keyBindings.count > 1 && config.multiKeyActivationMode == .simultaneous
-    }
-
-    private func handlePressStarted() {
-        if usesTurbo {
-            toggleTurboRepeat()
+    private func handlePressStarted(source: PressSource) {
+        guard let input = resolvedInput(for: source) else {
             return
         }
 
-        if usesSequentialMultiKey {
-            if usesToggleHold {
-                toggleSequentialRepeat()
+        if input.mode == .turbo {
+            toggleTurboRepeat(source: source, input: input)
+            return
+        }
+
+        if usesSequentialMultiKey(input) {
+            if input.mode == .toggleHold {
+                toggleSequentialRepeat(source: source, input: input)
                 return
             }
 
-            playSequentialBindings()
+            playSequentialBindings(source: source, input: input)
             return
         }
 
-        if usesSimultaneousMultiKey {
-            if usesToggleHold {
-                setSimultaneousPressed(!isPressed)
+        if usesSimultaneousMultiKey(input) {
+            if input.mode == .toggleHold {
+                setSimultaneousPressed(!state(for: source).isPressed, source: source, input: input)
                 return
             }
 
-            if usesCompatibilityTap {
-                setSimultaneousPressed(true)
-                scheduleCompatibilityRelease()
+            if usesCompatibilityTap(input) {
+                setSimultaneousPressed(true, source: source, input: input)
+                scheduleCompatibilityRelease(source: source, input: input)
                 return
             }
 
-            setSimultaneousPressed(true)
+            setSimultaneousPressed(true, source: source, input: input)
             return
         }
 
-        if usesToggleHold {
-            setPressed(!isPressed)
+        if input.mode == .toggleHold {
+            setPressed(!state(for: source).isPressed, source: source, input: input)
             return
         }
 
-        if usesCompatibilityTap {
-            setPressed(true)
-            scheduleCompatibilityRelease()
+        if usesCompatibilityTap(input) {
+            setPressed(true, source: source, input: input)
+            scheduleCompatibilityRelease(source: source, input: input)
             return
         }
 
-        setPressed(true)
+        setPressed(true, source: source, input: input)
     }
 
-    private func handlePressEnded() {
-        guard !usesTurbo, !usesSequentialMultiKey, !usesToggleHold, !usesCompatibilityTap else { return }
-
-        if usesSimultaneousMultiKey {
-            setSimultaneousPressed(false)
+    private func handlePressEnded(source: PressSource) {
+        guard let input = resolvedInput(for: source) else {
             return
         }
 
-        setPressed(false)
+        guard input.mode != .turbo,
+              !usesSequentialMultiKey(input),
+              input.mode != .toggleHold,
+              !usesCompatibilityTap(input) else {
+            return
+        }
+
+        if usesSimultaneousMultiKey(input) {
+            setSimultaneousPressed(false, source: source, input: input)
+            return
+        }
+
+        setPressed(false, source: source, input: input)
     }
 
-    private func scheduleCompatibilityRelease() {
-        autoReleaseWorkItem?.cancel()
+    private func handleDrag(source: PressSource, event: NSEvent) {
+        guard let input = resolvedInput(for: source),
+              input.mode != .turbo,
+              !usesSequentialMultiKey(input),
+              input.mode != .toggleHold,
+              !usesCompatibilityTap(input) else {
+            return
+        }
+
+        let inside = containsInteractivePoint(convert(event.locationInWindow, from: nil))
+        let state = state(for: source)
+        if inside != state.isPressed {
+            setCurrentPressed(inside, source: source, input: input)
+        }
+    }
+
+    private func releaseMomentaryOnExit(source: PressSource) {
+        guard let input = resolvedInput(for: source),
+              input.mode != .turbo,
+              !usesSequentialMultiKey(input),
+              input.mode != .toggleHold,
+              !usesCompatibilityTap(input),
+              state(for: source).isPressed else {
+            return
+        }
+
+        setCurrentPressed(false, source: source, input: input)
+    }
+
+    private func resolvedInput(for source: PressSource) -> ResolvedInput? {
+        let primaryBindings = config.keyBindings.isEmpty
+            ? [ButtonKeyBinding(keyCode: config.keyCode, keyModifiers: config.keyModifiers)]
+            : config.keyBindings
+
+        switch source {
+        case .primary:
+            return ResolvedInput(
+                bindings: primaryBindings,
+                mode: config.interactionMode,
+                multiKeyActivationMode: config.multiKeyActivationMode
+            )
+        case .secondary:
+            if let rightClickBindings = config.rightClickKeyBindings, !rightClickBindings.isEmpty {
+                return ResolvedInput(
+                    bindings: rightClickBindings,
+                    mode: config.rightClickInteractionMode ?? config.interactionMode,
+                    multiKeyActivationMode: config.multiKeyActivationMode
+                )
+            }
+
+            guard config.rightClickFallsBackToPrimary else {
+                return nil
+            }
+
+            return ResolvedInput(
+                bindings: primaryBindings,
+                mode: config.rightClickInteractionMode ?? config.interactionMode,
+                multiKeyActivationMode: config.multiKeyActivationMode
+            )
+        }
+    }
+
+    private func state(for source: PressSource) -> PressState {
+        switch source {
+        case .primary:
+            return primaryState
+        case .secondary:
+            return secondaryState
+        }
+    }
+
+    private func usesCompatibilityTap(_ input: ResolvedInput) -> Bool {
+        compatibilityModeEnabled && input.mode == .momentary
+    }
+
+    private func usesSequentialMultiKey(_ input: ResolvedInput) -> Bool {
+        input.bindings.count > 1 && input.multiKeyActivationMode == .sequential
+    }
+
+    private func usesSimultaneousMultiKey(_ input: ResolvedInput) -> Bool {
+        input.bindings.count > 1 && input.multiKeyActivationMode == .simultaneous
+    }
+
+    private func scheduleCompatibilityRelease(source: PressSource, input: ResolvedInput) {
+        let state = state(for: source)
+        state.autoReleaseWorkItem?.cancel()
 
         let workItem = DispatchWorkItem { [weak self] in
-            self?.setCurrentPressed(false)
+            self?.setCurrentPressed(false, source: source, input: input)
         }
-        autoReleaseWorkItem = workItem
+        state.autoReleaseWorkItem = workItem
 
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration, execute: workItem)
     }
 
-    private func playSequentialBindings() {
-        autoReleaseWorkItem?.cancel()
+    private func playSequentialBindings(source: PressSource, input: ResolvedInput) {
+        let state = state(for: source)
+        state.autoReleaseWorkItem?.cancel()
 
-        isPressed = true
+        state.isPressed = true
         updateAppearance(animated: true)
 
-        NSLog("[Button \(button.rawValue)] playSequential keyBindings=\(config.keyBindings.map(\.keyCode)) mode=\(config.interactionMode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
-        postSequentialBindings()
+        NSLog("[Button \(button.rawValue)] playSequential source=\(source) keyBindings=\(input.bindings.map(\.keyCode)) mode=\(input.mode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
+        postSequentialBindings(input)
 
-        let workItem = DispatchWorkItem { [weak self] in
-            self?.isPressed = false
+        let workItem = DispatchWorkItem { [weak self, weak state] in
+            state?.isPressed = false
             self?.updateAppearance(animated: true)
-            self?.autoReleaseWorkItem = nil
+            state?.autoReleaseWorkItem = nil
         }
-        autoReleaseWorkItem = workItem
+        state.autoReleaseWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration, execute: workItem)
     }
 
-    private func toggleSequentialRepeat() {
-        if sequenceRepeatWorkItem != nil {
-            stopSequentialRepeat()
+    private func toggleSequentialRepeat(source: PressSource, input: ResolvedInput) {
+        let state = state(for: source)
+        if state.sequenceRepeatWorkItem != nil {
+            stopSequentialRepeat(source: source)
             return
         }
 
-        isPressed = true
+        state.isPressed = true
         updateAppearance(animated: true)
-        NSLog("[Button \(button.rawValue)] startSequentialRepeat keyBindings=\(config.keyBindings.map(\.keyCode))")
-        repeatSequentialBindings()
+        NSLog("[Button \(button.rawValue)] startSequentialRepeat source=\(source) keyBindings=\(input.bindings.map(\.keyCode))")
+        repeatSequentialBindings(source: source, input: input)
     }
 
-    private func toggleTurboRepeat() {
-        if sequenceRepeatWorkItem != nil {
-            stopTurboRepeat()
+    private func toggleTurboRepeat(source: PressSource, input: ResolvedInput) {
+        let state = state(for: source)
+        if state.sequenceRepeatWorkItem != nil {
+            stopTurboRepeat(source: source)
             return
         }
 
-        isPressed = true
+        state.isPressed = true
         updateAppearance(animated: true)
-        NSLog("[Button \(button.rawValue)] startTurboRepeat keyBindings=\(config.keyBindings.map(\.keyCode)) activationMode=\(config.multiKeyActivationMode.rawValue)")
-        repeatTurboActivation()
+        NSLog("[Button \(button.rawValue)] startTurboRepeat source=\(source) keyBindings=\(input.bindings.map(\.keyCode)) activationMode=\(input.multiKeyActivationMode.rawValue)")
+        repeatTurboActivation(source: source, input: input)
     }
 
-    private func repeatSequentialBindings() {
-        postSequentialBindings()
+    private func repeatSequentialBindings(source: PressSource, input: ResolvedInput) {
+        postSequentialBindings(input)
 
         var workItem: DispatchWorkItem?
         workItem = DispatchWorkItem { [weak self] in
@@ -391,24 +493,25 @@ final class GamepadButtonView: NSView {
                 return
             }
 
-            self?.repeatSequentialBindings()
+            self?.repeatSequentialBindings(source: source, input: input)
         }
         if let workItem {
-            sequenceRepeatWorkItem = workItem
+            state(for: source).sequenceRepeatWorkItem = workItem
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration, execute: workItem)
         }
     }
 
-    private func stopSequentialRepeat() {
-        sequenceRepeatWorkItem?.cancel()
-        sequenceRepeatWorkItem = nil
-        isPressed = false
+    private func stopSequentialRepeat(source: PressSource) {
+        let state = state(for: source)
+        state.sequenceRepeatWorkItem?.cancel()
+        state.sequenceRepeatWorkItem = nil
+        state.isPressed = false
         updateAppearance(animated: true)
-        NSLog("[Button \(button.rawValue)] stopSequentialRepeat")
+        NSLog("[Button \(button.rawValue)] stopSequentialRepeat source=\(source)")
     }
 
-    private func repeatTurboActivation() {
-        postTurboActivation()
+    private func repeatTurboActivation(source: PressSource, input: ResolvedInput) {
+        postTurboActivation(input)
 
         var workItem: DispatchWorkItem?
         workItem = DispatchWorkItem { [weak self] in
@@ -416,24 +519,25 @@ final class GamepadButtonView: NSView {
                 return
             }
 
-            self?.repeatTurboActivation()
+            self?.repeatTurboActivation(source: source, input: input)
         }
         if let workItem {
-            sequenceRepeatWorkItem = workItem
+            state(for: source).sequenceRepeatWorkItem = workItem
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration, execute: workItem)
         }
     }
 
-    private func stopTurboRepeat() {
-        sequenceRepeatWorkItem?.cancel()
-        sequenceRepeatWorkItem = nil
-        isPressed = false
+    private func stopTurboRepeat(source: PressSource) {
+        let state = state(for: source)
+        state.sequenceRepeatWorkItem?.cancel()
+        state.sequenceRepeatWorkItem = nil
+        state.isPressed = false
         updateAppearance(animated: true)
-        NSLog("[Button \(button.rawValue)] stopTurboRepeat")
+        NSLog("[Button \(button.rawValue)] stopTurboRepeat source=\(source)")
     }
 
-    private func postSequentialBindings() {
-        for binding in config.keyBindings {
+    private func postSequentialBindings(_ input: ResolvedInput) {
+        for binding in input.bindings {
             let keyCode = CGKeyCode(binding.keyCode)
             let modifiers = NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
             KeyInjector.shared.pressRaw(keyCode, modifiers: modifiers)
@@ -441,26 +545,29 @@ final class GamepadButtonView: NSView {
         }
     }
 
-    private func postTurboActivation() {
-        if usesSimultaneousMultiKey {
-            postSimultaneousTap()
+    private func postTurboActivation(_ input: ResolvedInput) {
+        if usesSimultaneousMultiKey(input) {
+            postSimultaneousTap(input)
             return
         }
 
-        if usesSequentialMultiKey {
-            postSequentialBindings()
+        if usesSequentialMultiKey(input) {
+            postSequentialBindings(input)
             return
         }
 
-        let binding = config.keyBindings.first ?? ButtonKeyBinding(keyCode: config.keyCode, keyModifiers: config.keyModifiers)
+        guard let binding = input.bindings.first else {
+            return
+        }
+
         let keyCode = CGKeyCode(binding.keyCode)
         let modifiers = NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
         KeyInjector.shared.pressRaw(keyCode, modifiers: modifiers)
         KeyInjector.shared.releaseRaw(keyCode, modifiers: modifiers)
     }
 
-    private func postSimultaneousTap() {
-        let bindings = uniqueInputBindings()
+    private func postSimultaneousTap(_ input: ResolvedInput) {
+        let bindings = uniqueInputBindings(input.bindings)
 
         for binding in bindings {
             KeyInjector.shared.pressRaw(binding.keyCode, modifiers: binding.modifiers)
@@ -471,67 +578,82 @@ final class GamepadButtonView: NSView {
         }
     }
 
-    private func setPressed(_ pressed: Bool) {
-        guard pressed != isPressed else { return }
-        isPressed = pressed
-        let binding = config.keyBindings.first ?? ButtonKeyBinding(keyCode: config.keyCode, keyModifiers: config.keyModifiers)
+    private func setPressed(_ pressed: Bool, source: PressSource, input: ResolvedInput) {
+        let state = state(for: source)
+        guard pressed != state.isPressed, let binding = input.bindings.first else { return }
+        state.isPressed = pressed
         let keyCode = CGKeyCode(binding.keyCode)
         let modifiers = NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
-        NSLog("[Button \(button.rawValue)] setPressed=\(pressed) keyCode=\(keyCode) modifiers=\(binding.keyModifiers) mode=\(config.interactionMode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
+        NSLog("[Button \(button.rawValue)] setPressed=\(pressed) source=\(source) keyCode=\(keyCode) modifiers=\(binding.keyModifiers) mode=\(input.mode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
         if pressed {
-            pressedBinding = (keyCode: keyCode, modifiers: modifiers)
+            state.pressedBinding = (keyCode: keyCode, modifiers: modifiers)
             KeyInjector.shared.pressRaw(keyCode, modifiers: modifiers)
         } else {
-            let bindingToRelease = pressedBinding ?? (keyCode: keyCode, modifiers: modifiers)
+            let bindingToRelease = state.pressedBinding ?? (keyCode: keyCode, modifiers: modifiers)
             KeyInjector.shared.releaseRaw(bindingToRelease.keyCode, modifiers: bindingToRelease.modifiers)
-            pressedBinding = nil
-            autoReleaseWorkItem?.cancel()
-            autoReleaseWorkItem = nil
+            state.pressedBinding = nil
+            state.autoReleaseWorkItem?.cancel()
+            state.autoReleaseWorkItem = nil
         }
         updateAppearance(animated: true)
     }
 
-    private func setCurrentPressed(_ pressed: Bool) {
-        if usesSimultaneousMultiKey {
-            setSimultaneousPressed(pressed)
+    private func setCurrentPressed(_ pressed: Bool, source: PressSource, input: ResolvedInput) {
+        if usesSimultaneousMultiKey(input) {
+            setSimultaneousPressed(pressed, source: source, input: input)
         } else {
-            setPressed(pressed)
+            setPressed(pressed, source: source, input: input)
         }
     }
 
-    private func setSimultaneousPressed(_ pressed: Bool) {
-        guard pressed != isPressed else { return }
-        isPressed = pressed
-        NSLog("[Button \(button.rawValue)] setSimultaneousPressed=\(pressed) keyBindings=\(config.keyBindings.map(\.keyCode)) mode=\(config.interactionMode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
+    private func setSimultaneousPressed(_ pressed: Bool, source: PressSource, input: ResolvedInput) {
+        let state = state(for: source)
+        guard pressed != state.isPressed else { return }
+        state.isPressed = pressed
+        NSLog("[Button \(button.rawValue)] setSimultaneousPressed=\(pressed) source=\(source) keyBindings=\(input.bindings.map(\.keyCode)) mode=\(input.mode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
 
         if pressed {
-            pressedBindings = uniqueInputBindings()
+            state.pressedBindings = uniqueInputBindings(input.bindings)
 
-            for binding in pressedBindings {
+            for binding in state.pressedBindings {
                 KeyInjector.shared.pressRaw(binding.keyCode, modifiers: binding.modifiers)
             }
         } else {
-            releasePressedBindings()
+            releasePressedBindings(state)
         }
 
         updateAppearance(animated: true)
     }
 
-    private func releasePressedBindings() {
-        for binding in pressedBindings.reversed() {
+    private func releaseState(_ state: PressState) {
+        state.autoReleaseWorkItem?.cancel()
+        state.autoReleaseWorkItem = nil
+        state.sequenceRepeatWorkItem?.cancel()
+        state.sequenceRepeatWorkItem = nil
+
+        if let pressedBinding = state.pressedBinding {
+            KeyInjector.shared.releaseRaw(pressedBinding.keyCode, modifiers: pressedBinding.modifiers)
+            state.pressedBinding = nil
+        }
+
+        releasePressedBindings(state)
+        state.isPressed = false
+    }
+
+    private func releasePressedBindings(_ state: PressState) {
+        for binding in state.pressedBindings.reversed() {
             KeyInjector.shared.releaseRaw(binding.keyCode, modifiers: binding.modifiers)
         }
 
-        pressedBindings = []
-        isPressed = false
-        autoReleaseWorkItem?.cancel()
-        autoReleaseWorkItem = nil
-        updateAppearance(animated: true)
+        state.pressedBindings = []
+        state.autoReleaseWorkItem?.cancel()
+        state.autoReleaseWorkItem = nil
+        state.isPressed = false
     }
 
-    private func uniqueInputBindings() -> [(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)] {
+    private func uniqueInputBindings(_ bindings: [ButtonKeyBinding]) -> [(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)] {
         var seenBindings = Set<ButtonKeyBinding>()
-        return config.keyBindings.compactMap { binding in
+        return bindings.compactMap { binding in
             guard seenBindings.insert(binding).inserted else {
                 return nil
             }
@@ -550,8 +672,8 @@ final class GamepadButtonView: NSView {
     private func updateAppearance(animated: Bool) {
         let base = NSColor(hex: config.colorHex)
         let defaultAlpha = isCurrentSubProfileSwitch ? 0.32 : 0.75
-        let target = isPressed ? base.withAlphaComponent(1.0) : base.withAlphaComponent(defaultAlpha)
-        let scale: CGFloat = isPressed ? 0.92 : 1.0
+        let target = isVisuallyPressed ? base.withAlphaComponent(1.0) : base.withAlphaComponent(defaultAlpha)
+        let scale: CGFloat = isVisuallyPressed ? 0.92 : 1.0
         updateShapePath()
         if animated {
             NSAnimationContext.runAnimationGroup { ctx in
