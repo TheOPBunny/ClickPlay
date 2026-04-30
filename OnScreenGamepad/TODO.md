@@ -51,11 +51,12 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 - [x] Add a "turbo" option so pressing a button repeatedly sends its key until pressed again.
 - [x] Center text on buttons.
 - [x] Investigate whether macOS Accessibility dwell actions can be activated.
+  - Not viable/possible. Will need to implement a custom solution.
 - [x] If a label is empty, use the key as the label.
 - [x] Add label styling controls for text size, bold, and italic.
 - [ ] Fix button label vertical centering, especially in circle/oval buttons. Likely fix: stop centering by `NSAttributedString.size()` height alone and compute the text baseline from `NSFont.ascender`, `descender`, and `capHeight` in both the live button label view and configurator preview drawing.
 - [ ] Add an option for right-click to activate a button, or to activate a different recorded key.
-- [ ] Add full user template support: save current profile as a template, create profiles from saved templates, and manage saved templates.
+- [x] Add full user template support: save current profile as a template, create profiles from saved templates, and manage saved templates.
 
 Implemented:
 - Button interaction mode control in the configurator with `Momentary` and `Toggle Hold`.
