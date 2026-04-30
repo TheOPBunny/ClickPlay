@@ -13,6 +13,14 @@ final class ButtonDetailPanel: NSView {
     private let labelField = NSTextField()
     private let keyRecorder = KeyRecorderButton()
     private var keyRow: NSStackView?
+    private let rightClickRecorder = KeyRecorderButton()
+    private let rightClickFallbackCheckbox = NSButton(checkboxWithTitle: "Use left-click key when unset", target: nil, action: nil)
+    private let rightClickModePopup = NSPopUpButton()
+    private let rightClickClearButton = NSButton(title: "Clear", target: nil, action: nil)
+    private var rightClickSectionLabel: NSTextField?
+    private var rightClickKeyRow: NSStackView?
+    private var rightClickFallbackRow: NSView?
+    private var rightClickModeRow: NSStackView?
     private let colorWell = NSColorWell()
     private let labelSizeField = NSTextField()
     private let labelSizeStepper = NSStepper()
@@ -47,6 +55,9 @@ final class ButtonDetailPanel: NSView {
         button = nil
         [labelField, labelSizeField, xField, yField, widthField, heightField].forEach { $0.stringValue = "" }
         keyRecorder.setKeyBindings([ButtonKeyBinding(keyCode: 49, keyModifiers: 0)])
+        rightClickRecorder.setOptionalKeyBindings(nil)
+        rightClickFallbackCheckbox.state = .on
+        rightClickModePopup.selectItem(withTag: Self.sameAsLeftModeTag)
         labelBoldCheckbox.state = .off
         labelItalicCheckbox.state = .off
         shapePopup.selectItem(withTag: ButtonShape.roundedRectangle.tag)
@@ -78,6 +89,9 @@ final class ButtonDetailPanel: NSView {
         enabledCheckbox.state = config.enabled ? .on : .off
         interactionModePopup.selectItem(withTag: config.interactionMode.tag)
         multiKeyActivationModePopup.selectItem(withTag: config.multiKeyActivationMode.tag)
+        rightClickRecorder.setOptionalKeyBindings(config.rightClickKeyBindings)
+        rightClickFallbackCheckbox.state = config.rightClickFallsBackToPrimary ? .on : .off
+        rightClickModePopup.selectItem(withTag: config.rightClickInteractionMode?.tag ?? Self.sameAsLeftModeTag)
         updateMultiKeyActivationModeVisibility()
         keyRecorder.setKeyBindings(config.keyBindings)
         setProtectedSwitchControlsHidden(isProtectedSwitch)
@@ -119,6 +133,15 @@ final class ButtonDetailPanel: NSView {
         keyRecorder.heightAnchor.constraint(equalToConstant: 28).isActive = true
         keyRecorder.onKeyRecorded = { [weak self] bindings in
             self?.applyKeyBindings(bindings)
+            self?.emitChange()
+        }
+        rightClickRecorder.allowsEmptyDisplay = true
+        rightClickRecorder.emptyTitle = "Not Set"
+        rightClickRecorder.translatesAutoresizingMaskIntoConstraints = false
+        rightClickRecorder.widthAnchor.constraint(equalToConstant: 110).isActive = true
+        rightClickRecorder.heightAnchor.constraint(equalToConstant: 28).isActive = true
+        rightClickRecorder.onKeyRecorded = { [weak self] bindings in
+            self?.applyRightClickKeyBindings(bindings)
             self?.emitChange()
         }
 
@@ -164,6 +187,14 @@ final class ButtonDetailPanel: NSView {
         multiKeyActivationModePopup.target = self
         multiKeyActivationModePopup.action = #selector(applyPressed)
         populateMultiKeyActivationModes()
+        rightClickModePopup.target = self
+        rightClickModePopup.action = #selector(applyPressed)
+        populateRightClickModes()
+        rightClickFallbackCheckbox.target = self
+        rightClickFallbackCheckbox.action = #selector(applyPressed)
+        rightClickClearButton.bezelStyle = .rounded
+        rightClickClearButton.target = self
+        rightClickClearButton.action = #selector(clearRightClickKey)
 
         let header = NSStackView(views: [
             titleLabel,
@@ -195,6 +226,17 @@ final class ButtonDetailPanel: NSView {
         let multiKeyRow = makeRow(label: "Keys:", control: multiKeyActivationModePopup)
         multiKeyActivationModeRow = multiKeyRow
         contentStack.addArrangedSubview(multiKeyRow)
+        let rightClickSectionLabel = makeSectionLabel("Right Click")
+        self.rightClickSectionLabel = rightClickSectionLabel
+        contentStack.addArrangedSubview(rightClickSectionLabel)
+        let rightClickKeyRow = makeRightClickKeyRow()
+        self.rightClickKeyRow = rightClickKeyRow
+        contentStack.addArrangedSubview(rightClickKeyRow)
+        rightClickFallbackRow = rightClickFallbackCheckbox
+        contentStack.addArrangedSubview(rightClickFallbackCheckbox)
+        let rightClickModeRow = makeRow(label: "Mode:", control: rightClickModePopup)
+        self.rightClickModeRow = rightClickModeRow
+        contentStack.addArrangedSubview(rightClickModeRow)
         contentStack.addArrangedSubview(enabledCheckbox)
         contentStack.addArrangedSubview(makeSizeRow())
         contentStack.addArrangedSubview(applyButton)
@@ -251,6 +293,24 @@ final class ButtonDetailPanel: NSView {
         return label
     }
 
+    private func makeSectionLabel(_ text: String) -> NSTextField {
+        let label = NSTextField(labelWithString: text)
+        label.font = .boldSystemFont(ofSize: 12)
+        label.textColor = .secondaryLabelColor
+        return label
+    }
+
+    private func makeRightClickKeyRow() -> NSStackView {
+        let controls = NSStackView(views: [rightClickRecorder, rightClickClearButton])
+        controls.orientation = .horizontal
+        controls.spacing = 6
+
+        let row = NSStackView(views: [makeFieldLabel("Key:"), controls])
+        row.orientation = .horizontal
+        row.spacing = 8
+        return row
+    }
+
     private func makeSizeRow() -> NSStackView {
         let row = NSStackView()
         row.orientation = .horizontal
@@ -292,6 +352,11 @@ final class ButtonDetailPanel: NSView {
         emitChange()
     }
 
+    @objc private func clearRightClickKey() {
+        applyRightClickKeyBindings(nil)
+        emitChange()
+    }
+
     @objc private func deletePressed() {
         guard let button else {
             return
@@ -320,6 +385,19 @@ final class ButtonDetailPanel: NSView {
         }
 
         multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
+    }
+
+    private func populateRightClickModes() {
+        rightClickModePopup.removeAllItems()
+        rightClickModePopup.addItem(withTitle: "Same as Left")
+        rightClickModePopup.lastItem?.tag = Self.sameAsLeftModeTag
+
+        for mode in ButtonInteractionMode.allCases {
+            rightClickModePopup.addItem(withTitle: mode.displayName)
+            rightClickModePopup.lastItem?.tag = mode.tag
+        }
+
+        rightClickModePopup.selectItem(withTag: Self.sameAsLeftModeTag)
     }
 
     private func populateShapes() {
@@ -353,9 +431,15 @@ final class ButtonDetailPanel: NSView {
             config.enabled = true
             config.interactionMode = .momentary
             config.multiKeyActivationMode = .sequential
+            config.rightClickKeyBindings = nil
+            config.rightClickFallsBackToPrimary = true
+            config.rightClickInteractionMode = nil
             enabledCheckbox.state = .on
             interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
             multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
+            rightClickRecorder.setOptionalKeyBindings(nil)
+            rightClickFallbackCheckbox.state = .on
+            rightClickModePopup.selectItem(withTag: Self.sameAsLeftModeTag)
         } else {
             config.enabled = enabledCheckbox.state == .on
             config.interactionMode = ButtonInteractionMode(tag: interactionModePopup.selectedTag()) ?? .momentary
@@ -365,6 +449,8 @@ final class ButtonDetailPanel: NSView {
                 config.multiKeyActivationMode = .sequential
                 multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
             }
+            config.rightClickFallsBackToPrimary = rightClickFallbackCheckbox.state == .on
+            config.rightClickInteractionMode = ButtonInteractionMode(tag: rightClickModePopup.selectedTag())
         }
 
         self.config = config
@@ -389,6 +475,15 @@ final class ButtonDetailPanel: NSView {
         updateMultiKeyActivationModeVisibility(for: bindings)
     }
 
+    private func applyRightClickKeyBindings(_ bindings: [ButtonKeyBinding]?) {
+        guard config?.action.isProtectedSwitch != true else {
+            return
+        }
+
+        config?.rightClickKeyBindings = bindings?.isEmpty == true ? nil : bindings
+        rightClickRecorder.setOptionalKeyBindings(config?.rightClickKeyBindings)
+    }
+
     private func updateMultiKeyActivationModeVisibility(for bindings: [ButtonKeyBinding]? = nil) {
         let currentBindings = bindings ?? config?.keyBindings ?? []
         let interactionMode = ButtonInteractionMode(tag: interactionModePopup.selectedTag()) ?? config?.interactionMode ?? .momentary
@@ -398,6 +493,10 @@ final class ButtonDetailPanel: NSView {
     private func setProtectedSwitchControlsHidden(_ hidden: Bool) {
         keyRow?.isHidden = hidden
         interactionModeRow?.isHidden = hidden
+        rightClickSectionLabel?.isHidden = hidden
+        rightClickKeyRow?.isHidden = hidden
+        rightClickFallbackRow?.isHidden = hidden
+        rightClickModeRow?.isHidden = hidden
         if hidden {
             multiKeyActivationModeRow?.isHidden = true
         } else {
@@ -429,6 +528,10 @@ final class ButtonDetailPanel: NSView {
         labelSizeField.stringValue = "\(Int(clampedSize))"
         labelSizeStepper.doubleValue = clampedSize
     }
+}
+
+private extension ButtonDetailPanel {
+    static let sameAsLeftModeTag = -1
 }
 
 private extension ButtonShape {

@@ -103,6 +103,9 @@ struct ButtonConfig: Codable {
     var shape: ButtonShape
     var enabled: Bool
     var interactionMode: ButtonInteractionMode
+    var rightClickKeyBindings: [ButtonKeyBinding]?
+    var rightClickFallsBackToPrimary: Bool
+    var rightClickInteractionMode: ButtonInteractionMode?
     var action: ButtonAction
 
     private enum CodingKeys: String, CodingKey {
@@ -124,6 +127,9 @@ struct ButtonConfig: Codable {
         case shape
         case enabled
         case interactionMode
+        case rightClickKeyBindings
+        case rightClickFallsBackToPrimary
+        case rightClickInteractionMode
         case action
     }
 
@@ -146,6 +152,9 @@ struct ButtonConfig: Codable {
         shape: ButtonShape = .roundedRectangle,
         enabled: Bool,
         interactionMode: ButtonInteractionMode = .momentary,
+        rightClickKeyBindings: [ButtonKeyBinding]? = nil,
+        rightClickFallsBackToPrimary: Bool = true,
+        rightClickInteractionMode: ButtonInteractionMode? = nil,
         action: ButtonAction = .keyboard
     ) {
         self.x = x
@@ -172,6 +181,9 @@ struct ButtonConfig: Codable {
         self.shape = shape
         self.enabled = enabled
         self.interactionMode = interactionMode
+        self.rightClickKeyBindings = rightClickKeyBindings?.isEmpty == true ? nil : rightClickKeyBindings
+        self.rightClickFallsBackToPrimary = rightClickFallsBackToPrimary
+        self.rightClickInteractionMode = rightClickInteractionMode
         self.action = action
     }
 
@@ -201,6 +213,10 @@ struct ButtonConfig: Codable {
         shape = try container.decodeIfPresent(ButtonShape.self, forKey: .shape) ?? .roundedRectangle
         enabled = try container.decode(Bool.self, forKey: .enabled)
         interactionMode = try container.decodeIfPresent(ButtonInteractionMode.self, forKey: .interactionMode) ?? .momentary
+        let decodedRightClickBindings = try container.decodeIfPresent([ButtonKeyBinding].self, forKey: .rightClickKeyBindings)
+        rightClickKeyBindings = decodedRightClickBindings?.isEmpty == true ? nil : decodedRightClickBindings
+        rightClickFallsBackToPrimary = try container.decodeIfPresent(Bool.self, forKey: .rightClickFallsBackToPrimary) ?? true
+        rightClickInteractionMode = try container.decodeIfPresent(ButtonInteractionMode.self, forKey: .rightClickInteractionMode)
         action = try container.decodeIfPresent(ButtonAction.self, forKey: .action) ?? .keyboard
     }
 
@@ -231,6 +247,9 @@ struct ButtonConfig: Codable {
         try container.encode(shape, forKey: .shape)
         try container.encode(enabled, forKey: .enabled)
         try container.encode(interactionMode, forKey: .interactionMode)
+        try container.encodeIfPresent(rightClickKeyBindings?.isEmpty == true ? nil : rightClickKeyBindings, forKey: .rightClickKeyBindings)
+        try container.encode(rightClickFallsBackToPrimary, forKey: .rightClickFallsBackToPrimary)
+        try container.encodeIfPresent(rightClickInteractionMode, forKey: .rightClickInteractionMode)
         try container.encode(action, forKey: .action)
     }
 
