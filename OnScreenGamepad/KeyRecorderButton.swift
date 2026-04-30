@@ -3,6 +3,12 @@ import Cocoa
 final class KeyRecorderButton: NSView {
 
     var onKeyRecorded: (([ButtonKeyBinding]) -> Void)?
+    var emptyTitle = "Not Set" {
+        didSet { updateAppearance() }
+    }
+    var allowsEmptyDisplay = false {
+        didSet { updateAppearance() }
+    }
 
     private(set) var recordedCode: Int = 49
     private(set) var recordedModifiers: NSEvent.ModifierFlags = []
@@ -66,6 +72,18 @@ final class KeyRecorderButton: NSView {
         updateAppearance()
     }
 
+    func setOptionalKeyBindings(_ bindings: [ButtonKeyBinding]?) {
+        guard let bindings, !bindings.isEmpty else {
+            recordedBindings = []
+            recordedCode = 49
+            recordedModifiers = []
+            updateAppearance()
+            return
+        }
+
+        setKeyBindings(bindings)
+    }
+
     @objc private func toggleRecording() {
         isRecording ? stopRecording(commitPendingBindings: true) : startRecording()
     }
@@ -124,6 +142,10 @@ final class KeyRecorderButton: NSView {
     }
 
     private func displayName(for bindings: [ButtonKeyBinding]) -> String {
+        guard !bindings.isEmpty else {
+            return allowsEmptyDisplay ? emptyTitle : ButtonConfig.keyDisplayName(code: recordedCode, modifiers: recordedModifiers)
+        }
+
         guard bindings.count > 1 else {
             let binding = bindings.first ?? ButtonKeyBinding(keyCode: recordedCode, keyModifiers: Int(recordedModifiers.rawValue))
             return ButtonConfig.keyDisplayName(
