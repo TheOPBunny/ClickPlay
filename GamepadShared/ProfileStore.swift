@@ -1,5 +1,139 @@
 import Foundation
 
+enum ProfileTemplateKind: String, Codable {
+    case profile
+    case layer
+}
+
+struct ProfileTemplate: Codable, Identifiable {
+    var id: UUID
+    var name: String
+    var kind: ProfileTemplateKind
+    var profile: Profile
+}
+
+/// Persists user templates to ~/Library/Application Support/OnScreenGamepad/templates.json
+/// Posts `templatesDidChange` notification when anything changes.
+final class ProfileTemplateStore {
+
+    static let shared = ProfileTemplateStore()
+    static let templatesDidChange = Notification.Name("templatesDidChange")
+
+    private(set) var templates: [ProfileTemplate] = []
+
+    private let fileURL: URL = {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let dir = appSupport.appendingPathComponent("OnScreenGamepad")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("templates.json")
+    }()
+
+    private init() {
+        load()
+    }
+
+    func templates(kind: ProfileTemplateKind) -> [ProfileTemplate] {
+        templates.filter { $0.kind == kind }
+    }
+
+    @discardableResult
+    func saveTemplate(named name: String, kind: ProfileTemplateKind, profile: Profile) -> ProfileTemplate {
+        let template = ProfileTemplate(
+            id: UUID(),
+            name: normalizedName(name, fallback: defaultTemplateName(for: kind)),
+            kind: kind,
+            profile: storedTemplateProfile(from: profile, kind: kind)
+        )
+        templates.append(template)
+        save()
+        return template
+    }
+
+    func renameTemplate(id: UUID, to name: String) {
+        guard let index = templates.firstIndex(where: { $0.id == id }) else { return }
+        templates[index].name = normalizedName(name, fallback: templates[index].name)
+        save()
+    }
+
+    func deleteTemplate(id: UUID) {
+        let previousCount = templates.count
+        templates.removeAll { $0.id == id }
+        guard templates.count != previousCount else { return }
+        save()
+    }
+
+    func makeProfile(fromTemplateID id: UUID, name: String) -> Profile? {
+        guard let template = templates.first(where: { $0.id == id && $0.kind == .profile }) else { return nil }
+        var profile = template.profile.copyWithNewIDs(nameSuffix: "").asTopLevelContainer()
+        profile.name = normalizedName(name, fallback: template.name)
+        return profile.normalizedActiveSubProfileSelection()
+    }
+
+    func makeLayer(fromTemplateID id: UUID, name: String) -> Profile? {
+        guard let template = templates.first(where: { $0.id == id && $0.kind == .layer }) else { return nil }
+        var layer = template.profile.copyWithNewIDs(nameSuffix: "")
+        layer.name = normalizedName(name, fallback: template.name)
+        layer.subProfiles = []
+        layer.activeSubProfileID = nil
+        return layerByRemovingSubProfileSwitches(from: layer).normalizedForSaving()
+    }
+
+    private func load() {
+        guard let data = try? Data(contentsOf: fileURL),
+              let saved = try? JSONDecoder().decode(SavedData.self, from: data) else {
+            templates = []
+            return
+        }
+        templates = saved.templates
+    }
+
+    private func save() {
+        let saved = SavedData(templates: templates)
+        if let data = try? JSONEncoder().encode(saved) {
+            try? data.write(to: fileURL)
+        }
+        NotificationCenter.default.post(name: ProfileTemplateStore.templatesDidChange, object: nil)
+    }
+
+    private func storedTemplateProfile(from profile: Profile, kind: ProfileTemplateKind) -> Profile {
+        switch kind {
+        case .profile:
+            return profile.asTopLevelContainer().normalizedForSaving().normalizedActiveSubProfileSelection()
+        case .layer:
+            var layer = profile
+            layer.subProfiles = []
+            layer.activeSubProfileID = nil
+            return layerByRemovingSubProfileSwitches(from: layer).normalizedForSaving()
+        }
+    }
+
+    private func layerByRemovingSubProfileSwitches(from profile: Profile) -> Profile {
+        var layer = profile
+        layer.buttons = profile.buttons.filter { key, config in
+            !GamepadButton(key).isSubProfileSwitch && !config.action.isProtectedSwitch
+        }
+        return layer
+    }
+
+    private func normalizedName(_ name: String, fallback: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? fallback : trimmed
+    }
+
+    private func defaultTemplateName(for kind: ProfileTemplateKind) -> String {
+        switch kind {
+        case .profile:
+            return "Profile Template"
+        case .layer:
+            return "Layer Template"
+        }
+    }
+
+    private struct SavedData: Codable {
+        var templates: [ProfileTemplate]
+    }
+}
+
 /// Persists profiles to ~/Library/Application Support/OnScreenGamepad/profiles.json
 /// Posts `profilesDidChange` notification when anything changes.
 final class ProfileStore {
@@ -216,6 +350,20 @@ final class ProfileStore {
         activeProfileID = parentProfileID
         save()
         return subProfile
+    }
+
+    @discardableResult
+    func addSubProfile(_ subProfile: Profile, to parentProfileID: UUID) -> Profile? {
+        guard let parentIndex = profiles.firstIndex(where: { $0.id == parentProfileID }) else { return nil }
+        var savedSubProfile = subProfile
+        savedSubProfile.subProfiles = []
+        savedSubProfile.activeSubProfileID = nil
+        profiles[parentIndex].subProfiles.append(savedSubProfile)
+        profiles[parentIndex].activeSubProfileID = savedSubProfile.id
+        profiles[parentIndex] = reconciledSubProfileSwitchButtons(in: profiles[parentIndex])
+        activeProfileID = parentProfileID
+        save()
+        return savedSubProfile
     }
 
     @discardableResult
