@@ -353,6 +353,7 @@ final class GamepadButtonView: NSView {
         joystickOffset = .zero
         activeJoystickDirection = nil
         activeJoystickBindings = []
+        CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
         installJoystickEventMonitors()
         onJoystickCaptureChanged?(true)
         updateAppearance(animated: true)
@@ -361,28 +362,7 @@ final class GamepadButtonView: NSView {
     }
 
     private func updateJoystickCaptureFromCurrentMouseLocation() {
-        updateJoystickCaptureFromCurrentCursorPosition()
-    }
-
-    private func updateJoystickCapture(fromWindowLocation windowLocation: CGPoint) {
-        guard isJoystickCaptured else {
-            return
-        }
-
-        let localPoint = convert(windowLocation, from: nil)
-        let rawOffset = CGPoint(x: localPoint.x - bounds.midX, y: localPoint.y - bounds.midY)
-        joystickOffset = clampedJoystickOffset(for: localPoint)
-
-        let nextDirection = joystickDirection(for: joystickOffset)
-        if nextDirection != activeJoystickDirection {
-            setActiveJoystickDirection(nextDirection)
-        }
-
-        if hypot(rawOffset.x, rawOffset.y) > joystickRadius {
-            confineCursorToJoystickRadius()
-        }
-        scheduleJoystickIdleReturnIfNeeded()
-        updateAppearance(animated: false)
+        warpCursorToJoystickPosition()
     }
 
     private func updateJoystickCapture(with event: NSEvent) {
@@ -393,7 +373,7 @@ final class GamepadButtonView: NSView {
         joystickOffset = clampedJoystickOffset(
             CGPoint(
                 x: joystickOffset.x + event.deltaX,
-                y: joystickOffset.y + event.deltaY
+                y: joystickOffset.y - event.deltaY
             )
         )
 
@@ -402,18 +382,9 @@ final class GamepadButtonView: NSView {
             setActiveJoystickDirection(nextDirection)
         }
 
-        confineCursorToJoystickRadius()
+        warpCursorToJoystickPosition()
         scheduleJoystickIdleReturnIfNeeded()
         updateAppearance(animated: false)
-    }
-
-    private func updateJoystickCaptureFromCurrentCursorPosition() {
-        guard let window else {
-            return
-        }
-
-        let windowPoint = window.convertPoint(fromScreen: NSEvent.mouseLocation)
-        updateJoystickCapture(fromWindowLocation: windowPoint)
     }
 
     private func releaseJoystickCapture(warpCursorToCenter: Bool) {
@@ -430,6 +401,7 @@ final class GamepadButtonView: NSView {
         if isJoystickCaptured {
             isJoystickCaptured = false
             removeJoystickEventMonitors()
+            CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
             if warpCursorToCenter {
                 warpCursorToJoystickCenter()
             }
@@ -453,6 +425,7 @@ final class GamepadButtonView: NSView {
             switch event.type {
             case .rightMouseDown, .rightMouseDragged:
                 self.releaseJoystickCapture(warpCursorToCenter: true)
+                return nil
             case .mouseMoved, .leftMouseDragged:
                 self.updateJoystickCapture(with: event)
             default:
@@ -600,7 +573,7 @@ final class GamepadButtonView: NSView {
         warpCursor(to: CGPoint(x: bounds.midX, y: bounds.midY))
     }
 
-    private func confineCursorToJoystickRadius() {
+    private func warpCursorToJoystickPosition() {
         let cursorPoint = CGPoint(
             x: bounds.midX + joystickOffset.x,
             y: bounds.midY + joystickOffset.y
@@ -1056,7 +1029,7 @@ final class GamepadButtonView: NSView {
         let inset = max(4, min(bounds.width, bounds.height) * 0.08)
         let outerRect = bounds.insetBy(dx: inset, dy: inset)
         joystickOuterLayer.frame = bounds
-        joystickOuterLayer.path = CGPath(ellipseIn: outerRect, transform: nil)
+        joystickOuterLayer.path = CGPath(roundedRect: outerRect, cornerWidth: 8, cornerHeight: 8, transform: nil)
         joystickOuterLayer.fillColor = baseColor.withAlphaComponent(isJoystickCaptured ? 0.42 : 0.26).cgColor
         joystickOuterLayer.strokeColor = NSColor.white.withAlphaComponent(isJoystickCaptured ? 0.65 : 0.32).cgColor
         joystickOuterLayer.lineWidth = 2
@@ -1077,20 +1050,11 @@ final class GamepadButtonView: NSView {
         joystickKnobLayer.lineWidth = 1
     }
 
-    private func clampedJoystickOffset(for point: CGPoint) -> CGPoint {
-        let offset = CGPoint(x: point.x - bounds.midX, y: point.y - bounds.midY)
-        return clampedJoystickOffset(offset)
-    }
-
     private func clampedJoystickOffset(_ offset: CGPoint) -> CGPoint {
-        let distance = hypot(offset.x, offset.y)
-
-        guard distance > joystickRadius, distance > 0 else {
-            return offset
-        }
-
-        let scale = joystickRadius / distance
-        return CGPoint(x: offset.x * scale, y: offset.y * scale)
+        CGPoint(
+            x: min(max(offset.x, -joystickRadius), joystickRadius),
+            y: min(max(offset.y, -joystickRadius), joystickRadius)
+        )
     }
 
     private var joystickRadius: CGFloat {
