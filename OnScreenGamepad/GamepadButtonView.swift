@@ -76,8 +76,6 @@ final class GamepadButtonView: NSView {
     private static let joystickOuterInsetFraction: CGFloat = 0.08
     private static let joystickCardinalDominanceRatio: CGFloat = 1.75
     private static let joystickMinimumDeltaForAxisReset: CGFloat = 0.5
-    private static let joystickParkingDeltaTolerance: CGFloat = 1.5
-    private static let joystickParkSuppressionWindow: TimeInterval = 0.04
 
     let button: GamepadButton
     private var config: ButtonConfig
@@ -94,11 +92,9 @@ final class GamepadButtonView: NSView {
     private var joystickOffset = CGPoint.zero
     private var activeJoystickDirection: JoystickDirection?
     private var activeJoystickBindings: [(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)] = []
-    private var joystickLocalMonitor: Any?
-    private var joystickGlobalMonitor: Any?
+    private var joystickEventTap: CFMachPort?
+    private var joystickEventTapRunLoopSource: CFRunLoopSource?
     private var joystickIdleReturnWorkItem: DispatchWorkItem?
-    private var pendingJoystickParkDelta: CGPoint?
-    private var pendingJoystickParkEventDeadline: TimeInterval = 0
     private var isJoystickCursorHidden = false
     private var trackingArea: NSTrackingArea?
     var onJoystickCaptureChanged: ((Bool) -> Void)?
@@ -361,10 +357,8 @@ final class GamepadButtonView: NSView {
         joystickOffset = .zero
         activeJoystickDirection = nil
         activeJoystickBindings = []
-        pendingJoystickParkDelta = nil
-        pendingJoystickParkEventDeadline = 0
         CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
-        parkJoystickCursor(suppressingNextDelta: nil, eventTimestamp: event.timestamp)
+        parkJoystickCursor()
         hideJoystickCursorIfNeeded()
         installJoystickEventMonitors()
         onJoystickCaptureChanged?(true)
@@ -372,21 +366,13 @@ final class GamepadButtonView: NSView {
         NSLog("[Button \(button.rawValue)] joystickCaptureStarted")
     }
 
-    private func updateJoystickCapture(with event: NSEvent) {
+    private func updateJoystickCapture(deltaX: CGFloat, deltaY: CGFloat) {
         guard isJoystickCaptured else {
             return
         }
 
-        guard !consumeJoystickParkEventIfNeeded(event) else {
-            return
-        }
-
-        let movementDelta = CGPoint(x: event.deltaX, y: -event.deltaY)
+        let movementDelta = CGPoint(x: deltaX, y: deltaY)
         joystickOffset = clampedJoystickOffset(joystickOffset(afterApplying: movementDelta))
-        parkJoystickCursor(
-            suppressingNextDelta: CGPoint(x: -event.deltaX, y: -event.deltaY),
-            eventTimestamp: event.timestamp
-        )
 
         let nextDirection = joystickDirection(for: joystickOffset)
         if nextDirection != activeJoystickDirection {
@@ -407,8 +393,6 @@ final class GamepadButtonView: NSView {
         joystickOffset = .zero
         joystickIdleReturnWorkItem?.cancel()
         joystickIdleReturnWorkItem = nil
-        pendingJoystickParkDelta = nil
-        pendingJoystickParkEventDeadline = 0
 
         if isJoystickCaptured {
             isJoystickCaptured = false
@@ -428,61 +412,39 @@ final class GamepadButtonView: NSView {
     private func installJoystickEventMonitors() {
         removeJoystickEventMonitors()
 
-        joystickLocalMonitor = NSEvent.addLocalMonitorForEvents(
-            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDown, .rightMouseDragged]
-        ) { [weak self] event in
-            guard let self, self.isJoystickCaptured else {
-                return event
-            }
-
-            switch event.type {
-            case .rightMouseDown, .rightMouseDragged:
-                self.releaseJoystickCapture(warpCursorToCenter: true)
-                return nil
-            case .mouseMoved, .leftMouseDragged:
-                self.updateJoystickCapture(with: event)
-                return nil
-            default:
-                break
-            }
-
-            return event
+        let eventMask = Self.joystickEventMask
+        guard let eventTap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: eventMask,
+            callback: Self.joystickEventTapCallback,
+            userInfo: Unmanaged.passUnretained(self).toOpaque()
+        ) else {
+            NSLog("[Button \(button.rawValue)] ERROR: joystickEventTapCreationFailed")
+            return
         }
 
-        joystickGlobalMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDown, .rightMouseDragged]
-        ) { [weak self] event in
-            DispatchQueue.main.async {
-                guard let self, self.isJoystickCaptured else {
-                    return
-                }
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: eventTap, enable: true)
 
-                switch event.type {
-                case .rightMouseDown, .rightMouseDragged:
-                    self.releaseJoystickCapture(warpCursorToCenter: true)
-                case .mouseMoved, .leftMouseDragged:
-                    self.updateJoystickCapture(with: event)
-                default:
-                    break
-                }
-            }
-        }
+        joystickEventTap = eventTap
+        joystickEventTapRunLoopSource = source
     }
 
     private func removeJoystickEventMonitors() {
         joystickIdleReturnWorkItem?.cancel()
         joystickIdleReturnWorkItem = nil
-        pendingJoystickParkDelta = nil
-        pendingJoystickParkEventDeadline = 0
 
-        if let joystickLocalMonitor {
-            NSEvent.removeMonitor(joystickLocalMonitor)
-            self.joystickLocalMonitor = nil
+        if let joystickEventTapRunLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), joystickEventTapRunLoopSource, .commonModes)
+            self.joystickEventTapRunLoopSource = nil
         }
 
-        if let joystickGlobalMonitor {
-            NSEvent.removeMonitor(joystickGlobalMonitor)
-            self.joystickGlobalMonitor = nil
+        if let joystickEventTap {
+            CGEvent.tapEnable(tap: joystickEventTap, enable: false)
+            self.joystickEventTap = nil
         }
     }
 
@@ -528,30 +490,6 @@ final class GamepadButtonView: NSView {
         joystickOffset = .zero
         setActiveJoystickDirection(nil)
         updateAppearance(animated: true)
-    }
-
-    private func consumeJoystickParkEventIfNeeded(_ event: NSEvent) -> Bool {
-        guard let pendingJoystickParkDelta else {
-            return false
-        }
-
-        guard event.timestamp <= pendingJoystickParkEventDeadline else {
-            self.pendingJoystickParkDelta = nil
-            pendingJoystickParkEventDeadline = 0
-            return false
-        }
-
-        let deltaMatchesPark = abs(event.deltaX - pendingJoystickParkDelta.x) <= Self.joystickParkingDeltaTolerance
-            && abs(event.deltaY - pendingJoystickParkDelta.y) <= Self.joystickParkingDeltaTolerance
-        guard deltaMatchesPark else {
-            self.pendingJoystickParkDelta = nil
-            pendingJoystickParkEventDeadline = 0
-            return false
-        }
-
-        self.pendingJoystickParkDelta = nil
-        pendingJoystickParkEventDeadline = 0
-        return true
     }
 
     private func joystickOffset(afterApplying movementDelta: CGPoint) -> CGPoint {
@@ -668,10 +606,55 @@ final class GamepadButtonView: NSView {
         warpCursor(to: CGPoint(x: bounds.midX, y: bounds.midY))
     }
 
-    private func parkJoystickCursor(suppressingNextDelta delta: CGPoint?, eventTimestamp: TimeInterval) {
-        pendingJoystickParkDelta = delta
-        pendingJoystickParkEventDeadline = delta == nil ? 0 : eventTimestamp + Self.joystickParkSuppressionWindow
+    private func parkJoystickCursor() {
         warpCursorToJoystickCenter()
+    }
+
+    private static var joystickEventMask: CGEventMask {
+        eventMask(for: .mouseMoved)
+            | eventMask(for: .leftMouseDragged)
+            | eventMask(for: .rightMouseDown)
+            | eventMask(for: .rightMouseDragged)
+    }
+
+    private static let joystickEventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in
+        guard let userInfo else {
+            return Unmanaged.passUnretained(event)
+        }
+
+        let view = Unmanaged<GamepadButtonView>.fromOpaque(userInfo).takeUnretainedValue()
+        return view.handleJoystickEventTap(type: type, event: event)
+    }
+
+    private static func eventMask(for type: CGEventType) -> CGEventMask {
+        CGEventMask(1 << type.rawValue)
+    }
+
+    private func handleJoystickEventTap(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        guard isJoystickCaptured else {
+            return Unmanaged.passUnretained(event)
+        }
+
+        switch type {
+        case .tapDisabledByTimeout, .tapDisabledByUserInput:
+            if let joystickEventTap {
+                CGEvent.tapEnable(tap: joystickEventTap, enable: true)
+            }
+            return Unmanaged.passUnretained(event)
+
+        case .rightMouseDown, .rightMouseDragged:
+            releaseJoystickCapture(warpCursorToCenter: true)
+            return nil
+
+        case .mouseMoved, .leftMouseDragged:
+            let deltaX = CGFloat(event.getIntegerValueField(.mouseEventDeltaX))
+            let deltaY = CGFloat(-event.getIntegerValueField(.mouseEventDeltaY))
+            updateJoystickCapture(deltaX: deltaX, deltaY: deltaY)
+            return nil
+
+        default:
+            return Unmanaged.passUnretained(event)
+        }
     }
 
     private func warpCursor(to localPoint: CGPoint) {
