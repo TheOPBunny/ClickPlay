@@ -72,8 +72,12 @@ final class GamepadButtonView: NSView {
 
     private static let compatibilityTapDuration: TimeInterval = 0.033
     private static let joystickDeadzoneRadius: CGFloat = 18
-    private static let joystickIdleReturnDelay: TimeInterval = 0.16
+    private static let joystickIdleReturnDelay: TimeInterval = 1.0 / 60.0
     private static let joystickOuterInsetFraction: CGFloat = 0.08
+    private static let joystickCardinalDominanceRatio: CGFloat = 1.75
+    private static let joystickMinimumDeltaForAxisReset: CGFloat = 0.5
+    private static let joystickParkingDeltaTolerance: CGFloat = 1.5
+    private static let joystickParkSuppressionWindow: TimeInterval = 0.04
 
     let button: GamepadButton
     private var config: ButtonConfig
@@ -93,6 +97,8 @@ final class GamepadButtonView: NSView {
     private var joystickLocalMonitor: Any?
     private var joystickGlobalMonitor: Any?
     private var joystickIdleReturnWorkItem: DispatchWorkItem?
+    private var pendingJoystickParkDelta: CGPoint?
+    private var pendingJoystickParkEventDeadline: TimeInterval = 0
     private var isJoystickCursorHidden = false
     private var trackingArea: NSTrackingArea?
     var onJoystickCaptureChanged: ((Bool) -> Void)?
@@ -355,8 +361,10 @@ final class GamepadButtonView: NSView {
         joystickOffset = .zero
         activeJoystickDirection = nil
         activeJoystickBindings = []
+        pendingJoystickParkDelta = nil
+        pendingJoystickParkEventDeadline = 0
         CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
-        parkJoystickCursor()
+        parkJoystickCursor(suppressingNextDelta: nil, eventTimestamp: event.timestamp)
         hideJoystickCursorIfNeeded()
         installJoystickEventMonitors()
         onJoystickCaptureChanged?(true)
@@ -369,13 +377,16 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        joystickOffset = clampedJoystickOffset(
-            CGPoint(
-                x: joystickOffset.x + event.deltaX,
-                y: joystickOffset.y - event.deltaY
-            )
+        guard !consumeJoystickParkEventIfNeeded(event) else {
+            return
+        }
+
+        let movementDelta = CGPoint(x: event.deltaX, y: -event.deltaY)
+        joystickOffset = clampedJoystickOffset(joystickOffset(afterApplying: movementDelta))
+        parkJoystickCursor(
+            suppressingNextDelta: CGPoint(x: -event.deltaX, y: -event.deltaY),
+            eventTimestamp: event.timestamp
         )
-        parkJoystickCursor()
 
         let nextDirection = joystickDirection(for: joystickOffset)
         if nextDirection != activeJoystickDirection {
@@ -396,6 +407,8 @@ final class GamepadButtonView: NSView {
         joystickOffset = .zero
         joystickIdleReturnWorkItem?.cancel()
         joystickIdleReturnWorkItem = nil
+        pendingJoystickParkDelta = nil
+        pendingJoystickParkEventDeadline = 0
 
         if isJoystickCaptured {
             isJoystickCaptured = false
@@ -459,6 +472,8 @@ final class GamepadButtonView: NSView {
     private func removeJoystickEventMonitors() {
         joystickIdleReturnWorkItem?.cancel()
         joystickIdleReturnWorkItem = nil
+        pendingJoystickParkDelta = nil
+        pendingJoystickParkEventDeadline = 0
 
         if let joystickLocalMonitor {
             NSEvent.removeMonitor(joystickLocalMonitor)
@@ -513,6 +528,51 @@ final class GamepadButtonView: NSView {
         joystickOffset = .zero
         setActiveJoystickDirection(nil)
         updateAppearance(animated: true)
+    }
+
+    private func consumeJoystickParkEventIfNeeded(_ event: NSEvent) -> Bool {
+        guard let pendingJoystickParkDelta else {
+            return false
+        }
+
+        guard event.timestamp <= pendingJoystickParkEventDeadline else {
+            self.pendingJoystickParkDelta = nil
+            pendingJoystickParkEventDeadline = 0
+            return false
+        }
+
+        let deltaMatchesPark = abs(event.deltaX - pendingJoystickParkDelta.x) <= Self.joystickParkingDeltaTolerance
+            && abs(event.deltaY - pendingJoystickParkDelta.y) <= Self.joystickParkingDeltaTolerance
+        guard deltaMatchesPark else {
+            self.pendingJoystickParkDelta = nil
+            pendingJoystickParkEventDeadline = 0
+            return false
+        }
+
+        self.pendingJoystickParkDelta = nil
+        pendingJoystickParkEventDeadline = 0
+        return true
+    }
+
+    private func joystickOffset(afterApplying movementDelta: CGPoint) -> CGPoint {
+        var nextOffset = CGPoint(
+            x: joystickOffset.x + movementDelta.x,
+            y: joystickOffset.y + movementDelta.y
+        )
+
+        let absoluteX = abs(movementDelta.x)
+        let absoluteY = abs(movementDelta.y)
+        let minimumDelta = Self.joystickMinimumDeltaForAxisReset
+
+        if absoluteY >= minimumDelta,
+           absoluteY >= absoluteX * Self.joystickCardinalDominanceRatio {
+            nextOffset.x = 0
+        } else if absoluteX >= minimumDelta,
+                  absoluteX >= absoluteY * Self.joystickCardinalDominanceRatio {
+            nextOffset.y = 0
+        }
+
+        return nextOffset
     }
 
     private func joystickDirection(for offset: CGPoint) -> JoystickDirection? {
@@ -608,7 +668,9 @@ final class GamepadButtonView: NSView {
         warpCursor(to: CGPoint(x: bounds.midX, y: bounds.midY))
     }
 
-    private func parkJoystickCursor() {
+    private func parkJoystickCursor(suppressingNextDelta delta: CGPoint?, eventTimestamp: TimeInterval) {
+        pendingJoystickParkDelta = delta
+        pendingJoystickParkEventDeadline = delta == nil ? 0 : eventTimestamp + Self.joystickParkSuppressionWindow
         warpCursorToJoystickCenter()
     }
 
