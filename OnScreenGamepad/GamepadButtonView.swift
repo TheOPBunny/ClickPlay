@@ -364,10 +364,10 @@ final class GamepadButtonView: NSView {
         activeJoystickDirection = nil
         activeJoystickBindings = []
         CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
-        parkJoystickCursor()
-        scheduleJoystickCursorParking()
         hideJoystickCursorIfNeeded()
         installJoystickEventMonitors()
+        parkJoystickCursor()
+        scheduleJoystickCursorParking()
         onJoystickCaptureChanged?(true)
         updateAppearance(animated: true)
         NSLog("[Button \(button.rawValue)] joystickCaptureStarted")
