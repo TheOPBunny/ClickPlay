@@ -323,10 +323,13 @@ final class GamepadContentView: NSView {
 
         for button in profile.orderedButtonIDs {
             guard let cfg = profile.buttons[button.rawValue], cfg.enabled else { continue }
-            let cx = CGFloat(cfg.x) * width
-            let cy = CGFloat(cfg.y) * height
-            let bw = CGFloat(cfg.width) * width
-            let bh = CGFloat(cfg.height) * height
+            let rawWidth = CGFloat(cfg.width) * width
+            let rawHeight = CGFloat(cfg.height) * height
+            let minimumSize = ButtonSizing.minimumSize(for: cfg.type)
+            let bw = min(width, max(rawWidth, CGFloat(minimumSize.width)))
+            let bh = min(height, max(rawHeight, CGFloat(minimumSize.height)))
+            let cx = min(max(CGFloat(cfg.x) * width, bw / 2), width - bw / 2)
+            let cy = min(max(CGFloat(cfg.y) * height, bh / 2), height - bh / 2)
             let frame = CGRect(x: cx - bw / 2, y: cy - bh / 2, width: bw, height: bh)
 
             if let view = buttonViews[button] {

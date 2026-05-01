@@ -16,6 +16,27 @@ enum ButtonType: String, Codable {
     case joystick
 }
 
+enum ButtonSizing {
+    static let minimumButtonWidth = 20.0
+    static let minimumButtonHeight = 14.0
+    static let minimumJoystickWidth = 48.0
+    static let minimumJoystickHeight = 48.0
+    static let joystickOuterInsetFraction = 0.08
+    static let joystickMinimumOuterInset = 4.0
+    static let joystickKnobDiameterFraction = 0.26
+    static let joystickMinimumKnobDiameter = 10.0
+    static let joystickMaximumKnobDiameter = 32.0
+
+    static func minimumSize(for type: ButtonType) -> (width: Double, height: Double) {
+        switch type {
+        case .keyboard:
+            return (minimumButtonWidth, minimumButtonHeight)
+        case .joystick:
+            return (minimumJoystickWidth, minimumJoystickHeight)
+        }
+    }
+}
+
 enum EditorCoordinateMode: String, Codable {
     case legacyTopLeft
     case centered

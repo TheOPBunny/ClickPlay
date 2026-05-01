@@ -558,6 +558,12 @@ final class ButtonDetailPanel: NSView {
             config.rightClickInteractionMode = ButtonInteractionMode(tag: rightClickModePopup.selectedTag())
         }
 
+        let minimumSize = ButtonSizing.minimumSize(for: config.type)
+        config.editorWidth = max(config.editorWidth, minimumSize.width)
+        config.editorHeight = max(config.editorHeight, minimumSize.height)
+        widthField.stringValue = String(format: "%.1f", config.editorWidth)
+        heightField.stringValue = String(format: "%.1f", config.editorHeight)
+
         self.config = config
         updateMultiKeyActivationModeVisibility()
         updateControlVisibility()
