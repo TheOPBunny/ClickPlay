@@ -98,6 +98,8 @@ final class GamepadButtonView: NSView {
     private var joystickEventTap: CFMachPort?
     private var joystickEventTapRunLoopSource: CFRunLoopSource?
     private var joystickIdleReturnWorkItem: DispatchWorkItem?
+    private var joystickIdleReturnGeneration: UInt64 = 0
+    private var lastJoystickMovementTime: TimeInterval = 0
     private var joystickParkingWorkItem: DispatchWorkItem?
     private var pendingJoystickParkingPoint: CGPoint?
     private var pendingJoystickParkingSuppressionDeadline: TimeInterval = 0
@@ -363,6 +365,8 @@ final class GamepadButtonView: NSView {
         joystickOffset = .zero
         activeJoystickDirection = nil
         activeJoystickBindings = []
+        joystickIdleReturnGeneration &+= 1
+        lastJoystickMovementTime = ProcessInfo.processInfo.systemUptime
         CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
         hideJoystickCursorIfNeeded()
         installJoystickEventMonitors()
@@ -378,6 +382,7 @@ final class GamepadButtonView: NSView {
             return
         }
 
+        lastJoystickMovementTime = ProcessInfo.processInfo.systemUptime
         let movementDelta = CGPoint(x: deltaX, y: deltaY)
         joystickOffset = clampedJoystickOffset(joystickOffset(afterApplying: movementDelta))
 
@@ -400,6 +405,7 @@ final class GamepadButtonView: NSView {
         joystickOffset = .zero
         joystickIdleReturnWorkItem?.cancel()
         joystickIdleReturnWorkItem = nil
+        joystickIdleReturnGeneration &+= 1
         joystickParkingWorkItem?.cancel()
         joystickParkingWorkItem = nil
         clearPendingJoystickParkingSuppression()
@@ -446,6 +452,7 @@ final class GamepadButtonView: NSView {
     private func removeJoystickEventMonitors() {
         joystickIdleReturnWorkItem?.cancel()
         joystickIdleReturnWorkItem = nil
+        joystickIdleReturnGeneration &+= 1
         joystickParkingWorkItem?.cancel()
         joystickParkingWorkItem = nil
         clearPendingJoystickParkingSuppression()
@@ -481,21 +488,38 @@ final class GamepadButtonView: NSView {
 
     private func scheduleJoystickIdleReturnIfNeeded() {
         joystickIdleReturnWorkItem?.cancel()
+        joystickIdleReturnGeneration &+= 1
 
         guard hypot(joystickOffset.x, joystickOffset.y) > 0.5 else {
             joystickIdleReturnWorkItem = nil
             return
         }
 
+        let generation = joystickIdleReturnGeneration
         let workItem = DispatchWorkItem { [weak self] in
-            self?.returnJoystickToDeadzone()
+            self?.returnJoystickToDeadzoneIfIdle(generation: generation)
         }
         joystickIdleReturnWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.joystickIdleReturnDelay, execute: workItem)
     }
 
-    private func returnJoystickToDeadzone() {
+    private func returnJoystickToDeadzoneIfIdle(generation: UInt64) {
         guard isJoystickCaptured else {
+            return
+        }
+
+        guard generation == joystickIdleReturnGeneration else {
+            return
+        }
+
+        let elapsed = ProcessInfo.processInfo.systemUptime - lastJoystickMovementTime
+        guard elapsed >= Self.joystickIdleReturnDelay else {
+            let remainingDelay = max(0.001, Self.joystickIdleReturnDelay - elapsed)
+            let workItem = DispatchWorkItem { [weak self] in
+                self?.returnJoystickToDeadzoneIfIdle(generation: generation)
+            }
+            joystickIdleReturnWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + remainingDelay, execute: workItem)
             return
         }
 
