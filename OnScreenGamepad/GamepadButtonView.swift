@@ -76,7 +76,7 @@ final class GamepadButtonView: NSView {
     private static let joystickOuterInsetFraction: CGFloat = 0.08
     private static let joystickCardinalDominanceRatio: CGFloat = 1.75
     private static let joystickMinimumDeltaForAxisReset: CGFloat = 0.5
-    private static let joystickParkingInterval: TimeInterval = 0.08
+    private static let joystickParkingInterval: TimeInterval = 0.25
     private static let joystickParkingSuppressionWindow: TimeInterval = 0.012
     private static let joystickParkingMatchTolerance: CGFloat = 3
 
@@ -382,7 +382,7 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        lastJoystickMovementTime = ProcessInfo.processInfo.systemUptime
+        noteJoystickMovementActivity()
         let movementDelta = CGPoint(x: deltaX, y: deltaY)
         joystickOffset = clampedJoystickOffset(joystickOffset(afterApplying: movementDelta))
 
@@ -393,6 +393,10 @@ final class GamepadButtonView: NSView {
 
         scheduleJoystickIdleReturnIfNeeded()
         updateAppearance(animated: false)
+    }
+
+    private func noteJoystickMovementActivity() {
+        lastJoystickMovementTime = ProcessInfo.processInfo.systemUptime
     }
 
     private func releaseJoystickCapture(warpCursorToCenter: Bool) {
@@ -705,12 +709,17 @@ final class GamepadButtonView: NSView {
             return nil
 
         case .mouseMoved, .leftMouseDragged:
-            if shouldSuppressJoystickParkingEvent(event) {
+            let deltaX = CGFloat(event.getIntegerValueField(.mouseEventDeltaX))
+            let deltaY = CGFloat(-event.getIntegerValueField(.mouseEventDeltaY))
+
+            if shouldSuppressJoystickParkingEvent(event, deltaX: deltaX, deltaY: deltaY) {
                 return nil
             }
 
-            let deltaX = CGFloat(event.getIntegerValueField(.mouseEventDeltaX))
-            let deltaY = CGFloat(-event.getIntegerValueField(.mouseEventDeltaY))
+            guard deltaX != 0 || deltaY != 0 else {
+                return nil
+            }
+
             updateJoystickCapture(deltaX: deltaX, deltaY: deltaY)
             return nil
 
@@ -719,7 +728,7 @@ final class GamepadButtonView: NSView {
         }
     }
 
-    private func shouldSuppressJoystickParkingEvent(_ event: CGEvent) -> Bool {
+    private func shouldSuppressJoystickParkingEvent(_ event: CGEvent, deltaX: CGFloat, deltaY: CGFloat) -> Bool {
         guard let pendingJoystickParkingPoint else {
             return false
         }
@@ -736,6 +745,10 @@ final class GamepadButtonView: NSView {
         )
         guard distance <= Self.joystickParkingMatchTolerance else {
             return false
+        }
+
+        if deltaX != 0 || deltaY != 0 {
+            noteJoystickMovementActivity()
         }
 
         clearPendingJoystickParkingSuppression()
