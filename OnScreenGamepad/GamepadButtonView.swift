@@ -72,7 +72,7 @@ final class GamepadButtonView: NSView {
 
     private static let compatibilityTapDuration: TimeInterval = 0.033
     private static let joystickDeadzoneRadius: CGFloat = 18
-    private static let joystickIdleReturnDelay: TimeInterval = 0.055
+    private static let joystickIdleReturnDelay: TimeInterval = 0.075
     private static let joystickOuterInsetFraction: CGFloat = 0.08
     private static let joystickCardinalDominanceRatio: CGFloat = 1.75
     private static let joystickMinimumDeltaForAxisReset: CGFloat = 0.5
