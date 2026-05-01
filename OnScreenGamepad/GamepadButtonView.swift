@@ -76,6 +76,9 @@ final class GamepadButtonView: NSView {
     private static let joystickOuterInsetFraction: CGFloat = 0.08
     private static let joystickCardinalDominanceRatio: CGFloat = 1.75
     private static let joystickMinimumDeltaForAxisReset: CGFloat = 0.5
+    private static let joystickParkingInterval: TimeInterval = 0.08
+    private static let joystickParkingSuppressionWindow: TimeInterval = 0.012
+    private static let joystickParkingMatchTolerance: CGFloat = 3
 
     let button: GamepadButton
     private var config: ButtonConfig
@@ -95,6 +98,9 @@ final class GamepadButtonView: NSView {
     private var joystickEventTap: CFMachPort?
     private var joystickEventTapRunLoopSource: CFRunLoopSource?
     private var joystickIdleReturnWorkItem: DispatchWorkItem?
+    private var joystickParkingWorkItem: DispatchWorkItem?
+    private var pendingJoystickParkingPoint: CGPoint?
+    private var pendingJoystickParkingSuppressionDeadline: TimeInterval = 0
     private var isJoystickCursorHidden = false
     private var trackingArea: NSTrackingArea?
     var onJoystickCaptureChanged: ((Bool) -> Void)?
@@ -359,6 +365,7 @@ final class GamepadButtonView: NSView {
         activeJoystickBindings = []
         CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
         parkJoystickCursor()
+        scheduleJoystickCursorParking()
         hideJoystickCursorIfNeeded()
         installJoystickEventMonitors()
         onJoystickCaptureChanged?(true)
@@ -393,6 +400,9 @@ final class GamepadButtonView: NSView {
         joystickOffset = .zero
         joystickIdleReturnWorkItem?.cancel()
         joystickIdleReturnWorkItem = nil
+        joystickParkingWorkItem?.cancel()
+        joystickParkingWorkItem = nil
+        clearPendingJoystickParkingSuppression()
 
         if isJoystickCaptured {
             isJoystickCaptured = false
@@ -436,6 +446,9 @@ final class GamepadButtonView: NSView {
     private func removeJoystickEventMonitors() {
         joystickIdleReturnWorkItem?.cancel()
         joystickIdleReturnWorkItem = nil
+        joystickParkingWorkItem?.cancel()
+        joystickParkingWorkItem = nil
+        clearPendingJoystickParkingSuppression()
 
         if let joystickEventTapRunLoopSource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), joystickEventTapRunLoopSource, .commonModes)
@@ -607,7 +620,28 @@ final class GamepadButtonView: NSView {
     }
 
     private func parkJoystickCursor() {
-        warpCursorToJoystickCenter()
+        guard let quartzPoint = quartzPoint(for: CGPoint(x: bounds.midX, y: bounds.midY)) else {
+            return
+        }
+
+        pendingJoystickParkingPoint = quartzPoint
+        pendingJoystickParkingSuppressionDeadline = ProcessInfo.processInfo.systemUptime + Self.joystickParkingSuppressionWindow
+        CGWarpMouseCursorPosition(quartzPoint)
+    }
+
+    private func scheduleJoystickCursorParking() {
+        joystickParkingWorkItem?.cancel()
+
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self, self.isJoystickCaptured else {
+                return
+            }
+
+            self.parkJoystickCursor()
+            self.scheduleJoystickCursorParking()
+        }
+        joystickParkingWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.joystickParkingInterval, execute: workItem)
     }
 
     private static var joystickEventMask: CGEventMask {
@@ -647,6 +681,10 @@ final class GamepadButtonView: NSView {
             return nil
 
         case .mouseMoved, .leftMouseDragged:
+            if shouldSuppressJoystickParkingEvent(event) {
+                return nil
+            }
+
             let deltaX = CGFloat(event.getIntegerValueField(.mouseEventDeltaX))
             let deltaY = CGFloat(-event.getIntegerValueField(.mouseEventDeltaY))
             updateJoystickCapture(deltaX: deltaX, deltaY: deltaY)
@@ -657,18 +695,53 @@ final class GamepadButtonView: NSView {
         }
     }
 
+    private func shouldSuppressJoystickParkingEvent(_ event: CGEvent) -> Bool {
+        guard let pendingJoystickParkingPoint else {
+            return false
+        }
+
+        guard ProcessInfo.processInfo.systemUptime <= pendingJoystickParkingSuppressionDeadline else {
+            clearPendingJoystickParkingSuppression()
+            return false
+        }
+
+        let location = event.location
+        let distance = hypot(
+            location.x - pendingJoystickParkingPoint.x,
+            location.y - pendingJoystickParkingPoint.y
+        )
+        guard distance <= Self.joystickParkingMatchTolerance else {
+            return false
+        }
+
+        clearPendingJoystickParkingSuppression()
+        return true
+    }
+
+    private func clearPendingJoystickParkingSuppression() {
+        pendingJoystickParkingPoint = nil
+        pendingJoystickParkingSuppressionDeadline = 0
+    }
+
     private func warpCursor(to localPoint: CGPoint) {
-        guard let window, let screen = window.screen else {
+        guard let quartzPoint = quartzPoint(for: localPoint) else {
             return
+        }
+
+        CGWarpMouseCursorPosition(quartzPoint)
+    }
+
+    private func quartzPoint(for localPoint: CGPoint) -> CGPoint? {
+        guard let window, let screen = window.screen else {
+            return nil
         }
 
         let windowPoint = convert(localPoint, to: nil)
         let screenPoint = window.convertPoint(toScreen: windowPoint)
-        let quartzPoint = CGPoint(
+        return CGPoint(
             x: screenPoint.x,
             y: screen.frame.maxY - screenPoint.y
         )
-        CGWarpMouseCursorPosition(quartzPoint)
     }
 
     private func handlePressStarted(source: PressSource) {
