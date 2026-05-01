@@ -73,7 +73,6 @@ final class GamepadButtonView: NSView {
     private static let compatibilityTapDuration: TimeInterval = 0.033
     private static let joystickDeadzoneRadius: CGFloat = 18
     private static let joystickIdleReturnDelay: TimeInterval = 0.075
-    private static let joystickOuterInsetFraction: CGFloat = 0.08
     private static let joystickCardinalDominanceRatio: CGFloat = 1.75
     private static let joystickMinimumDeltaForAxisReset: CGFloat = 0.5
     private static let joystickParkingInterval: TimeInterval = 0.04
@@ -1263,12 +1262,25 @@ final class GamepadButtonView: NSView {
     }
 
     private var joystickOuterRect: CGRect {
-        let inset = max(4, min(bounds.width, bounds.height) * Self.joystickOuterInsetFraction)
+        let inset = max(
+            CGFloat(ButtonSizing.joystickMinimumOuterInset),
+            min(bounds.width, bounds.height) * CGFloat(ButtonSizing.joystickOuterInsetFraction)
+        )
         return bounds.insetBy(dx: inset, dy: inset)
     }
 
     private var joystickKnobDiameter: CGFloat {
-        max(18, min(bounds.width, bounds.height) * 0.26)
+        let shortestSide = min(bounds.width, bounds.height)
+        guard shortestSide > 0 else {
+            return CGFloat(ButtonSizing.joystickMinimumKnobDiameter)
+        }
+
+        let scaledDiameter = shortestSide * CGFloat(ButtonSizing.joystickKnobDiameterFraction)
+        let boundedDiameter = min(
+            max(CGFloat(ButtonSizing.joystickMinimumKnobDiameter), scaledDiameter),
+            CGFloat(ButtonSizing.joystickMaximumKnobDiameter)
+        )
+        return min(boundedDiameter, max(6, shortestSide * 0.45))
     }
 
     private var joystickTravelLimits: CGSize {
@@ -1286,7 +1298,7 @@ final class GamepadButtonView: NSView {
             return Self.joystickDeadzoneRadius
         }
 
-        return min(Self.joystickDeadzoneRadius, max(8, shortestTravel * 0.45))
+        return min(Self.joystickDeadzoneRadius, max(4, shortestTravel * 0.45))
     }
 
     private func buttonPath(in rect: CGRect) -> CGPath {
