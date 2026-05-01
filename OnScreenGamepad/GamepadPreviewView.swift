@@ -510,14 +510,16 @@ final class GamepadPreviewView: NSView {
     }
 
     private func drawJoystick(_ object: CanvasButtonObject, in frame: CGRect) {
-        let path = NSBezierPath(ovalIn: frame)
+        let inset = max(4, min(frame.width, frame.height) * 0.08)
+        let outerRect = frame.insetBy(dx: inset, dy: inset)
+        let path = NSBezierPath(roundedRect: outerRect, xRadius: 8, yRadius: 8)
         NSColor(hex: object.colorHex).withAlphaComponent(0.36).setFill()
         path.fill()
         NSColor.white.withAlphaComponent(0.35).setStroke()
         path.lineWidth = 2
         path.stroke()
 
-        let knobDiameter = max(16, min(frame.width, frame.height) * 0.34)
+        let knobDiameter = max(16, min(frame.width, frame.height) * 0.26)
         let knobRect = CGRect(
             x: frame.midX - knobDiameter / 2,
             y: frame.midY - knobDiameter / 2,
@@ -540,7 +542,7 @@ final class GamepadPreviewView: NSView {
         NSColor.white.setStroke()
         path.lineWidth = 2
         path.stroke()
-        drawSelectionGlow(for: .oval, in: frame)
+        drawSelectionGlow(for: .roundedRectangle, in: outerRect)
 
         for corner in ResizeCorner.allCases {
             drawResizeHandle(handleRect(for: corner, objectFrame: frame))
@@ -597,6 +599,11 @@ final class GamepadPreviewView: NSView {
     private func objectContainsPoint(_ object: CanvasButtonObject, point: CGPoint) -> Bool {
         guard object.frame.contains(point) else {
             return false
+        }
+
+        if object.type == .joystick {
+            let inset = max(4, min(object.frame.width, object.frame.height) * 0.08)
+            return object.frame.insetBy(dx: inset, dy: inset).contains(point)
         }
 
         switch object.shape {
