@@ -92,6 +92,7 @@ final class GamepadButtonView: NSView {
     private var joystickLocalMonitor: Any?
     private var joystickGlobalMonitor: Any?
     private var joystickIdleReturnWorkItem: DispatchWorkItem?
+    private var isJoystickCursorHidden = false
     private var trackingArea: NSTrackingArea?
     var onJoystickCaptureChanged: ((Bool) -> Void)?
 
@@ -353,43 +354,29 @@ final class GamepadButtonView: NSView {
         joystickOffset = .zero
         activeJoystickDirection = nil
         activeJoystickBindings = []
-        CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
+        CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
+        hideJoystickCursorIfNeeded()
         installJoystickEventMonitors()
         onJoystickCaptureChanged?(true)
         updateAppearance(animated: true)
-        warpCursorToJoystickCenter()
         NSLog("[Button \(button.rawValue)] joystickCaptureStarted")
     }
 
-    private func updateJoystickCaptureFromCurrentMouseLocation() {
-        guard let window else {
-            return
-        }
-
-        let windowPoint = window.convertPoint(fromScreen: NSEvent.mouseLocation)
-        updateJoystickCapture(fromWindowLocation: windowPoint)
-    }
-
     private func updateJoystickCapture(with event: NSEvent) {
-        updateJoystickCapture(fromWindowLocation: event.locationInWindow)
-    }
-
-    private func updateJoystickCapture(fromWindowLocation windowLocation: CGPoint) {
         guard isJoystickCaptured else {
             return
         }
 
-        let localPoint = convert(windowLocation, from: nil)
-        let rawOffset = CGPoint(x: localPoint.x - bounds.midX, y: localPoint.y - bounds.midY)
-        joystickOffset = clampedJoystickOffset(rawOffset)
+        joystickOffset = clampedJoystickOffset(
+            CGPoint(
+                x: joystickOffset.x + event.deltaX,
+                y: joystickOffset.y + event.deltaY
+            )
+        )
 
         let nextDirection = joystickDirection(for: joystickOffset)
         if nextDirection != activeJoystickDirection {
             setActiveJoystickDirection(nextDirection)
-        }
-
-        if isClamped(rawOffset, joystickOffset) {
-            warpCursorToJoystickPosition()
         }
 
         scheduleJoystickIdleReturnIfNeeded()
@@ -411,6 +398,7 @@ final class GamepadButtonView: NSView {
             isJoystickCaptured = false
             removeJoystickEventMonitors()
             CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
+            unhideJoystickCursorIfNeeded()
             if warpCursorToCenter {
                 warpCursorToJoystickCenter()
             }
@@ -456,7 +444,7 @@ final class GamepadButtonView: NSView {
                 case .rightMouseDown, .rightMouseDragged:
                     self.releaseJoystickCapture(warpCursorToCenter: true)
                 case .mouseMoved, .leftMouseDragged:
-                    self.updateJoystickCaptureFromCurrentMouseLocation()
+                    self.updateJoystickCapture(with: event)
                 default:
                     break
                 }
@@ -477,6 +465,24 @@ final class GamepadButtonView: NSView {
             NSEvent.removeMonitor(joystickGlobalMonitor)
             self.joystickGlobalMonitor = nil
         }
+    }
+
+    private func hideJoystickCursorIfNeeded() {
+        guard !isJoystickCursorHidden else {
+            return
+        }
+
+        NSCursor.hide()
+        isJoystickCursorHidden = true
+    }
+
+    private func unhideJoystickCursorIfNeeded() {
+        guard isJoystickCursorHidden else {
+            return
+        }
+
+        NSCursor.unhide()
+        isJoystickCursorHidden = false
     }
 
     private func scheduleJoystickIdleReturnIfNeeded() {
@@ -502,7 +508,6 @@ final class GamepadButtonView: NSView {
         joystickIdleReturnWorkItem = nil
         joystickOffset = .zero
         setActiveJoystickDirection(nil)
-        warpCursorToJoystickCenter()
         updateAppearance(animated: true)
     }
 
@@ -580,14 +585,6 @@ final class GamepadButtonView: NSView {
 
     private func warpCursorToJoystickCenter() {
         warpCursor(to: CGPoint(x: bounds.midX, y: bounds.midY))
-    }
-
-    private func warpCursorToJoystickPosition() {
-        let cursorPoint = CGPoint(
-            x: bounds.midX + joystickOffset.x,
-            y: bounds.midY + joystickOffset.y
-        )
-        warpCursor(to: cursorPoint)
     }
 
     private func warpCursor(to localPoint: CGPoint) {
@@ -1044,8 +1041,12 @@ final class GamepadButtonView: NSView {
         joystickOuterLayer.lineWidth = 2
 
         let knobDiameter = max(18, min(bounds.width, bounds.height) * 0.34)
-        let maxOffset = max(0, min(bounds.width, bounds.height) * 0.28)
-        let clampedOffset = clampedJoystickOffset(maximum: maxOffset)
+        let maxVisualOffsetX = max(0, outerRect.width / 2 - knobDiameter / 2)
+        let maxVisualOffsetY = max(0, outerRect.height / 2 - knobDiameter / 2)
+        let clampedOffset = CGPoint(
+            x: min(max(joystickOffset.x, -maxVisualOffsetX), maxVisualOffsetX),
+            y: min(max(joystickOffset.y, -maxVisualOffsetY), maxVisualOffsetY)
+        )
         let knobRect = CGRect(
             x: bounds.midX + clampedOffset.x - knobDiameter / 2,
             y: bounds.midY + clampedOffset.y - knobDiameter / 2,
@@ -1066,22 +1067,8 @@ final class GamepadButtonView: NSView {
         )
     }
 
-    private func isClamped(_ rawOffset: CGPoint, _ clampedOffset: CGPoint) -> Bool {
-        abs(rawOffset.x - clampedOffset.x) > 0.5 || abs(rawOffset.y - clampedOffset.y) > 0.5
-    }
-
     private var joystickRadius: CGFloat {
         max(Self.joystickDeadzoneRadius, min(bounds.width, bounds.height) * 0.42)
-    }
-
-    private func clampedJoystickOffset(maximum: CGFloat) -> CGPoint {
-        let distance = hypot(joystickOffset.x, joystickOffset.y)
-        guard distance > maximum, distance > 0 else {
-            return joystickOffset
-        }
-
-        let scale = maximum / distance
-        return CGPoint(x: joystickOffset.x * scale, y: joystickOffset.y * scale)
     }
 
     private func buttonPath(in rect: CGRect) -> CGPath {
