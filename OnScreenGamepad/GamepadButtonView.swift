@@ -356,6 +356,7 @@ final class GamepadButtonView: NSView {
         activeJoystickDirection = nil
         activeJoystickBindings = []
         CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
+        parkJoystickCursor()
         hideJoystickCursorIfNeeded()
         installJoystickEventMonitors()
         onJoystickCaptureChanged?(true)
@@ -371,9 +372,10 @@ final class GamepadButtonView: NSView {
         joystickOffset = clampedJoystickOffset(
             CGPoint(
                 x: joystickOffset.x + event.deltaX,
-                y: joystickOffset.y + event.deltaY
+                y: joystickOffset.y - event.deltaY
             )
         )
+        parkJoystickCursor()
 
         let nextDirection = joystickDirection(for: joystickOffset)
         if nextDirection != activeJoystickDirection {
@@ -604,6 +606,10 @@ final class GamepadButtonView: NSView {
 
     private func warpCursorToJoystickCenter() {
         warpCursor(to: CGPoint(x: bounds.midX, y: bounds.midY))
+    }
+
+    private func parkJoystickCursor() {
+        warpCursorToJoystickCenter()
     }
 
     private func warpCursor(to localPoint: CGPoint) {
