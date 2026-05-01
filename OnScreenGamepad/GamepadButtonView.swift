@@ -146,13 +146,18 @@ final class GamepadButtonView: NSView {
     override func layout() {
         super.layout()
         updateShapePath()
+        updateJoystickLayers(baseColor: NSColor(hex: config.colorHex))
     }
 
     func updateConfig(_ newConfig: ButtonConfig, compatibilityModeEnabled: Bool, activeSubProfileID: UUID?) {
+        let wasJoystick = isJoystick
         releaseIfNeeded()
         config = newConfig
         self.compatibilityModeEnabled = compatibilityModeEnabled
         self.activeSubProfileID = activeSubProfileID
+        if wasJoystick || isJoystick {
+            resetJoystickRuntimeState()
+        }
         label.stringValue = config.resolvedDisplayLabel
         label.font = config.resolvedLabelFont
         updateAppearance(animated: false)
@@ -397,6 +402,18 @@ final class GamepadButtonView: NSView {
 
     private func noteJoystickMovementActivity() {
         lastJoystickMovementTime = ProcessInfo.processInfo.systemUptime
+    }
+
+    private func resetJoystickRuntimeState() {
+        joystickOffset = .zero
+        activeJoystickDirection = nil
+        activeJoystickBindings = []
+        joystickIdleReturnWorkItem?.cancel()
+        joystickIdleReturnWorkItem = nil
+        joystickIdleReturnGeneration &+= 1
+        joystickParkingWorkItem?.cancel()
+        joystickParkingWorkItem = nil
+        clearPendingJoystickParkingSuppression()
     }
 
     private func releaseJoystickCapture(warpCursorToCenter: Bool) {
