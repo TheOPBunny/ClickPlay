@@ -76,7 +76,7 @@ final class GamepadButtonView: NSView {
     private static let joystickOuterInsetFraction: CGFloat = 0.08
     private static let joystickCardinalDominanceRatio: CGFloat = 1.75
     private static let joystickMinimumDeltaForAxisReset: CGFloat = 0.5
-    private static let joystickParkingInterval: TimeInterval = 0.25
+    private static let joystickParkingInterval: TimeInterval = 0.04
     private static let joystickParkingSuppressionWindow: TimeInterval = 0.012
     private static let joystickParkingMatchTolerance: CGFloat = 3
 
@@ -702,7 +702,10 @@ final class GamepadButtonView: NSView {
             if let joystickEventTap {
                 CGEvent.tapEnable(tap: joystickEventTap, enable: true)
             }
-            return Unmanaged.passUnretained(event)
+            hideJoystickCursorIfNeeded()
+            parkJoystickCursor()
+            scheduleJoystickCursorParking()
+            return nil
 
         case .rightMouseDown, .rightMouseDragged:
             releaseJoystickCapture(warpCursorToCenter: true)
