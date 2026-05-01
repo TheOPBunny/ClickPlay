@@ -72,10 +72,7 @@ final class GamepadButtonView: NSView {
 
     private static let compatibilityTapDuration: TimeInterval = 0.033
     private static let joystickDeadzoneRadius: CGFloat = 18
-    private static let joystickIdleReturnDelay: TimeInterval = 0.025
-    private static let joystickReturnStepInterval: TimeInterval = 1.0 / 60.0
-    private static let joystickReturnDecayFactor: CGFloat = 0.55
-    private static let joystickReturnSettleDistance: CGFloat = 0.75
+    private static let joystickIdleReturnDelay: TimeInterval = 0.055
     private static let joystickOuterInsetFraction: CGFloat = 0.08
     private static let joystickCardinalDominanceRatio: CGFloat = 1.75
     private static let joystickMinimumDeltaForAxisReset: CGFloat = 0.5
@@ -392,7 +389,9 @@ final class GamepadButtonView: NSView {
         )
 
         let nextDirection = joystickDirection(for: joystickOffset)
-        updateJoystickDirection(nextDirection)
+        if nextDirection != activeJoystickDirection {
+            setActiveJoystickDirection(nextDirection)
+        }
 
         scheduleJoystickIdleReturnIfNeeded()
         updateAppearance(animated: false)
@@ -508,45 +507,27 @@ final class GamepadButtonView: NSView {
     private func scheduleJoystickIdleReturnIfNeeded() {
         joystickIdleReturnWorkItem?.cancel()
 
-        guard hypot(joystickOffset.x, joystickOffset.y) > Self.joystickReturnSettleDistance else {
+        guard hypot(joystickOffset.x, joystickOffset.y) > 0.5 else {
             joystickIdleReturnWorkItem = nil
             return
         }
 
-        scheduleJoystickReturnStep(after: Self.joystickIdleReturnDelay)
-    }
-
-    private func scheduleJoystickReturnStep(after delay: TimeInterval) {
         let workItem = DispatchWorkItem { [weak self] in
-            self?.returnJoystickTowardDeadzone()
+            self?.returnJoystickToDeadzone()
         }
         joystickIdleReturnWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.joystickIdleReturnDelay, execute: workItem)
     }
 
-    private func returnJoystickTowardDeadzone() {
+    private func returnJoystickToDeadzone() {
         guard isJoystickCaptured else {
             return
         }
 
-        let nextOffset = CGPoint(
-            x: joystickOffset.x * Self.joystickReturnDecayFactor,
-            y: joystickOffset.y * Self.joystickReturnDecayFactor
-        )
-        let nextDistance = hypot(nextOffset.x, nextOffset.y)
-
-        if nextDistance <= Self.joystickReturnSettleDistance {
-            joystickIdleReturnWorkItem = nil
-            joystickOffset = .zero
-            updateJoystickDirection(nil)
-            updateAppearance(animated: false)
-            return
-        }
-
-        joystickOffset = nextOffset
-        updateJoystickDirection(joystickDirection(for: joystickOffset))
-        updateAppearance(animated: false)
-        scheduleJoystickReturnStep(after: Self.joystickReturnStepInterval)
+        joystickIdleReturnWorkItem = nil
+        joystickOffset = .zero
+        setActiveJoystickDirection(nil)
+        updateAppearance(animated: true)
     }
 
     private func consumeJoystickParkEventIfNeeded(_ event: NSEvent) -> Bool {
@@ -653,14 +634,6 @@ final class GamepadButtonView: NSView {
             KeyInjector.shared.pressRaw(binding.keyCode, modifiers: binding.modifiers)
         }
         NSLog("[Button \(button.rawValue)] joystickDirection=\(direction) bindings=\(activeJoystickBindings.map { $0.keyCode })")
-    }
-
-    private func updateJoystickDirection(_ direction: JoystickDirection?) {
-        guard direction != activeJoystickDirection else {
-            return
-        }
-
-        setActiveJoystickDirection(direction)
     }
 
     private func releaseActiveJoystickBindings() {
