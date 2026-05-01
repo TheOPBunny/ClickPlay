@@ -353,7 +353,7 @@ final class GamepadButtonView: NSView {
         joystickOffset = .zero
         activeJoystickDirection = nil
         activeJoystickBindings = []
-        CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
+        CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
         installJoystickEventMonitors()
         onJoystickCaptureChanged?(true)
         updateAppearance(animated: true)
@@ -362,27 +362,36 @@ final class GamepadButtonView: NSView {
     }
 
     private func updateJoystickCaptureFromCurrentMouseLocation() {
-        warpCursorToJoystickPosition()
+        guard let window else {
+            return
+        }
+
+        let windowPoint = window.convertPoint(fromScreen: NSEvent.mouseLocation)
+        updateJoystickCapture(fromWindowLocation: windowPoint)
     }
 
     private func updateJoystickCapture(with event: NSEvent) {
+        updateJoystickCapture(fromWindowLocation: event.locationInWindow)
+    }
+
+    private func updateJoystickCapture(fromWindowLocation windowLocation: CGPoint) {
         guard isJoystickCaptured else {
             return
         }
 
-        joystickOffset = clampedJoystickOffset(
-            CGPoint(
-                x: joystickOffset.x + event.deltaX,
-                y: joystickOffset.y - event.deltaY
-            )
-        )
+        let localPoint = convert(windowLocation, from: nil)
+        let rawOffset = CGPoint(x: localPoint.x - bounds.midX, y: localPoint.y - bounds.midY)
+        joystickOffset = clampedJoystickOffset(rawOffset)
 
         let nextDirection = joystickDirection(for: joystickOffset)
         if nextDirection != activeJoystickDirection {
             setActiveJoystickDirection(nextDirection)
         }
 
-        warpCursorToJoystickPosition()
+        if isClamped(rawOffset, joystickOffset) {
+            warpCursorToJoystickPosition()
+        }
+
         scheduleJoystickIdleReturnIfNeeded()
         updateAppearance(animated: false)
     }
@@ -447,7 +456,7 @@ final class GamepadButtonView: NSView {
                 case .rightMouseDown, .rightMouseDragged:
                     self.releaseJoystickCapture(warpCursorToCenter: true)
                 case .mouseMoved, .leftMouseDragged:
-                    self.updateJoystickCapture(with: event)
+                    self.updateJoystickCaptureFromCurrentMouseLocation()
                 default:
                     break
                 }
@@ -1055,6 +1064,10 @@ final class GamepadButtonView: NSView {
             x: min(max(offset.x, -joystickRadius), joystickRadius),
             y: min(max(offset.y, -joystickRadius), joystickRadius)
         )
+    }
+
+    private func isClamped(_ rawOffset: CGPoint, _ clampedOffset: CGPoint) -> Bool {
+        abs(rawOffset.x - clampedOffset.x) > 0.5 || abs(rawOffset.y - clampedOffset.y) > 0.5
     }
 
     private var joystickRadius: CGFloat {
