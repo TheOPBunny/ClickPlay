@@ -73,6 +73,7 @@ final class GamepadButtonView: NSView {
     private static let compatibilityTapDuration: TimeInterval = 0.033
     private static let joystickDeadzoneRadius: CGFloat = 18
     private static let joystickIdleReturnDelay: TimeInterval = 0.16
+    private static let joystickOuterInsetFraction: CGFloat = 0.08
 
     let button: GamepadButton
     private var config: ButtonConfig
@@ -425,6 +426,7 @@ final class GamepadButtonView: NSView {
                 return nil
             case .mouseMoved, .leftMouseDragged:
                 self.updateJoystickCapture(with: event)
+                return nil
             default:
                 break
             }
@@ -513,31 +515,48 @@ final class GamepadButtonView: NSView {
 
     private func joystickDirection(for offset: CGPoint) -> JoystickDirection? {
         let distance = hypot(offset.x, offset.y)
-        guard distance >= Self.joystickDeadzoneRadius else {
+        let deadzoneRadius = effectiveJoystickDeadzoneRadius
+        guard distance >= deadzoneRadius else {
             return nil
         }
 
-        let angle = atan2(offset.y, offset.x)
-        let octant = Int(round(angle / (.pi / 4))).positiveModulo(8)
+        let axisThreshold = deadzoneRadius * 0.55
+        let wantsRight = offset.x > axisThreshold
+        let wantsLeft = offset.x < -axisThreshold
+        let wantsUp = offset.y > axisThreshold
+        let wantsDown = offset.y < -axisThreshold
 
-        switch octant {
-        case 0:
-            return .right
-        case 1:
-            return .upRight
-        case 2:
+        if wantsUp {
+            if wantsRight {
+                return .upRight
+            }
+            if wantsLeft {
+                return .upLeft
+            }
             return .up
-        case 3:
-            return .upLeft
-        case 4:
-            return .left
-        case 5:
-            return .downLeft
-        case 6:
-            return .down
-        default:
-            return .downRight
         }
+
+        if wantsDown {
+            if wantsRight {
+                return .downRight
+            }
+            if wantsLeft {
+                return .downLeft
+            }
+            return .down
+        }
+
+        if wantsRight {
+            return .right
+        }
+
+        if wantsLeft {
+            return .left
+        }
+
+        return abs(offset.x) >= abs(offset.y)
+            ? (offset.x >= 0 ? .right : .left)
+            : (offset.y >= 0 ? .up : .down)
     }
 
     private func setActiveJoystickDirection(_ direction: JoystickDirection?) {
@@ -1032,21 +1051,15 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        let inset = max(4, min(bounds.width, bounds.height) * 0.08)
-        let outerRect = bounds.insetBy(dx: inset, dy: inset)
+        let outerRect = joystickOuterRect
         joystickOuterLayer.frame = bounds
         joystickOuterLayer.path = CGPath(roundedRect: outerRect, cornerWidth: 8, cornerHeight: 8, transform: nil)
         joystickOuterLayer.fillColor = baseColor.withAlphaComponent(isJoystickCaptured ? 0.42 : 0.26).cgColor
         joystickOuterLayer.strokeColor = NSColor.white.withAlphaComponent(isJoystickCaptured ? 0.65 : 0.32).cgColor
         joystickOuterLayer.lineWidth = 2
 
-        let knobDiameter = max(18, min(bounds.width, bounds.height) * 0.34)
-        let maxVisualOffsetX = max(0, outerRect.width / 2 - knobDiameter / 2)
-        let maxVisualOffsetY = max(0, outerRect.height / 2 - knobDiameter / 2)
-        let clampedOffset = CGPoint(
-            x: min(max(joystickOffset.x, -maxVisualOffsetX), maxVisualOffsetX),
-            y: min(max(joystickOffset.y, -maxVisualOffsetY), maxVisualOffsetY)
-        )
+        let knobDiameter = joystickKnobDiameter
+        let clampedOffset = clampedJoystickOffset(joystickOffset)
         let knobRect = CGRect(
             x: bounds.midX + clampedOffset.x - knobDiameter / 2,
             y: bounds.midY + clampedOffset.y - knobDiameter / 2,
@@ -1061,14 +1074,38 @@ final class GamepadButtonView: NSView {
     }
 
     private func clampedJoystickOffset(_ offset: CGPoint) -> CGPoint {
-        CGPoint(
-            x: min(max(offset.x, -joystickRadius), joystickRadius),
-            y: min(max(offset.y, -joystickRadius), joystickRadius)
+        let travelLimits = joystickTravelLimits
+        return CGPoint(
+            x: min(max(offset.x, -travelLimits.width), travelLimits.width),
+            y: min(max(offset.y, -travelLimits.height), travelLimits.height)
         )
     }
 
-    private var joystickRadius: CGFloat {
-        max(Self.joystickDeadzoneRadius, min(bounds.width, bounds.height) * 0.42)
+    private var joystickOuterRect: CGRect {
+        let inset = max(4, min(bounds.width, bounds.height) * Self.joystickOuterInsetFraction)
+        return bounds.insetBy(dx: inset, dy: inset)
+    }
+
+    private var joystickKnobDiameter: CGFloat {
+        max(18, min(bounds.width, bounds.height) * 0.26)
+    }
+
+    private var joystickTravelLimits: CGSize {
+        let outerRect = joystickOuterRect
+        let knobRadius = joystickKnobDiameter / 2
+        return CGSize(
+            width: max(0, outerRect.width / 2 - knobRadius),
+            height: max(0, outerRect.height / 2 - knobRadius)
+        )
+    }
+
+    private var effectiveJoystickDeadzoneRadius: CGFloat {
+        let shortestTravel = min(joystickTravelLimits.width, joystickTravelLimits.height)
+        guard shortestTravel > 0 else {
+            return Self.joystickDeadzoneRadius
+        }
+
+        return min(Self.joystickDeadzoneRadius, max(8, shortestTravel * 0.45))
     }
 
     private func buttonPath(in rect: CGRect) -> CGPath {
@@ -1083,6 +1120,10 @@ final class GamepadButtonView: NSView {
     private func containsInteractivePoint(_ point: CGPoint) -> Bool {
         guard bounds.contains(point) else {
             return false
+        }
+
+        if isJoystick {
+            return joystickOuterRect.contains(point)
         }
 
         switch config.shape {
@@ -1109,11 +1150,5 @@ final class GamepadButtonView: NSView {
         }
 
         return containsInteractivePoint(convert(point, from: superview))
-    }
-}
-
-private extension Int {
-    func positiveModulo(_ modulus: Int) -> Int {
-        ((self % modulus) + modulus) % modulus
     }
 }
