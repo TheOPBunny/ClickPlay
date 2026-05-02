@@ -1,6 +1,10 @@
 import Cocoa
 
 final class ButtonDetailPanel: NSView {
+    private final class FlippedDocumentView: NSView {
+        override var isFlipped: Bool { true }
+    }
+
     private enum JoystickBindingDirection {
         case up
         case down
@@ -27,7 +31,7 @@ final class ButtonDetailPanel: NSView {
 
     private let titleLabel = NSTextField(labelWithString: "Select a button")
     private let scrollView = NSScrollView()
-    private let contentContainer = NSView()
+    private let contentContainer = FlippedDocumentView()
     private let contentStack = NSStackView()
     private let labelField = NSTextField()
     private let buttonTypePopup = NSPopUpButton()
@@ -420,6 +424,7 @@ final class ButtonDetailPanel: NSView {
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
             contentContainer.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
+            contentContainer.heightAnchor.constraint(greaterThanOrEqualTo: scrollView.contentView.heightAnchor),
             contentStack.topAnchor.constraint(equalTo: contentContainer.topAnchor, constant: 8),
             contentStack.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor, constant: 8),
             contentStack.trailingAnchor.constraint(lessThanOrEqualTo: contentContainer.trailingAnchor, constant: -8),
