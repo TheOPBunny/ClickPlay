@@ -26,6 +26,8 @@ final class ButtonDetailPanel: NSView {
     private var button: GamepadButton?
 
     private let titleLabel = NSTextField(labelWithString: "Select a button")
+    private let scrollView = NSScrollView()
+    private let contentContainer = NSView()
     private let contentStack = NSStackView()
     private let labelField = NSTextField()
     private let buttonTypePopup = NSPopUpButton()
@@ -199,7 +201,7 @@ final class ButtonDetailPanel: NSView {
     func setCollapsed(_ collapsed: Bool) {
         isCollapsed = collapsed
         titleLabel.isHidden = collapsed
-        contentStack.isHidden = collapsed
+        scrollView.isHidden = collapsed
     }
 
     private func setup() {
@@ -329,6 +331,13 @@ final class ButtonDetailPanel: NSView {
         contentStack.spacing = 10
         contentStack.translatesAutoresizingMaskIntoConstraints = false
 
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = false
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        contentContainer.translatesAutoresizingMaskIntoConstraints = false
+
         contentStack.addArrangedSubview(makeRow(label: "Label:", control: labelField))
         let buttonTypeRow = makeRow(label: "Type:", control: buttonTypePopup)
         self.buttonTypeRow = buttonTypeRow
@@ -396,17 +405,25 @@ final class ButtonDetailPanel: NSView {
         contentStack.addArrangedSubview(applyButton)
         contentStack.addArrangedSubview(deleteButton)
 
+        contentContainer.addSubview(contentStack)
+        scrollView.documentView = contentContainer
         addSubview(header)
-        addSubview(contentStack)
+        addSubview(scrollView)
 
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: topAnchor),
             header.leadingAnchor.constraint(equalTo: leadingAnchor),
             header.trailingAnchor.constraint(equalTo: trailingAnchor),
             header.heightAnchor.constraint(equalToConstant: 32),
-            contentStack.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 8),
-            contentStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            contentStack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -8),
+            scrollView.topAnchor.constraint(equalTo: header.bottomAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            contentContainer.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
+            contentStack.topAnchor.constraint(equalTo: contentContainer.topAnchor, constant: 8),
+            contentStack.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor, constant: 8),
+            contentStack.trailingAnchor.constraint(lessThanOrEqualTo: contentContainer.trailingAnchor, constant: -8),
+            contentStack.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor, constant: -12),
         ])
 
         labelField.bezelStyle = .roundedBezel

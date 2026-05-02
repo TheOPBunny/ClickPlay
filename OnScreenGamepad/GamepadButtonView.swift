@@ -1452,7 +1452,7 @@ final class GamepadButtonView: NSView {
         joystickOuterLayer.lineWidth = 2
 
         let knobDiameter = joystickKnobDiameter
-        let clampedOffset = clampedJoystickOffset(joystickOffset)
+        let clampedOffset = joystickVisualOffset
         let knobRect = CGRect(
             x: bounds.midX + clampedOffset.x - knobDiameter / 2,
             y: bounds.midY + clampedOffset.y - knobDiameter / 2,
@@ -1464,6 +1464,22 @@ final class GamepadButtonView: NSView {
         joystickKnobLayer.fillColor = baseColor.withAlphaComponent(isJoystickCaptured ? 0.95 : 0.72).cgColor
         joystickKnobLayer.strokeColor = NSColor.white.withAlphaComponent(0.78).cgColor
         joystickKnobLayer.lineWidth = 1
+    }
+
+    private var joystickVisualOffset: CGPoint {
+        var offset = clampedJoystickOffset(joystickOffset)
+        guard let lockedJoystickVerticalDirection else {
+            return offset
+        }
+
+        let travelLimits = joystickTravelLimits
+        switch lockedJoystickVerticalDirection {
+        case .up:
+            offset.y = travelLimits.height
+        case .down:
+            offset.y = -travelLimits.height
+        }
+        return offset
     }
 
     private func clampedJoystickOffset(_ offset: CGPoint) -> CGPoint {
