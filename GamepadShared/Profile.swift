@@ -1,6 +1,6 @@
 import Foundation
 
-enum ButtonInteractionMode: String, Codable {
+enum ButtonInteractionMode: String, Codable, Equatable {
     case momentary
     case toggleHold
     case turbo
@@ -42,7 +42,7 @@ enum EditorCoordinateMode: String, Codable {
     case centered
 }
 
-enum MultiKeyActivationMode: String, Codable {
+enum MultiKeyActivationMode: String, Codable, Equatable {
     case sequential
     case simultaneous
 }
@@ -52,18 +52,89 @@ struct ButtonKeyBinding: Codable, Hashable {
     var keyModifiers: Int
 }
 
+struct JoystickInputConfig: Codable, Equatable {
+    var keyBindings: [ButtonKeyBinding]
+    var interactionMode: ButtonInteractionMode
+    var multiKeyActivationMode: MultiKeyActivationMode
+
+    static let empty = JoystickInputConfig(
+        keyBindings: [],
+        interactionMode: .momentary,
+        multiKeyActivationMode: .sequential
+    )
+}
+
+enum JoystickScrollActionKind: String, Codable, Equatable {
+    case off
+    case axisLock
+    case keyCombo
+}
+
+struct JoystickScrollAction: Codable, Equatable {
+    var kind: JoystickScrollActionKind
+    var input: JoystickInputConfig
+
+    static let off = JoystickScrollAction(kind: .off, input: .empty)
+    static let axisLock = JoystickScrollAction(kind: .axisLock, input: .empty)
+}
+
 struct JoystickConfig: Codable, Equatable {
     var up: ButtonKeyBinding
     var down: ButtonKeyBinding
     var left: ButtonKeyBinding
     var right: ButtonKeyBinding
+    var leftClickInput: JoystickInputConfig
+    var scrollUpAction: JoystickScrollAction
+    var scrollDownAction: JoystickScrollAction
+
+    private enum CodingKeys: String, CodingKey {
+        case up
+        case down
+        case left
+        case right
+        case leftClickInput
+        case scrollUpAction
+        case scrollDownAction
+    }
 
     static let defaultBindings = JoystickConfig(
         up: ButtonKeyBinding(keyCode: 13, keyModifiers: 0),
         down: ButtonKeyBinding(keyCode: 1, keyModifiers: 0),
         left: ButtonKeyBinding(keyCode: 0, keyModifiers: 0),
-        right: ButtonKeyBinding(keyCode: 2, keyModifiers: 0)
+        right: ButtonKeyBinding(keyCode: 2, keyModifiers: 0),
+        leftClickInput: .empty,
+        scrollUpAction: .off,
+        scrollDownAction: .off
     )
+
+    init(
+        up: ButtonKeyBinding,
+        down: ButtonKeyBinding,
+        left: ButtonKeyBinding,
+        right: ButtonKeyBinding,
+        leftClickInput: JoystickInputConfig = .empty,
+        scrollUpAction: JoystickScrollAction = .off,
+        scrollDownAction: JoystickScrollAction = .off
+    ) {
+        self.up = up
+        self.down = down
+        self.left = left
+        self.right = right
+        self.leftClickInput = leftClickInput
+        self.scrollUpAction = scrollUpAction
+        self.scrollDownAction = scrollDownAction
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        up = try container.decode(ButtonKeyBinding.self, forKey: .up)
+        down = try container.decode(ButtonKeyBinding.self, forKey: .down)
+        left = try container.decode(ButtonKeyBinding.self, forKey: .left)
+        right = try container.decode(ButtonKeyBinding.self, forKey: .right)
+        leftClickInput = try container.decodeIfPresent(JoystickInputConfig.self, forKey: .leftClickInput) ?? .empty
+        scrollUpAction = try container.decodeIfPresent(JoystickScrollAction.self, forKey: .scrollUpAction) ?? .off
+        scrollDownAction = try container.decodeIfPresent(JoystickScrollAction.self, forKey: .scrollDownAction) ?? .off
+    }
 }
 
 enum ButtonAction: Codable, Equatable {
