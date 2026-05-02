@@ -43,6 +43,9 @@ final class GamepadButtonView: NSView {
     private enum PressSource {
         case primary
         case secondary
+        case joystickLeftClick
+        case joystickScrollUp
+        case joystickScrollDown
     }
 
     private final class PressState {
@@ -70,6 +73,21 @@ final class GamepadButtonView: NSView {
         case upLeft
     }
 
+    private enum JoystickVerticalDirection {
+        case up
+        case down
+    }
+
+    private enum JoystickHorizontalDirection {
+        case left
+        case right
+    }
+
+    private enum JoystickScrollDirection {
+        case up
+        case down
+    }
+
     private static let compatibilityTapDuration: TimeInterval = 0.033
     private static let joystickDeadzoneRadius: CGFloat = 18
     private static let joystickIdleReturnDelay: TimeInterval = 0.075
@@ -78,6 +96,7 @@ final class GamepadButtonView: NSView {
     private static let joystickParkingInterval: TimeInterval = 0.04
     private static let joystickParkingSuppressionWindow: TimeInterval = 0.012
     private static let joystickParkingMatchTolerance: CGFloat = 3
+    private static let joystickScrollActivationInterval: TimeInterval = 0.18
 
     let button: GamepadButton
     private var config: ButtonConfig
@@ -85,6 +104,9 @@ final class GamepadButtonView: NSView {
     private var activeSubProfileID: UUID?
     private let primaryState = PressState()
     private let secondaryState = PressState()
+    private let joystickLeftClickState = PressState()
+    private let joystickScrollUpState = PressState()
+    private let joystickScrollDownState = PressState()
     private let shapeLayer = CAShapeLayer()
     private let joystickOuterLayer = CAShapeLayer()
     private let joystickKnobLayer = CAShapeLayer()
@@ -94,6 +116,7 @@ final class GamepadButtonView: NSView {
     private var joystickOffset = CGPoint.zero
     private var activeJoystickDirection: JoystickDirection?
     private var activeJoystickBindings: [(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)] = []
+    private var lockedJoystickVerticalDirection: JoystickVerticalDirection?
     private var joystickEventTap: CFMachPort?
     private var joystickEventTapRunLoopSource: CFRunLoopSource?
     private var joystickIdleReturnWorkItem: DispatchWorkItem?
@@ -103,6 +126,7 @@ final class GamepadButtonView: NSView {
     private var pendingJoystickParkingPoint: CGPoint?
     private var pendingJoystickParkingSuppressionDeadline: TimeInterval = 0
     private var isJoystickCursorHidden = false
+    private var lastJoystickScrollActivation: (direction: JoystickScrollDirection, time: TimeInterval)?
     private var trackingArea: NSTrackingArea?
     var onJoystickCaptureChanged: ((Bool) -> Void)?
 
@@ -369,6 +393,8 @@ final class GamepadButtonView: NSView {
         joystickOffset = .zero
         activeJoystickDirection = nil
         activeJoystickBindings = []
+        lockedJoystickVerticalDirection = nil
+        lastJoystickScrollActivation = nil
         joystickIdleReturnGeneration &+= 1
         lastJoystickMovementTime = ProcessInfo.processInfo.systemUptime
         CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
@@ -389,11 +415,7 @@ final class GamepadButtonView: NSView {
         noteJoystickMovementActivity()
         let movementDelta = CGPoint(x: deltaX, y: deltaY)
         joystickOffset = clampedJoystickOffset(joystickOffset(afterApplying: movementDelta))
-
-        let nextDirection = joystickDirection(for: joystickOffset)
-        if nextDirection != activeJoystickDirection {
-            setActiveJoystickDirection(nextDirection)
-        }
+        updateActiveJoystickDirection()
 
         scheduleJoystickIdleReturnIfNeeded()
         updateAppearance(animated: false)
@@ -407,6 +429,8 @@ final class GamepadButtonView: NSView {
         joystickOffset = .zero
         activeJoystickDirection = nil
         activeJoystickBindings = []
+        lockedJoystickVerticalDirection = nil
+        lastJoystickScrollActivation = nil
         joystickIdleReturnWorkItem?.cancel()
         joystickIdleReturnWorkItem = nil
         joystickIdleReturnGeneration &+= 1
@@ -421,8 +445,13 @@ final class GamepadButtonView: NSView {
         }
 
         releaseActiveJoystickBindings()
+        releaseState(joystickLeftClickState)
+        releaseState(joystickScrollUpState)
+        releaseState(joystickScrollDownState)
         activeJoystickDirection = nil
         joystickOffset = .zero
+        lockedJoystickVerticalDirection = nil
+        lastJoystickScrollActivation = nil
         joystickIdleReturnWorkItem?.cancel()
         joystickIdleReturnWorkItem = nil
         joystickIdleReturnGeneration &+= 1
@@ -545,7 +574,7 @@ final class GamepadButtonView: NSView {
 
         joystickIdleReturnWorkItem = nil
         joystickOffset = .zero
-        setActiveJoystickDirection(nil)
+        updateActiveJoystickDirection()
         updateAppearance(animated: true)
     }
 
@@ -571,6 +600,10 @@ final class GamepadButtonView: NSView {
     }
 
     private func joystickDirection(for offset: CGPoint) -> JoystickDirection? {
+        if let lockedJoystickVerticalDirection {
+            return joystickDirection(forLockedVerticalDirection: lockedJoystickVerticalDirection, offset: offset)
+        }
+
         let distance = hypot(offset.x, offset.y)
         let deadzoneRadius = effectiveJoystickDeadzoneRadius
         guard distance >= deadzoneRadius else {
@@ -614,6 +647,47 @@ final class GamepadButtonView: NSView {
         return abs(offset.x) >= abs(offset.y)
             ? (offset.x >= 0 ? .right : .left)
             : (offset.y >= 0 ? .up : .down)
+    }
+
+    private func joystickDirection(forLockedVerticalDirection verticalDirection: JoystickVerticalDirection, offset: CGPoint) -> JoystickDirection {
+        let horizontalDirection = joystickHorizontalDirection(for: offset)
+
+        switch (verticalDirection, horizontalDirection) {
+        case (.up, .right):
+            return .upRight
+        case (.up, .left):
+            return .upLeft
+        case (.up, nil):
+            return .up
+        case (.down, .right):
+            return .downRight
+        case (.down, .left):
+            return .downLeft
+        case (.down, nil):
+            return .down
+        }
+    }
+
+    private func joystickHorizontalDirection(for offset: CGPoint) -> JoystickHorizontalDirection? {
+        let deadzoneRadius = effectiveJoystickDeadzoneRadius
+        let axisThreshold = deadzoneRadius * 0.55
+
+        if offset.x > axisThreshold {
+            return .right
+        }
+
+        if offset.x < -axisThreshold {
+            return .left
+        }
+
+        return nil
+    }
+
+    private func updateActiveJoystickDirection() {
+        let nextDirection = joystickDirection(for: joystickOffset)
+        if nextDirection != activeJoystickDirection {
+            setActiveJoystickDirection(nextDirection)
+        }
     }
 
     private func setActiveJoystickDirection(_ direction: JoystickDirection?) {
@@ -690,9 +764,12 @@ final class GamepadButtonView: NSView {
 
     private static var joystickEventMask: CGEventMask {
         eventMask(for: .mouseMoved)
+            | eventMask(for: .leftMouseDown)
+            | eventMask(for: .leftMouseUp)
             | eventMask(for: .leftMouseDragged)
             | eventMask(for: .rightMouseDown)
             | eventMask(for: .rightMouseDragged)
+            | eventMask(for: .scrollWheel)
     }
 
     private static let joystickEventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in
@@ -725,6 +802,18 @@ final class GamepadButtonView: NSView {
 
         case .rightMouseDown, .rightMouseDragged:
             releaseJoystickCapture(warpCursorToCenter: true)
+            return nil
+
+        case .leftMouseDown:
+            handlePressStarted(source: .joystickLeftClick)
+            return nil
+
+        case .leftMouseUp:
+            handlePressEnded(source: .joystickLeftClick)
+            return nil
+
+        case .scrollWheel:
+            handleJoystickScroll(event)
             return nil
 
         case .mouseMoved, .leftMouseDragged:
@@ -777,6 +866,70 @@ final class GamepadButtonView: NSView {
     private func clearPendingJoystickParkingSuppression() {
         pendingJoystickParkingPoint = nil
         pendingJoystickParkingSuppressionDeadline = 0
+    }
+
+    private func handleJoystickScroll(_ event: CGEvent) {
+        let rawDelta = event.getIntegerValueField(.scrollWheelEventDeltaAxis1)
+        guard rawDelta != 0 else {
+            return
+        }
+
+        let direction: JoystickScrollDirection = rawDelta > 0 ? .up : .down
+        guard shouldActivateJoystickScroll(direction) else {
+            return
+        }
+
+        switch joystickScrollAction(for: direction).kind {
+        case .off:
+            return
+        case .axisLock:
+            toggleJoystickAxisLock(for: direction)
+        case .keyCombo:
+            triggerJoystickScrollInput(for: direction)
+        }
+    }
+
+    private func shouldActivateJoystickScroll(_ direction: JoystickScrollDirection) -> Bool {
+        let now = ProcessInfo.processInfo.systemUptime
+        if let lastJoystickScrollActivation,
+           lastJoystickScrollActivation.direction == direction,
+           now - lastJoystickScrollActivation.time < Self.joystickScrollActivationInterval {
+            return false
+        }
+
+        lastJoystickScrollActivation = (direction: direction, time: now)
+        return true
+    }
+
+    private func joystickScrollAction(for direction: JoystickScrollDirection) -> JoystickScrollAction {
+        switch direction {
+        case .up:
+            return config.joystick.scrollUpAction
+        case .down:
+            return config.joystick.scrollDownAction
+        }
+    }
+
+    private func toggleJoystickAxisLock(for direction: JoystickScrollDirection) {
+        let nextVerticalDirection: JoystickVerticalDirection = direction == .up ? .up : .down
+        if lockedJoystickVerticalDirection == nextVerticalDirection {
+            lockedJoystickVerticalDirection = nil
+        } else {
+            lockedJoystickVerticalDirection = nextVerticalDirection
+        }
+
+        updateActiveJoystickDirection()
+        scheduleJoystickIdleReturnIfNeeded()
+        updateAppearance(animated: true)
+    }
+
+    private func triggerJoystickScrollInput(for direction: JoystickScrollDirection) {
+        let source: PressSource = direction == .up ? .joystickScrollUp : .joystickScrollDown
+        guard let input = resolvedInput(for: source) else {
+            return
+        }
+
+        handleDiscreteActivation(source: source, input: input)
     }
 
     private func warpCursor(to localPoint: CGPoint) {
@@ -870,6 +1023,42 @@ final class GamepadButtonView: NSView {
         setPressed(false, source: source, input: input)
     }
 
+    private func handleDiscreteActivation(source: PressSource, input: ResolvedInput) {
+        if input.mode == .turbo {
+            toggleTurboRepeat(source: source, input: input)
+            return
+        }
+
+        if usesSequentialMultiKey(input) {
+            if input.mode == .toggleHold {
+                toggleSequentialRepeat(source: source, input: input)
+                return
+            }
+
+            playSequentialBindings(source: source, input: input)
+            return
+        }
+
+        if usesSimultaneousMultiKey(input) {
+            if input.mode == .toggleHold {
+                setSimultaneousPressed(!state(for: source).isPressed, source: source, input: input)
+                return
+            }
+
+            setSimultaneousPressed(true, source: source, input: input)
+            scheduleCompatibilityRelease(source: source, input: input)
+            return
+        }
+
+        if input.mode == .toggleHold {
+            setPressed(!state(for: source).isPressed, source: source, input: input)
+            return
+        }
+
+        setPressed(true, source: source, input: input)
+        scheduleCompatibilityRelease(source: source, input: input)
+    }
+
     private func handleDrag(source: PressSource, event: NSEvent) {
         guard let input = resolvedInput(for: source),
               input.mode != .turbo,
@@ -929,7 +1118,25 @@ final class GamepadButtonView: NSView {
                 mode: config.rightClickInteractionMode ?? config.interactionMode,
                 multiKeyActivationMode: config.multiKeyActivationMode
             )
+        case .joystickLeftClick:
+            return resolvedInput(for: config.joystick.leftClickInput)
+        case .joystickScrollUp:
+            return resolvedInput(for: config.joystick.scrollUpAction.input)
+        case .joystickScrollDown:
+            return resolvedInput(for: config.joystick.scrollDownAction.input)
         }
+    }
+
+    private func resolvedInput(for input: JoystickInputConfig) -> ResolvedInput? {
+        guard !input.keyBindings.isEmpty else {
+            return nil
+        }
+
+        return ResolvedInput(
+            bindings: input.keyBindings,
+            mode: input.interactionMode,
+            multiKeyActivationMode: input.multiKeyActivationMode
+        )
     }
 
     private func state(for source: PressSource) -> PressState {
@@ -938,6 +1145,12 @@ final class GamepadButtonView: NSView {
             return primaryState
         case .secondary:
             return secondaryState
+        case .joystickLeftClick:
+            return joystickLeftClickState
+        case .joystickScrollUp:
+            return joystickScrollUpState
+        case .joystickScrollDown:
+            return joystickScrollDownState
         }
     }
 
