@@ -9,7 +9,7 @@
 /* Begin PBXBuildFile section */
 		102FB38F2F9827A8003D8FDF /* ConfiguratorWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102FB38E2F9827A8003D8FDF /* ConfiguratorWindowController.swift */; };
 		102FB3912F9827A8003D8FDF /* ConfiguratorEditorViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102FB3902F9827A8003D8FDF /* ConfiguratorEditorViewController.swift */; };
-		106EE8622FA7FFE30073725A /* Click-Play.icon in Resources */ = {isa = PBXBuildFile; fileRef = 106EE8612FA7FFE30073725A /* Click-Play.icon */; };
+		106EE8622FA7FFE30073725A /* ClickPlay.icon in Resources */ = {isa = PBXBuildFile; fileRef = 106EE8612FA7FFE30073725A /* ClickPlay.icon */; };
 		10B000012FA9000000000001 /* Click-Play-nobg-black.svg in Resources */ = {isa = PBXBuildFile; fileRef = 10B000002FA9000000000001 /* Click-Play-nobg-black.svg */; };
 		10B000032FA9000000000001 /* Click-Play-nobg-white.svg in Resources */ = {isa = PBXBuildFile; fileRef = 10B000022FA9000000000001 /* Click-Play-nobg-white.svg */; };
 		10B000052FA9000000000001 /* Click-Play-menubar-template.png in Resources */ = {isa = PBXBuildFile; fileRef = 10B000042FA9000000000001 /* Click-Play-menubar-template.png */; };
@@ -33,7 +33,7 @@
 /* Begin PBXFileReference section */
 		102FB38E2F9827A8003D8FDF /* ConfiguratorWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfiguratorWindowController.swift; sourceTree = "<group>"; };
 		102FB3902F9827A8003D8FDF /* ConfiguratorEditorViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfiguratorEditorViewController.swift; sourceTree = "<group>"; };
-		106EE8612FA7FFE30073725A /* Click-Play.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = "Click-Play.icon"; sourceTree = "<group>"; };
+		106EE8612FA7FFE30073725A /* ClickPlay.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = "ClickPlay.icon"; sourceTree = "<group>"; };
 		10B000002FA9000000000001 /* Click-Play-nobg-black.svg */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = "Click-Play-nobg-black.svg"; sourceTree = "<group>"; };
 		10B000022FA9000000000001 /* Click-Play-nobg-white.svg */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = "Click-Play-nobg-white.svg"; sourceTree = "<group>"; };
 		10B000042FA9000000000001 /* Click-Play-menubar-template.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Click-Play-menubar-template.png"; sourceTree = "<group>"; };
@@ -90,7 +90,7 @@
 				108EF0E12F9848B2009EFAAA /* ProfileListViewController.swift */,
 				108EF0E32F984A0B009EFAAA /* ButtonEditorViewController.swift */,
 				10A1B0002F9D000000000000 /* SidebarToggleButton.swift */,
-				106EE8612FA7FFE30073725A /* Click-Play.icon */,
+				106EE8612FA7FFE30073725A /* ClickPlay.icon */,
 				10B000002FA9000000000001 /* Click-Play-nobg-black.svg */,
 				10B000022FA9000000000001 /* Click-Play-nobg-white.svg */,
 				10B000042FA9000000000001 /* Click-Play-menubar-template.png */,
@@ -172,7 +172,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				106EE8622FA7FFE30073725A /* Click-Play.icon in Resources */,
+				106EE8622FA7FFE30073725A /* ClickPlay.icon in Resources */,
 				10B000012FA9000000000001 /* Click-Play-nobg-black.svg in Resources */,
 				10B000032FA9000000000001 /* Click-Play-nobg-white.svg in Resources */,
 				10B000052FA9000000000001 /* Click-Play-menubar-template.png in Resources */,
@@ -245,7 +245,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "Click-Play";
-				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = ClickPlay/ClickPlay.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
@@ -297,7 +297,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "Click-Play";
-				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = ClickPlay/ClickPlay.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
