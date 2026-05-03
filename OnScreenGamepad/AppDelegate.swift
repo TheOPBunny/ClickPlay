@@ -28,7 +28,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Signing & Capabilities, set Team and let it stabilize, then copy the
         // built .app to /Applications and run it from there instead of via ⌘R.
         let trusted = AXIsProcessTrusted()
-        NSLog("OnScreenGamepad launched. Accessibility trusted: \(trusted)")
+        NSLog("Click Play launched. Accessibility trusted: \(trusted)")
 
         if trusted {
             launchGamepad()
@@ -56,10 +56,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         mainMenu.addItem(appItem)
         mainMenu.addItem(editItem)
 
-        let appMenu = NSMenu(title: "OnScreenGamepad")
+        let appMenu = NSMenu(title: "Click Play")
         appMenu.addItem(
             NSMenuItem(
-                title: "Quit OnScreenGamepad",
+                title: "Quit Click Play",
                 action: #selector(NSApplication.terminate(_:)),
                 keyEquivalent: "q"
             )
