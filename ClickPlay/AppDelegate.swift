@@ -129,7 +129,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        icon.size = NSSize(width: 18, height: 18)
+        let iconHeight: CGFloat = 16
+        let aspectRatio = icon.size.width / icon.size.height
+        icon.size = NSSize(width: iconHeight * aspectRatio, height: iconHeight)
         icon.isTemplate = true
         button.image = icon
         button.imagePosition = .imageOnly
