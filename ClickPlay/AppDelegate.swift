@@ -101,7 +101,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NSLog("ERROR: Could not create status bar item")
             return
         }
-        btn.title = "🎮"
+        configureStatusBarIcon(for: btn)
         btn.target = self
         btn.action = #selector(statusBarClicked)
         btn.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -116,6 +116,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.rebuildMenu()
             self?.gamepadWindow?.reloadProfile()
         }
+    }
+
+    private func configureStatusBarIcon(for button: NSStatusBarButton) {
+        button.title = ""
+        button.toolTip = "Click Play"
+
+        guard let iconURL = Bundle.main.url(forResource: "Click-Play-menubar-template", withExtension: "png"),
+              let icon = NSImage(contentsOf: iconURL) else {
+            NSLog("ERROR: Could not load Click Play menu bar icon")
+            button.title = "CP"
+            return
+        }
+
+        icon.size = NSSize(width: 18, height: 18)
+        icon.isTemplate = true
+        button.image = icon
+        button.imagePosition = .imageOnly
     }
 
     @objc func statusBarClicked() {
