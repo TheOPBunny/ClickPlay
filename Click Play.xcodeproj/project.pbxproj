@@ -10,6 +10,9 @@
 		102FB38F2F9827A8003D8FDF /* ConfiguratorWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102FB38E2F9827A8003D8FDF /* ConfiguratorWindowController.swift */; };
 		102FB3912F9827A8003D8FDF /* ConfiguratorEditorViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102FB3902F9827A8003D8FDF /* ConfiguratorEditorViewController.swift */; };
 		106EE8622FA7FFE30073725A /* Click-Play.icon in Resources */ = {isa = PBXBuildFile; fileRef = 106EE8612FA7FFE30073725A /* Click-Play.icon */; };
+		10B000012FA9000000000001 /* Click-Play-nobg-black.svg in Resources */ = {isa = PBXBuildFile; fileRef = 10B000002FA9000000000001 /* Click-Play-nobg-black.svg */; };
+		10B000032FA9000000000001 /* Click-Play-nobg-white.svg in Resources */ = {isa = PBXBuildFile; fileRef = 10B000022FA9000000000001 /* Click-Play-nobg-white.svg */; };
+		10B000052FA9000000000001 /* Click-Play-menubar-template.png in Resources */ = {isa = PBXBuildFile; fileRef = 10B000042FA9000000000001 /* Click-Play-menubar-template.png */; };
 		108EF0DC2F984329009EFAAA /* KeyRecorderButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108EF0DB2F984329009EFAAA /* KeyRecorderButton.swift */; };
 		108EF0DE2F9846A8009EFAAA /* ButtonDetailPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108EF0DD2F9846A8009EFAAA /* ButtonDetailPanel.swift */; };
 		108EF0E02F984826009EFAAA /* GamepadPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108EF0DF2F984826009EFAAA /* GamepadPreviewView.swift */; };
@@ -31,6 +34,9 @@
 		102FB38E2F9827A8003D8FDF /* ConfiguratorWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfiguratorWindowController.swift; sourceTree = "<group>"; };
 		102FB3902F9827A8003D8FDF /* ConfiguratorEditorViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfiguratorEditorViewController.swift; sourceTree = "<group>"; };
 		106EE8612FA7FFE30073725A /* Click-Play.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = "Click-Play.icon"; sourceTree = "<group>"; };
+		10B000002FA9000000000001 /* Click-Play-nobg-black.svg */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = "Click-Play-nobg-black.svg"; sourceTree = "<group>"; };
+		10B000022FA9000000000001 /* Click-Play-nobg-white.svg */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = "Click-Play-nobg-white.svg"; sourceTree = "<group>"; };
+		10B000042FA9000000000001 /* Click-Play-menubar-template.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Click-Play-menubar-template.png"; sourceTree = "<group>"; };
 		108EF0DB2F984329009EFAAA /* KeyRecorderButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyRecorderButton.swift; sourceTree = "<group>"; };
 		108EF0DD2F9846A8009EFAAA /* ButtonDetailPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ButtonDetailPanel.swift; sourceTree = "<group>"; };
 		108EF0DF2F984826009EFAAA /* GamepadPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamepadPreviewView.swift; sourceTree = "<group>"; };
@@ -85,6 +91,9 @@
 				108EF0E32F984A0B009EFAAA /* ButtonEditorViewController.swift */,
 				10A1B0002F9D000000000000 /* SidebarToggleButton.swift */,
 				106EE8612FA7FFE30073725A /* Click-Play.icon */,
+				10B000002FA9000000000001 /* Click-Play-nobg-black.svg */,
+				10B000022FA9000000000001 /* Click-Play-nobg-white.svg */,
+				10B000042FA9000000000001 /* Click-Play-menubar-template.png */,
 			);
 			path = ClickPlay;
 			sourceTree = "<group>";
@@ -164,6 +173,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				106EE8622FA7FFE30073725A /* Click-Play.icon in Resources */,
+				10B000012FA9000000000001 /* Click-Play-nobg-black.svg in Resources */,
+				10B000032FA9000000000001 /* Click-Play-nobg-white.svg in Resources */,
+				10B000052FA9000000000001 /* Click-Play-menubar-template.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
