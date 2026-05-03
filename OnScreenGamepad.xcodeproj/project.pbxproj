@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		102FB38F2F9827A8003D8FDF /* ConfiguratorWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102FB38E2F9827A8003D8FDF /* ConfiguratorWindowController.swift */; };
 		102FB3912F9827A8003D8FDF /* ConfiguratorEditorViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102FB3902F9827A8003D8FDF /* ConfiguratorEditorViewController.swift */; };
+		106EE8622FA7FFE30073725A /* Click-Play.icon in Resources */ = {isa = PBXBuildFile; fileRef = 106EE8612FA7FFE30073725A /* Click-Play.icon */; };
 		108EF0DC2F984329009EFAAA /* KeyRecorderButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108EF0DB2F984329009EFAAA /* KeyRecorderButton.swift */; };
 		108EF0DE2F9846A8009EFAAA /* ButtonDetailPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108EF0DD2F9846A8009EFAAA /* ButtonDetailPanel.swift */; };
 		108EF0E02F984826009EFAAA /* GamepadPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108EF0DF2F984826009EFAAA /* GamepadPreviewView.swift */; };
@@ -29,6 +30,7 @@
 /* Begin PBXFileReference section */
 		102FB38E2F9827A8003D8FDF /* ConfiguratorWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfiguratorWindowController.swift; sourceTree = "<group>"; };
 		102FB3902F9827A8003D8FDF /* ConfiguratorEditorViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfiguratorEditorViewController.swift; sourceTree = "<group>"; };
+		106EE8612FA7FFE30073725A /* Click-Play.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = "Click-Play.icon"; sourceTree = "<group>"; };
 		108EF0DB2F984329009EFAAA /* KeyRecorderButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyRecorderButton.swift; sourceTree = "<group>"; };
 		108EF0DD2F9846A8009EFAAA /* ButtonDetailPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ButtonDetailPanel.swift; sourceTree = "<group>"; };
 		108EF0DF2F984826009EFAAA /* GamepadPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamepadPreviewView.swift; sourceTree = "<group>"; };
@@ -43,10 +45,10 @@
 		B005 /* GamepadContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamepadContentView.swift; sourceTree = "<group>"; };
 		B006 /* GamepadWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamepadWindow.swift; sourceTree = "<group>"; };
 		B007 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		B008 /* OnScreenGamepad.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OnScreenGamepad.entitlements; sourceTree = "<group>"; };
+		B008 /* ClickPlay.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ClickPlay.entitlements; sourceTree = "<group>"; };
 		B009 /* ../GamepadShared/Profile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../GamepadShared/Profile.swift; sourceTree = "<group>"; };
 		B010 /* ../GamepadShared/ProfileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../GamepadShared/ProfileStore.swift; sourceTree = "<group>"; };
-		PROD /* OnScreenGamepad.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OnScreenGamepad.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		PROD /* Click Play.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Click Play.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -60,7 +62,7 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		GRP1 /* OnScreenGamepad */ = {
+		GRP1 /* Click Play */ = {
 			isa = PBXGroup;
 			children = (
 				B000 /* main.swift */,
@@ -73,7 +75,7 @@
 				B009 /* ../GamepadShared/Profile.swift */,
 				B010 /* ../GamepadShared/ProfileStore.swift */,
 				B007 /* Info.plist */,
-				B008 /* OnScreenGamepad.entitlements */,
+				B008 /* ClickPlay.entitlements */,
 				102FB38E2F9827A8003D8FDF /* ConfiguratorWindowController.swift */,
 				102FB3902F9827A8003D8FDF /* ConfiguratorEditorViewController.swift */,
 				108EF0DB2F984329009EFAAA /* KeyRecorderButton.swift */,
@@ -82,6 +84,7 @@
 				108EF0E12F9848B2009EFAAA /* ProfileListViewController.swift */,
 				108EF0E32F984A0B009EFAAA /* ButtonEditorViewController.swift */,
 				10A1B0002F9D000000000000 /* SidebarToggleButton.swift */,
+				106EE8612FA7FFE30073725A /* Click-Play.icon */,
 			);
 			path = OnScreenGamepad;
 			sourceTree = "<group>";
@@ -89,7 +92,7 @@
 		GRP2 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				PROD /* OnScreenGamepad.app */,
+				PROD /* Click Play.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -97,7 +100,7 @@
 		ROOT = {
 			isa = PBXGroup;
 			children = (
-				GRP1 /* OnScreenGamepad */,
+				GRP1 /* Click Play */,
 				GRP2 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -105,9 +108,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		TGT1 /* OnScreenGamepad */ = {
+		TGT1 /* Click Play */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = CFG1 /* Build configuration list for PBXNativeTarget "OnScreenGamepad" */;
+			buildConfigurationList = CFG1 /* Build configuration list for PBXNativeTarget "Click Play" */;
 			buildPhases = (
 				SRC1 /* Sources */,
 				FW01 /* Frameworks */,
@@ -117,9 +120,9 @@
 			);
 			dependencies = (
 			);
-			name = OnScreenGamepad;
-			productName = OnScreenGamepad;
-			productReference = PROD /* OnScreenGamepad.app */;
+			name = "Click Play";
+			productName = "Click Play";
+			productReference = PROD /* Click Play.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -137,7 +140,7 @@
 					};
 				};
 			};
-			buildConfigurationList = CFG0 /* Build configuration list for PBXProject "OnScreenGamepad" */;
+			buildConfigurationList = CFG0 /* Build configuration list for PBXProject "Click Play" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -150,7 +153,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				TGT1 /* OnScreenGamepad */,
+				TGT1 /* Click Play */,
 			);
 		};
 /* End PBXProject section */
@@ -160,6 +163,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				106EE8622FA7FFE30073725A /* Click-Play.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -228,8 +232,9 @@
 		DBG1 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = OnScreenGamepad/OnScreenGamepad.entitlements;
+				ASSETCATALOG_COMPILER_APPICON_NAME = "Click-Play";
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = OnScreenGamepad/ClickPlay.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -244,7 +249,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 0.8;
-				PRODUCT_BUNDLE_IDENTIFIER = com.Hassan.OnScreenGamepad;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TheOPBunny.ClickPlay;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
@@ -279,8 +284,9 @@
 		REL1 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = OnScreenGamepad/OnScreenGamepad.entitlements;
+				ASSETCATALOG_COMPILER_APPICON_NAME = "Click-Play";
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = OnScreenGamepad/ClickPlay.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -295,7 +301,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 0.8;
-				PRODUCT_BUNDLE_IDENTIFIER = com.Hassan.OnScreenGamepad;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TheOPBunny.ClickPlay;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
@@ -307,7 +313,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		CFG0 /* Build configuration list for PBXProject "OnScreenGamepad" */ = {
+		CFG0 /* Build configuration list for PBXProject "Click Play" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				DBG0 /* Debug */,
@@ -316,7 +322,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		CFG1 /* Build configuration list for PBXNativeTarget "OnScreenGamepad" */ = {
+		CFG1 /* Build configuration list for PBXNativeTarget "Click Play" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				DBG1 /* Debug */,

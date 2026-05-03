@@ -122,7 +122,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private static let buttonCountWarningThreshold = 100
     private static let pasteOffset: Double = 18
     private static let snapThreshold: CGFloat = 5
-    private static let pasteboardType = NSPasteboard.PasteboardType("com.onscreengamepad.canvas-buttons")
+    private static let pasteboardType = NSPasteboard.PasteboardType("com.clickplay.canvas-buttons")
 
     private var profile = ProfileStore.shared.activeResolvedProfile
     private var canvasObjects: [CanvasButtonObject] = []

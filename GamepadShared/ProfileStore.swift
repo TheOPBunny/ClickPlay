@@ -12,7 +12,27 @@ struct ProfileTemplate: Codable, Identifiable {
     var profile: Profile
 }
 
-/// Persists user templates to ~/Library/Application Support/OnScreenGamepad/templates.json
+private enum AppStorage {
+    static let currentDirectoryName = "Click Play"
+    static let legacyDirectoryName = "OnScreenGamepad"
+
+    static func fileURL(named fileName: String) -> URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let currentDir = appSupport.appendingPathComponent(currentDirectoryName)
+        let legacyURL = appSupport.appendingPathComponent(legacyDirectoryName).appendingPathComponent(fileName)
+        let currentURL = currentDir.appendingPathComponent(fileName)
+
+        try? FileManager.default.createDirectory(at: currentDir, withIntermediateDirectories: true)
+        if !FileManager.default.fileExists(atPath: currentURL.path),
+           FileManager.default.fileExists(atPath: legacyURL.path) {
+            try? FileManager.default.copyItem(at: legacyURL, to: currentURL)
+        }
+
+        return currentURL
+    }
+}
+
+/// Persists user templates to ~/Library/Application Support/Click Play/templates.json
 /// Posts `templatesDidChange` notification when anything changes.
 final class ProfileTemplateStore {
 
@@ -22,10 +42,7 @@ final class ProfileTemplateStore {
     private(set) var templates: [ProfileTemplate] = []
 
     private let fileURL: URL = {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let dir = appSupport.appendingPathComponent("OnScreenGamepad")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("templates.json")
+        AppStorage.fileURL(named: "templates.json")
     }()
 
     private init() {
@@ -134,7 +151,7 @@ final class ProfileTemplateStore {
     }
 }
 
-/// Persists profiles to ~/Library/Application Support/OnScreenGamepad/profiles.json
+/// Persists profiles to ~/Library/Application Support/Click Play/profiles.json
 /// Posts `profilesDidChange` notification when anything changes.
 final class ProfileStore {
 
@@ -157,10 +174,7 @@ final class ProfileStore {
     }
 
     private let fileURL: URL = {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let dir = appSupport.appendingPathComponent("OnScreenGamepad")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("profiles.json")
+        AppStorage.fileURL(named: "profiles.json")
     }()
 
     private init() {
