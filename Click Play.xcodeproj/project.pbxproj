@@ -86,7 +86,7 @@
 				10A1B0002F9D000000000000 /* SidebarToggleButton.swift */,
 				106EE8612FA7FFE30073725A /* Click-Play.icon */,
 			);
-			path = OnScreenGamepad;
+			path = ClickPlay;
 			sourceTree = "<group>";
 		};
 		GRP2 /* Products */ = {
@@ -234,7 +234,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "Click-Play";
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
-				CODE_SIGN_ENTITLEMENTS = OnScreenGamepad/ClickPlay.entitlements;
+				CODE_SIGN_ENTITLEMENTS = ClickPlay/ClickPlay.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -242,7 +242,7 @@
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = 29P5MA925S;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = OnScreenGamepad/Info.plist;
+				INFOPLIST_FILE = ClickPlay/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -286,7 +286,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "Click-Play";
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
-				CODE_SIGN_ENTITLEMENTS = OnScreenGamepad/ClickPlay.entitlements;
+				CODE_SIGN_ENTITLEMENTS = ClickPlay/ClickPlay.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -294,7 +294,7 @@
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = 29P5MA925S;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = OnScreenGamepad/Info.plist;
+				INFOPLIST_FILE = ClickPlay/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
