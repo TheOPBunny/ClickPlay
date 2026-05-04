@@ -16,7 +16,9 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
         window.title = "Click Play Editor"
         window.contentViewController = viewController
-        window.center()
+        if !window.setFrameUsingName("EditorWindow") {
+            window.center()
+        }
         window.isReleasedWhenClosed = false
         window.collectionBehavior = [.moveToActiveSpace]
         window.tabbingMode = .disallowed
@@ -32,10 +34,6 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         if let window {
             if window.isMiniaturized {
                 window.deminiaturize(nil)
-            }
-
-            if !window.isVisible {
-                window.center()
             }
         }
 
