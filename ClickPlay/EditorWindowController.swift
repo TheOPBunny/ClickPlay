@@ -2,6 +2,8 @@ import Cocoa
 
 final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
+    private static let editorFrameAutosaveName = NSWindow.FrameAutosaveName("EditorWindow")
+
     var onClose: (() -> Void)?
     private var editorViewController: EditorViewController?
 
@@ -16,13 +18,13 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
         window.title = "Click Play Editor"
         window.contentViewController = viewController
-        if !window.setFrameUsingName("EditorWindow") {
+        if !window.setFrameUsingName(Self.editorFrameAutosaveName) {
             window.center()
         }
         window.isReleasedWhenClosed = false
         window.collectionBehavior = [.moveToActiveSpace]
         window.tabbingMode = .disallowed
-        window.setFrameAutosaveName("EditorWindow")
+        window.setFrameAutosaveName(Self.editorFrameAutosaveName)
         window.contentMinSize = NSSize(width: 760, height: 680)
 
         self.init(window: window)
@@ -40,6 +42,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
         activateEditorApp()
+        editorViewController?.centerCanvasOnProfileContentWhenReady()
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -51,7 +54,16 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         editorViewController?.confirmSaveIfNeeded() ?? true
     }
 
+    func windowDidMove(_ notification: Notification) {
+        persistEditorWindowFrame()
+    }
+
+    func windowDidEndLiveResize(_ notification: Notification) {
+        persistEditorWindowFrame()
+    }
+
     func flushPanelLayoutDefaults() {
+        persistEditorWindowFrame()
         editorViewController?.flushPanelLayoutDefaults()
     }
 
@@ -82,5 +94,14 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
     private func activateEditorApp() {
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func persistEditorWindowFrame() {
+        guard let window else {
+            return
+        }
+
+        window.saveFrame(usingName: Self.editorFrameAutosaveName)
+        UserDefaults.standard.synchronize()
     }
 }
