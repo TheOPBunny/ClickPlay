@@ -43,6 +43,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     private var isMinimized = false
     private var inactivityTimer: Timer?
     private var isFadedForInactivity = false
+    private var isJoystickCaptureActive = false
     private var globalMouseMonitor: Any?
 
     convenience init() {
@@ -83,6 +84,9 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         }
         content.onHideOverlay = { [weak self] in
             self?.hideOverlay()
+        }
+        content.onJoystickCaptureChanged = { [weak self] isCaptured in
+            self?.setJoystickCaptureActive(isCaptured)
         }
         content.menuProvider = {
             (NSApp.delegate as? AppDelegate)?.makeGamepadMenu()
@@ -236,7 +240,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     private func resetInactivityTimer() {
         inactivityTimer?.invalidate()
 
-        guard isVisible, let fadeTimeout = GamepadSettings.fadeTimeout else {
+        guard isVisible, !isJoystickCaptureActive, let fadeTimeout = GamepadSettings.fadeTimeout else {
             if isFadedForInactivity {
                 isFadedForInactivity = false
                 applyCurrentAlpha(animated: true)
@@ -250,7 +254,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     }
 
     private func fadeForInactivity() {
-        guard isVisible, !isFadedForInactivity else { return }
+        guard isVisible, !isJoystickCaptureActive, !isFadedForInactivity else { return }
         isFadedForInactivity = true
         applyCurrentAlpha(animated: true)
     }
@@ -276,6 +280,15 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     }
 
     @objc private func handleFadeTimeoutDidChange() {
+        noteUserActivity()
+    }
+
+    private func setJoystickCaptureActive(_ active: Bool) {
+        guard isJoystickCaptureActive != active else {
+            return
+        }
+
+        isJoystickCaptureActive = active
         noteUserActivity()
     }
 

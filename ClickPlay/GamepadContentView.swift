@@ -175,6 +175,7 @@ final class GamepadContentView: NSView {
     var onToggleMinimize: (() -> Void)?
     var onHideOverlay: (() -> Void)?
     var menuProvider: (() -> NSMenu?)?
+    var onJoystickCaptureChanged: ((Bool) -> Void)?
 
     private var buttonViews: [GamepadButton: GamepadButtonView] = [:]
     private let headerBar = HeaderBarView(frame: .zero)
@@ -362,12 +363,17 @@ final class GamepadContentView: NSView {
     }
 
     private func releaseAllButtonsForRebuild() {
+        let hadJoystickCapture = capturedJoystickButton != nil
         buttonViews.values.forEach { $0.releaseIfNeeded() }
         capturedJoystickButton = nil
         updateButtonVisibilityForJoystickCapture()
+        if hadJoystickCapture {
+            onJoystickCaptureChanged?(false)
+        }
     }
 
     private func setJoystickCapture(_ captured: Bool, for button: GamepadButton) {
+        let wasCaptured = capturedJoystickButton != nil
         if captured {
             capturedJoystickButton = button
         } else if capturedJoystickButton == button {
@@ -375,6 +381,10 @@ final class GamepadContentView: NSView {
         }
 
         updateButtonVisibilityForJoystickCapture()
+        let isCaptured = capturedJoystickButton != nil
+        if wasCaptured != isCaptured {
+            onJoystickCaptureChanged?(isCaptured)
+        }
     }
 
     private func updateButtonVisibilityForJoystickCapture() {
