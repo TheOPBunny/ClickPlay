@@ -7,8 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		102FB38F2F9827A8003D8FDF /* ConfiguratorWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102FB38E2F9827A8003D8FDF /* ConfiguratorWindowController.swift */; };
-		102FB3912F9827A8003D8FDF /* ConfiguratorEditorViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102FB3902F9827A8003D8FDF /* ConfiguratorEditorViewController.swift */; };
+		102FB38F2F9827A8003D8FDF /* EditorWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102FB38E2F9827A8003D8FDF /* EditorWindowController.swift */; };
+		102FB3912F9827A8003D8FDF /* EditorViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102FB3902F9827A8003D8FDF /* EditorViewController.swift */; };
 		108EF0DC2F984329009EFAAA /* KeyRecorderButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108EF0DB2F984329009EFAAA /* KeyRecorderButton.swift */; };
 		108EF0DE2F9846A8009EFAAA /* ButtonDetailPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108EF0DD2F9846A8009EFAAA /* ButtonDetailPanel.swift */; };
 		108EF0E02F984826009EFAAA /* GamepadPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108EF0DF2F984826009EFAAA /* GamepadPreviewView.swift */; };
@@ -31,8 +31,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		102FB38E2F9827A8003D8FDF /* ConfiguratorWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfiguratorWindowController.swift; sourceTree = "<group>"; };
-		102FB3902F9827A8003D8FDF /* ConfiguratorEditorViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfiguratorEditorViewController.swift; sourceTree = "<group>"; };
+		102FB38E2F9827A8003D8FDF /* EditorWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorWindowController.swift; sourceTree = "<group>"; };
+		102FB3902F9827A8003D8FDF /* EditorViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorViewController.swift; sourceTree = "<group>"; };
 		108EF0DB2F984329009EFAAA /* KeyRecorderButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyRecorderButton.swift; sourceTree = "<group>"; };
 		108EF0DD2F9846A8009EFAAA /* ButtonDetailPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ButtonDetailPanel.swift; sourceTree = "<group>"; };
 		108EF0DF2F984826009EFAAA /* GamepadPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamepadPreviewView.swift; sourceTree = "<group>"; };
@@ -82,8 +82,8 @@
 				B010 /* ../GamepadShared/ProfileStore.swift */,
 				B007 /* Info.plist */,
 				B008 /* ClickPlay.entitlements */,
-				102FB38E2F9827A8003D8FDF /* ConfiguratorWindowController.swift */,
-				102FB3902F9827A8003D8FDF /* ConfiguratorEditorViewController.swift */,
+				102FB38E2F9827A8003D8FDF /* EditorWindowController.swift */,
+				102FB3902F9827A8003D8FDF /* EditorViewController.swift */,
 				108EF0DB2F984329009EFAAA /* KeyRecorderButton.swift */,
 				108EF0DD2F9846A8009EFAAA /* ButtonDetailPanel.swift */,
 				108EF0DF2F984826009EFAAA /* GamepadPreviewView.swift */,
@@ -186,7 +186,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				102FB38F2F9827A8003D8FDF /* ConfiguratorWindowController.swift in Sources */,
+				102FB38F2F9827A8003D8FDF /* EditorWindowController.swift in Sources */,
 				108EF0E02F984826009EFAAA /* GamepadPreviewView.swift in Sources */,
 				A000 /* main.swift in Sources */,
 				108EF0DE2F9846A8009EFAAA /* ButtonDetailPanel.swift in Sources */,
@@ -202,7 +202,7 @@
 				A006 /* GamepadWindow.swift in Sources */,
 				A007 /* ../GamepadShared/Profile.swift in Sources */,
 				A008 /* ../GamepadShared/ProfileStore.swift in Sources */,
-				102FB3912F9827A8003D8FDF /* ConfiguratorEditorViewController.swift in Sources */,
+				102FB3912F9827A8003D8FDF /* EditorViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

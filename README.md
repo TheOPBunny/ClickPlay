@@ -3,7 +3,7 @@
 An always-on-top macOS menu bar utility that combines:
 
 - a non-activating on-screen gamepad overlay that sends **real, low-level CGEvent key presses**
-- a built-in profile configurator/editor window for editing layouts, labels, colors, and key mappings
+- a built-in profile editor window for editing layouts, labels, colors, and key mappings
 
 The merged `OnScreenGamepad` app is the supported product. The old standalone `GamepadConfigurator` project is retained only as an archived fallback and should not be used for normal development.
 
@@ -12,7 +12,7 @@ The merged `OnScreenGamepad` app is the supported product. The old standalone `G
 - **Always-on-top overlay** — floats above every app including full-screen games
 - **Low-level key injection** via `CGEvent` → delivered directly to the focused process
 - **Zero activation steal** — pressing buttons never brings the gamepad to front or steals focus
-- **Built-in profile editor** — open `Edit Profiles…` from the menu bar app to edit profiles in a standard AppKit window
+- **Built-in profile editor** — open `Open Editor…` from the menu bar app to edit profiles in a standard AppKit window
 - **Profile switching** — switch the active overlay profile from the menu bar
 - **Draggable** — click and drag anywhere on the pad to reposition
 - **Profile-backed layout** — overlay button layout, opacity, size, labels, and key bindings are persisted in `profiles.json`
@@ -42,7 +42,7 @@ The merged `OnScreenGamepad` app is the supported product. The old standalone `G
 5. Relaunch the app. Use the 🎮 menu bar item to:
    - show or hide the overlay
    - switch profiles
-   - open `Edit Profiles…`
+  - open `Open Editor…`
 
 ### Important: App Sandbox must be OFF
 
@@ -75,8 +75,8 @@ GamepadWindow.swift                  Non-activating overlay panel
 GamepadContentView.swift             Overlay layout and drag behavior
 GamepadButtonView.swift              Per-button mouse handling and key lifecycle
 KeyInjector.swift                    Low-level CGEvent posting and held-key tracking
-ConfiguratorWindowController.swift   Standard editor window owner
-ConfiguratorEditorViewController.swift
+EditorWindowController.swift         Standard editor window owner
+EditorViewController.swift           Profile sidebar and editor split view
 GamepadShared/Profile.swift          Profile and button config models
 GamepadShared/ProfileStore.swift     Shared persistence and active profile state
 GamepadShared/KeyMapping.swift       Stable gamepad button identities

@@ -23,6 +23,11 @@ final class ButtonDetailPanel: NSView {
         case down
     }
 
+    private enum Metrics {
+        static let keyRecorderWidth: CGFloat = 150
+        static let keyRecorderHeight: CGFloat = 28
+    }
+
     var onChanged: ((GamepadButton, ButtonConfig) -> Void)?
     var onDelete: ((GamepadButton) -> Void)?
 
@@ -43,6 +48,10 @@ final class ButtonDetailPanel: NSView {
     private let joystickDownRecorder = KeyRecorderButton()
     private let joystickLeftRecorder = KeyRecorderButton()
     private let joystickRightRecorder = KeyRecorderButton()
+    private let joystickUpClearButton = NSButton(title: "Clear", target: nil, action: nil)
+    private let joystickDownClearButton = NSButton(title: "Clear", target: nil, action: nil)
+    private let joystickLeftClearButton = NSButton(title: "Clear", target: nil, action: nil)
+    private let joystickRightClearButton = NSButton(title: "Clear", target: nil, action: nil)
     private let joystickLeftClickRecorder = KeyRecorderButton()
     private let joystickLeftClickClearButton = NSButton(title: "Clear", target: nil, action: nil)
     private let joystickLeftClickModePopup = NSPopUpButton()
@@ -97,7 +106,6 @@ final class ButtonDetailPanel: NSView {
     private let multiKeyActivationModePopup = NSPopUpButton()
     private var multiKeyActivationModeRow: NSStackView?
     private let enabledCheckbox = NSButton(checkboxWithTitle: "Enabled", target: nil, action: nil)
-    private let applyButton = NSButton(title: "Apply Changes", target: nil, action: nil)
     private let deleteButton = NSButton(title: "Delete Button", target: nil, action: nil)
     private var isCollapsed = false
 
@@ -135,7 +143,6 @@ final class ButtonDetailPanel: NSView {
         interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
         multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
         updateMultiKeyActivationModeVisibility()
-        applyButton.isEnabled = false
         deleteButton.isEnabled = false
         updateControlVisibility()
     }
@@ -143,7 +150,6 @@ final class ButtonDetailPanel: NSView {
     func load(button: GamepadButton, config: ButtonConfig) {
         self.button = button
         self.config = config
-        applyButton.isEnabled = true
         deleteButton.isEnabled = true
         let isProtectedSwitch = config.action.isProtectedSwitch
         titleLabel.stringValue = isProtectedSwitch ? "Editing switch: \(config.resolvedDisplayLabel)" : "Editing: \(config.resolvedDisplayLabel)"
@@ -213,8 +219,8 @@ final class ButtonDetailPanel: NSView {
         titleLabel.lineBreakMode = .byTruncatingTail
 
         keyRecorder.translatesAutoresizingMaskIntoConstraints = false
-        keyRecorder.widthAnchor.constraint(equalToConstant: 150).isActive = true
-        keyRecorder.heightAnchor.constraint(equalToConstant: 28).isActive = true
+        keyRecorder.widthAnchor.constraint(equalToConstant: Metrics.keyRecorderWidth).isActive = true
+        keyRecorder.heightAnchor.constraint(equalToConstant: Metrics.keyRecorderHeight).isActive = true
         keyRecorder.onKeyRecorded = { [weak self] bindings in
             self?.applyKeyBindings(bindings)
             self?.emitChange()
@@ -229,6 +235,18 @@ final class ButtonDetailPanel: NSView {
         keyClearButton.bezelStyle = .rounded
         keyClearButton.target = self
         keyClearButton.action = #selector(clearPrimaryKey)
+        joystickUpClearButton.bezelStyle = .rounded
+        joystickUpClearButton.target = self
+        joystickUpClearButton.action = #selector(clearJoystickUpKey)
+        joystickDownClearButton.bezelStyle = .rounded
+        joystickDownClearButton.target = self
+        joystickDownClearButton.action = #selector(clearJoystickDownKey)
+        joystickLeftClearButton.bezelStyle = .rounded
+        joystickLeftClearButton.target = self
+        joystickLeftClearButton.action = #selector(clearJoystickLeftKey)
+        joystickRightClearButton.bezelStyle = .rounded
+        joystickRightClearButton.target = self
+        joystickRightClearButton.action = #selector(clearJoystickRightKey)
         configureOptionalJoystickRecorder(joystickLeftClickRecorder)
         configureOptionalJoystickRecorder(joystickScrollUpRecorder)
         configureOptionalJoystickRecorder(joystickScrollDownRecorder)
@@ -244,17 +262,12 @@ final class ButtonDetailPanel: NSView {
         rightClickRecorder.allowsEmptyDisplay = true
         rightClickRecorder.emptyTitle = "Not Set"
         rightClickRecorder.translatesAutoresizingMaskIntoConstraints = false
-        rightClickRecorder.widthAnchor.constraint(equalToConstant: 110).isActive = true
-        rightClickRecorder.heightAnchor.constraint(equalToConstant: 28).isActive = true
+        rightClickRecorder.widthAnchor.constraint(equalToConstant: Metrics.keyRecorderWidth).isActive = true
+        rightClickRecorder.heightAnchor.constraint(equalToConstant: Metrics.keyRecorderHeight).isActive = true
         rightClickRecorder.onKeyRecorded = { [weak self] bindings in
             self?.applyRightClickKeyBindings(bindings)
             self?.emitChange()
         }
-
-        applyButton.bezelStyle = .rounded
-        applyButton.target = self
-        applyButton.action = #selector(applyPressed)
-        applyButton.isEnabled = false
         deleteButton.bezelStyle = .rounded
         deleteButton.target = self
         deleteButton.action = #selector(deletePressed)
@@ -353,10 +366,10 @@ final class ButtonDetailPanel: NSView {
         let joystickSectionLabel = makeSectionLabel("Joystick")
         self.joystickSectionLabel = joystickSectionLabel
         contentStack.addArrangedSubview(joystickSectionLabel)
-        joystickUpRow = makeJoystickKeyRow(label: "Up:", recorder: joystickUpRecorder)
-        joystickDownRow = makeJoystickKeyRow(label: "Down:", recorder: joystickDownRecorder)
-        joystickLeftRow = makeJoystickKeyRow(label: "Left:", recorder: joystickLeftRecorder)
-        joystickRightRow = makeJoystickKeyRow(label: "Right:", recorder: joystickRightRecorder)
+        joystickUpRow = makeJoystickKeyRow(label: "Up:", recorder: joystickUpRecorder, clearButton: joystickUpClearButton)
+        joystickDownRow = makeJoystickKeyRow(label: "Down:", recorder: joystickDownRecorder, clearButton: joystickDownClearButton)
+        joystickLeftRow = makeJoystickKeyRow(label: "Left:", recorder: joystickLeftRecorder, clearButton: joystickLeftClearButton)
+        joystickRightRow = makeJoystickKeyRow(label: "Right:", recorder: joystickRightRecorder, clearButton: joystickRightClearButton)
         [joystickUpRow, joystickDownRow, joystickLeftRow, joystickRightRow].compactMap { $0 }.forEach(contentStack.addArrangedSubview)
         joystickLeftClickKeyRow = makeJoystickInputKeyRow(label: "Click:", recorder: joystickLeftClickRecorder, clearButton: joystickLeftClickClearButton)
         joystickLeftClickModeRow = makeRow(label: "Mode:", control: joystickLeftClickModePopup)
@@ -406,7 +419,6 @@ final class ButtonDetailPanel: NSView {
         contentStack.addArrangedSubview(rightClickModeRow)
         contentStack.addArrangedSubview(enabledCheckbox)
         contentStack.addArrangedSubview(makeSizeRow())
-        contentStack.addArrangedSubview(applyButton)
         contentStack.addArrangedSubview(deleteButton)
 
         contentContainer.addSubview(contentStack)
@@ -498,12 +510,16 @@ final class ButtonDetailPanel: NSView {
         return row
     }
 
-    private func makeJoystickKeyRow(label: String, recorder: KeyRecorderButton) -> NSStackView {
+    private func makeJoystickKeyRow(label: String, recorder: KeyRecorderButton, clearButton: NSButton) -> NSStackView {
         recorder.translatesAutoresizingMaskIntoConstraints = false
-        recorder.widthAnchor.constraint(equalToConstant: 110).isActive = true
-        recorder.heightAnchor.constraint(equalToConstant: 28).isActive = true
+        recorder.widthAnchor.constraint(equalToConstant: Metrics.keyRecorderWidth).isActive = true
+        recorder.heightAnchor.constraint(equalToConstant: Metrics.keyRecorderHeight).isActive = true
 
-        let row = NSStackView(views: [makeFieldLabel(label), recorder])
+        let controls = NSStackView(views: [recorder, clearButton])
+        controls.orientation = .horizontal
+        controls.spacing = 6
+
+        let row = NSStackView(views: [makeFieldLabel(label), controls])
         row.orientation = .horizontal
         row.spacing = 8
         return row
@@ -511,8 +527,8 @@ final class ButtonDetailPanel: NSView {
 
     private func makeJoystickInputKeyRow(label: String, recorder: KeyRecorderButton, clearButton: NSButton) -> NSStackView {
         recorder.translatesAutoresizingMaskIntoConstraints = false
-        recorder.widthAnchor.constraint(equalToConstant: 110).isActive = true
-        recorder.heightAnchor.constraint(equalToConstant: 28).isActive = true
+        recorder.widthAnchor.constraint(equalToConstant: Metrics.keyRecorderWidth).isActive = true
+        recorder.heightAnchor.constraint(equalToConstant: Metrics.keyRecorderHeight).isActive = true
 
         let controls = NSStackView(views: [recorder, clearButton])
         controls.orientation = .horizontal
@@ -567,6 +583,26 @@ final class ButtonDetailPanel: NSView {
 
     @objc private func clearPrimaryKey() {
         applyKeyBindings([Self.defaultKeyBinding])
+        emitChange()
+    }
+
+    @objc private func clearJoystickUpKey() {
+        applyJoystickBinding(JoystickConfig.defaultBindings.up, direction: .up)
+        emitChange()
+    }
+
+    @objc private func clearJoystickDownKey() {
+        applyJoystickBinding(JoystickConfig.defaultBindings.down, direction: .down)
+        emitChange()
+    }
+
+    @objc private func clearJoystickLeftKey() {
+        applyJoystickBinding(JoystickConfig.defaultBindings.left, direction: .left)
+        emitChange()
+    }
+
+    @objc private func clearJoystickRightKey() {
+        applyJoystickBinding(JoystickConfig.defaultBindings.right, direction: .right)
         emitChange()
     }
 

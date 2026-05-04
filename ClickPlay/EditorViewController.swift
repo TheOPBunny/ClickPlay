@@ -1,6 +1,6 @@
 import Cocoa
 
-final class ConfiguratorViewController: NSViewController, NSSplitViewDelegate {
+final class EditorViewController: NSViewController, NSSplitViewDelegate {
 
     private enum Metrics {
         static let minimumSidebarWidth: CGFloat = 160
@@ -10,8 +10,8 @@ final class ConfiguratorViewController: NSViewController, NSSplitViewDelegate {
     }
 
     private enum DefaultsKey {
-        static let sidebarExpandedWidth = "Configurator.sidebarExpandedWidth"
-        static let sidebarCollapsed = "Configurator.sidebarCollapsed"
+        static let sidebarExpandedWidth = "Editor.sidebarExpandedWidth"
+        static let sidebarCollapsed = "Editor.sidebarCollapsed"
     }
 
     private let profileListViewController = ProfileListViewController()
@@ -47,6 +47,9 @@ final class ConfiguratorViewController: NSViewController, NSSplitViewDelegate {
 
         profileListViewController.onProfileSelected = { [weak self] profile in
             self?.editorViewController.load(profile: profile)
+        }
+        profileListViewController.onProfileSelectionRequested = { [weak self] in
+            self?.confirmSaveIfNeeded() ?? true
         }
 
         editorViewController.onProfileSaved = { [weak self] profile in
@@ -117,6 +120,51 @@ final class ConfiguratorViewController: NSViewController, NSSplitViewDelegate {
         }
         saveSidebarDefaults()
         editorViewController.savePanelLayout()
+    }
+
+    @discardableResult
+    func saveChanges() -> Bool {
+        editorViewController.saveChanges()
+    }
+
+    func confirmSaveIfNeeded() -> Bool {
+        editorViewController.confirmSaveIfNeeded()
+    }
+
+    func centerCanvasOnProfileContentWhenReady() {
+        editorViewController.centerCanvasOnProfileContentWhenReady()
+    }
+
+    func addProfile() {
+        guard confirmSaveIfNeeded() else {
+            return
+        }
+
+        profileListViewController.addBlankProfile()
+    }
+
+    func addLayer() {
+        guard confirmSaveIfNeeded() else {
+            return
+        }
+
+        profileListViewController.addBlankSubProfile()
+    }
+
+    func removeProfile() {
+        guard confirmSaveIfNeeded() else {
+            return
+        }
+
+        profileListViewController.deleteSelectedProfile()
+    }
+
+    func removeLayer() {
+        guard confirmSaveIfNeeded() else {
+            return
+        }
+
+        profileListViewController.deleteSelectedLayer()
     }
 
     private func toggleSidebar() {
