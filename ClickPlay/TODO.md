@@ -23,6 +23,7 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 - [x] Add a per-profile "Compatibility Mode" that makes momentary button presses last 33 ms.
 - [x] Add an option for buttons to toggle into a held-down state on press.
 - [x] Fade the gamepad to 100% transparency after a configurable period of inactivity.
+- [ ] Do not fade the overlay while joystick mode is active.
 - [x] Use system corner dragging to resize.
 - [x] Merge the old `GamepadConfigurator` workflow into `Click Play`.
 - [ ] Add mouse event actions for left click, right click, and drag/drop toggle.
