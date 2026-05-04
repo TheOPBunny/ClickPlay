@@ -137,23 +137,17 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private var isApplyingInspectorLayout = false
     private var lastObservedEditorSplitWidth: CGFloat = 0
     private var savedProfileFingerprint: Data?
+    private var shouldScrollToProfileContent = false
 
-    private let nameField = NSTextField()
-    private let opacitySlider = NSSlider()
-    private let opacityLabel = NSTextField(labelWithString: "90%")
-    private let padWidthField = NSTextField()
-    private let padHeightField = NSTextField()
     private let compatibilityModeCheckbox = NSButton(checkboxWithTitle: "Compatibility Mode", target: nil, action: nil)
     private let showGridCheckbox = NSButton(checkboxWithTitle: "Show Grid", target: nil, action: nil)
+    private let addPopupButton = NSPopUpButton(frame: .zero, pullsDown: true)
     private let previewView = GamepadPreviewView()
     private lazy var previewCanvasView = PreviewCanvasView(previewView: previewView)
     private let previewScrollView = NSScrollView()
     private let detailPanel = ButtonDetailPanel()
     private let editorSplitView = NSSplitView()
     private let leftColumn = NSStackView()
-    private let hint = NSTextField(
-        labelWithString: "Drag buttons freely inside a 1000 × 1000 workspace. Saving fits the gamepad to the outermost button bounds."
-    )
 
     override func loadView() {
         view = NSView(frame: NSRect(x: 0, y: 0, width: 980, height: 700))
@@ -174,6 +168,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         super.viewDidLayout()
         restoreInspectorLayoutIfNeeded()
         updatePreviewCanvasLayout()
+        scrollToProfileContentIfNeeded()
     }
 
     func load(profile: Profile) {
@@ -183,16 +178,14 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         previewView.usesCenteredOrigin = profile.editorCoordinateMode == .centered
         clampEditableProfileToWorkspace()
         canvasObjects = makeCanvasObjects(from: self.profile)
-        nameField.stringValue = self.profile.name
-        opacitySlider.doubleValue = self.profile.opacity
-        opacityLabel.stringValue = "\(Int(self.profile.opacity * 100))%"
         compatibilityModeCheckbox.state = self.profile.compatibilityMode ? .on : .off
         refreshFittedPadSizeFields()
         updatePreviewCanvasLayout()
         previewView.reload(objects: canvasObjects, keepSelection: false)
         detailPanel.clear()
         savedProfileFingerprint = currentSavedProfileFingerprint()
-        scrollPreviewToProfileContent()
+        shouldScrollToProfileContent = true
+        scrollToProfileContentIfNeeded()
     }
 
     func refreshFromStoreIfNeeded() {
@@ -236,10 +229,6 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     @discardableResult
     func saveChanges() -> Bool {
-        if !nameField.stringValue.isEmpty {
-            profile.name = nameField.stringValue
-        }
-
         profile.compatibilityMode = compatibilityModeCheckbox.state == .on
         clampEditableProfileToWorkspace()
         let savedProfile = currentSavedProfile()
@@ -256,39 +245,19 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     private func buildLayout() {
         previewView.maximumWorkspaceSize = Self.maximumWorkspaceSize
-        nameField.placeholderString = "Profile name"
-        nameField.bezelStyle = .roundedBezel
-        nameField.font = .systemFont(ofSize: 12)
-
-        opacitySlider.minValue = 0.25
-        opacitySlider.maxValue = 1.0
-        opacitySlider.isContinuous = true
-        opacitySlider.target = self
-        opacitySlider.action = #selector(opacityMoved)
-
-        padWidthField.bezelStyle = .roundedBezel
-        padWidthField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
-        padWidthField.isEditable = false
-        padWidthField.isSelectable = false
-        padHeightField.bezelStyle = .roundedBezel
-        padHeightField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
-        padHeightField.isEditable = false
-        padHeightField.isSelectable = false
         compatibilityModeCheckbox.target = self
         compatibilityModeCheckbox.action = #selector(compatibilityModeChanged)
         showGridCheckbox.state = .on
         showGridCheckbox.target = self
         showGridCheckbox.action = #selector(showGridChanged)
 
-        let saveButton = NSButton(title: "Save & Apply", target: self, action: #selector(saveProfile))
-        saveButton.bezelStyle = .rounded
-        saveButton.keyEquivalent = "\r"
-
-        let addButton = NSButton(title: "Add Button", target: self, action: #selector(addButtonPressed))
-        addButton.bezelStyle = .rounded
-
-        let addJoystickButton = NSButton(title: "Add Joystick", target: self, action: #selector(addJoystickPressed))
-        addJoystickButton.bezelStyle = .rounded
+        addPopupButton.addItem(withTitle: "Add...")
+        addPopupButton.addItem(withTitle: "Button")
+        addPopupButton.lastItem?.tag = 1
+        addPopupButton.addItem(withTitle: "Joystick")
+        addPopupButton.lastItem?.tag = 2
+        addPopupButton.target = self
+        addPopupButton.action = #selector(addPopupChanged)
 
         let leftSidebarToggleButton = SidebarToggleButton()
         leftSidebarToggleButton.side = .left
@@ -304,22 +273,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
         let topBar = NSStackView(views: [
             leftSidebarToggleButton,
-            makeLabel("Name:"),
-            nameField,
-            makeLabel("  Opacity:"),
-            opacitySlider,
-            opacityLabel,
-            makeLabel("  Fit:"),
-            padWidthField,
-            makeLabel("×"),
-            padHeightField,
             compatibilityModeCheckbox,
             showGridCheckbox,
             NSView(),
             rightInspectorToggleButton,
-            addButton,
-            addJoystickButton,
-            saveButton,
+            addPopupButton,
         ])
         topBar.orientation = .horizontal
         topBar.alignment = .centerY
@@ -379,11 +337,6 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             self?.deleteButton(button)
         }
 
-        hint.font = .systemFont(ofSize: 10)
-        hint.textColor = .secondaryLabelColor
-        hint.lineBreakMode = .byWordWrapping
-        hint.translatesAutoresizingMaskIntoConstraints = false
-
         editorSplitView.isVertical = true
         editorSplitView.dividerStyle = .thin
         editorSplitView.delegate = self
@@ -394,7 +347,6 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         leftColumn.spacing = 6
         leftColumn.translatesAutoresizingMaskIntoConstraints = false
         leftColumn.addArrangedSubview(previewScrollView)
-        leftColumn.addArrangedSubview(hint)
 
         editorSplitView.addArrangedSubview(leftColumn)
         editorSplitView.addArrangedSubview(detailPanel)
@@ -408,11 +360,6 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             topBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
             topBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
             topBar.heightAnchor.constraint(equalToConstant: 28),
-            nameField.widthAnchor.constraint(equalToConstant: 130),
-            opacitySlider.widthAnchor.constraint(equalToConstant: 90),
-            opacityLabel.widthAnchor.constraint(equalToConstant: 36),
-            padWidthField.widthAnchor.constraint(equalToConstant: 52),
-            padHeightField.widthAnchor.constraint(equalToConstant: 52),
             editorSplitView.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: 14),
             editorSplitView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
             editorSplitView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
@@ -758,11 +705,6 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         equalizeSelectedButtons(.both)
     }
 
-    @objc private func opacityMoved() {
-        profile.opacity = opacitySlider.doubleValue
-        opacityLabel.stringValue = "\(Int(profile.opacity * 100))%"
-    }
-
     @objc private func compatibilityModeChanged() {
         profile.compatibilityMode = compatibilityModeCheckbox.state == .on
         previewView.reload(objects: canvasObjects, keepSelection: true)
@@ -770,6 +712,19 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     @objc private func showGridChanged() {
         previewCanvasView.showsGrid = showGridCheckbox.state == .on
+    }
+
+    @objc private func addPopupChanged() {
+        defer { addPopupButton.selectItem(at: 0) }
+
+        switch addPopupButton.selectedTag() {
+        case 1:
+            addButtonPressed()
+        case 2:
+            addJoystickPressed()
+        default:
+            break
+        }
     }
 
     @objc private func addButtonPressed() {
@@ -1470,14 +1425,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     private func refreshFittedPadSizeFields() {
-        guard let fittedSize = fittedPadSize(for: profile) else {
-            padWidthField.stringValue = "0"
-            padHeightField.stringValue = "0"
-            return
-        }
-
-        padWidthField.stringValue = "\(Int(ceil(fittedSize.width)))"
-        padHeightField.stringValue = "\(Int(ceil(fittedSize.height)))"
+        _ = fittedPadSize(for: profile)
     }
 
     private func buttonContentBounds(for profile: Profile) -> CGRect? {
@@ -1841,25 +1789,40 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     private func scrollPreviewToProfileContent() {
         guard let contentBounds = canvasContentBounds(for: profile) else {
-            let origin = CGPoint(
-                x: max(0, previewCanvasView.workspaceOrigin.x - ((previewScrollView.contentView.bounds.width - Self.maximumWorkspaceSize.width) / 2)),
-                y: max(0, (Self.maximumWorkspaceSize.height - previewScrollView.contentView.bounds.height) / 2)
+            scrollPreviewToCanvasRect(
+                CGRect(
+                    x: previewCanvasView.workspaceOrigin.x,
+                    y: previewCanvasView.workspaceOrigin.y,
+                    width: Self.maximumWorkspaceSize.width,
+                    height: Self.maximumWorkspaceSize.height
+                )
             )
-            previewScrollView.contentView.scroll(to: origin)
-            previewScrollView.reflectScrolledClipView(previewScrollView.contentView)
             return
         }
 
+        scrollPreviewToCanvasRect(contentBounds)
+    }
+
+    private func scrollToProfileContentIfNeeded() {
+        guard shouldScrollToProfileContent, previewScrollView.contentView.bounds.size != .zero else {
+            return
+        }
+
+        shouldScrollToProfileContent = false
+        scrollPreviewToProfileContent()
+    }
+
+    private func scrollPreviewToCanvasRect(_ rect: CGRect) {
         let visibleSize = previewScrollView.contentView.bounds.size
         let documentSize = previewCanvasView.frame.size
         let targetOrigin = CGPoint(
             x: clamp(
-                contentBounds.midX - visibleSize.width / 2,
+                rect.midX - visibleSize.width / 2,
                 min: 0,
                 max: max(0, documentSize.width - visibleSize.width)
             ),
             y: clamp(
-                contentBounds.midY - visibleSize.height / 2,
+                rect.midY - visibleSize.height / 2,
                 min: 0,
                 max: max(0, documentSize.height - visibleSize.height)
             )
