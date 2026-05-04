@@ -389,7 +389,6 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        isJoystickCaptured = true
         joystickOffset = .zero
         activeJoystickDirection = nil
         activeJoystickBindings = []
@@ -397,9 +396,14 @@ final class GamepadButtonView: NSView {
         lastJoystickScrollActivation = nil
         joystickIdleReturnGeneration &+= 1
         lastJoystickMovementTime = ProcessInfo.processInfo.systemUptime
+        guard installJoystickEventMonitors() else {
+            updateAppearance(animated: true)
+            return
+        }
+
+        isJoystickCaptured = true
         CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
         hideJoystickCursorIfNeeded()
-        installJoystickEventMonitors()
         parkJoystickCursor()
         scheduleJoystickCursorParking()
         onJoystickCaptureChanged?(true)
@@ -474,7 +478,8 @@ final class GamepadButtonView: NSView {
         updateAppearance(animated: true)
     }
 
-    private func installJoystickEventMonitors() {
+    @discardableResult
+    private func installJoystickEventMonitors() -> Bool {
         removeJoystickEventMonitors()
 
         let eventMask = Self.joystickEventMask
@@ -487,7 +492,7 @@ final class GamepadButtonView: NSView {
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
             NSLog("[Button \(button.rawValue)] ERROR: joystickEventTapCreationFailed")
-            return
+            return false
         }
 
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
@@ -496,6 +501,7 @@ final class GamepadButtonView: NSView {
 
         joystickEventTap = eventTap
         joystickEventTapRunLoopSource = source
+        return true
     }
 
     private func removeJoystickEventMonitors() {
