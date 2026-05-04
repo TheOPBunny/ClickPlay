@@ -3,6 +3,7 @@ import Cocoa
 final class ProfileListViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
 
     var onProfileSelected: ((Profile) -> Void)?
+    var onProfileSelectionRequested: (() -> Bool)?
 
     private final class SidebarItem: NSObject {
         let profileID: UUID
@@ -160,6 +161,11 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
             return
         }
 
+        guard onProfileSelectionRequested?() ?? true else {
+            restoreActiveSelection()
+            return
+        }
+
         if let parentID = item.parentID,
            let subProfile = subProfile(with: item.profileID, parentID: parentID) {
             ProfileStore.shared.setActiveSubProfile(subProfile.id, in: parentID)
@@ -203,12 +209,12 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         menu.popUp(positioning: nil, at: CGPoint(x: 0, y: sender.bounds.maxY + 2), in: sender)
     }
 
-    @objc private func addBlankProfile() {
+    @objc func addBlankProfile() {
         let profile = Profile.makeBlank(name: "Profile \(profiles.count + 1)").asTopLevelContainer()
         add(profile: profile)
     }
 
-    @objc private func addBlankSubProfile() {
+    @objc func addBlankSubProfile() {
         addSubProfile(fromTemplate: false)
     }
 
@@ -322,7 +328,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
     }
 
-    @objc private func duplicateSelection() {
+    @objc func duplicateSelection() {
         guard let item = outlineView.item(atRow: outlineView.selectedRow) as? SidebarItem else {
             return
         }
@@ -343,7 +349,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
     }
 
-    @objc private func deleteSelection() {
+    @objc func deleteSelection() {
         guard let item = outlineView.item(atRow: outlineView.selectedRow) as? SidebarItem else {
             return
         }
@@ -356,6 +362,22 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
 
         ProfileStore.shared.delete(item.profileID)
         onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+    }
+
+    func deleteSelectedProfile() {
+        guard let item = selectedSidebarItem(), !item.isSubProfile else {
+            return
+        }
+
+        deleteSelection()
+    }
+
+    func deleteSelectedLayer() {
+        guard let item = selectedSidebarItem(), item.isSubProfile else {
+            return
+        }
+
+        deleteSelection()
     }
 
     private func expandAllProfiles() {
@@ -384,6 +406,12 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         }
 
         outlineView.deselectAll(nil)
+    }
+
+    private func restoreActiveSelection() {
+        isReloadingSelection = true
+        selectActiveSubProfile()
+        isReloadingSelection = false
     }
 
     private func selectedParentID() -> UUID? {

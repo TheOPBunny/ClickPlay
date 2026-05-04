@@ -49,11 +49,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         editorWindowController?.flushPanelLayoutDefaults()
     }
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard editorWindowController?.confirmSaveIfNeeded() ?? true else {
+            return .terminateCancel
+        }
+
+        return .terminateNow
+    }
+
     func setupMainMenu() {
         let mainMenu = NSMenu()
         let appItem = NSMenuItem()
+        let fileItem = NSMenuItem()
         let editItem = NSMenuItem()
         mainMenu.addItem(appItem)
+        mainMenu.addItem(fileItem)
         mainMenu.addItem(editItem)
 
         let appMenu = NSMenu(title: "Click Play")
@@ -65,6 +75,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
         )
         appItem.submenu = appMenu
+
+        let fileMenu = NSMenu(title: "File")
+        fileMenu.addItem(NSMenuItem(title: "Save Changes", action: #selector(saveEditorChanges(_:)), keyEquivalent: "s"))
+        fileMenu.addItem(NSMenuItem.separator())
+        fileMenu.addItem(NSMenuItem(title: "Add Profile", action: #selector(addEditorProfile(_:)), keyEquivalent: ""))
+        fileMenu.addItem(NSMenuItem(title: "Add Layer", action: #selector(addEditorLayer(_:)), keyEquivalent: ""))
+        fileMenu.addItem(NSMenuItem.separator())
+        fileMenu.addItem(NSMenuItem(title: "Remove Profile", action: #selector(removeEditorProfile(_:)), keyEquivalent: ""))
+        fileMenu.addItem(NSMenuItem(title: "Remove Layer", action: #selector(removeEditorLayer(_:)), keyEquivalent: ""))
+        for item in fileMenu.items {
+            item.target = self
+        }
+        fileItem.submenu = fileMenu
 
         let editMenu = NSMenu(title: "Edit")
         editMenu.addItem(NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
@@ -308,6 +331,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func hideGamepad() {
         gamepadWindow?.orderOut(nil)
+    }
+
+    @objc func saveEditorChanges(_ sender: Any?) {
+        getEditorWindowController().showEditorWindow()
+        getEditorWindowController().saveChanges()
+    }
+
+    @objc func addEditorProfile(_ sender: Any?) {
+        getEditorWindowController().showEditorWindow()
+        getEditorWindowController().addProfile()
+    }
+
+    @objc func addEditorLayer(_ sender: Any?) {
+        getEditorWindowController().showEditorWindow()
+        getEditorWindowController().addLayer()
+    }
+
+    @objc func removeEditorProfile(_ sender: Any?) {
+        getEditorWindowController().showEditorWindow()
+        getEditorWindowController().removeProfile()
+    }
+
+    @objc func removeEditorLayer(_ sender: Any?) {
+        getEditorWindowController().showEditorWindow()
+        getEditorWindowController().removeLayer()
     }
 
     @objc func showEditor() {

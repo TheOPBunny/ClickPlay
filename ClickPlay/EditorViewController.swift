@@ -48,6 +48,9 @@ final class EditorViewController: NSViewController, NSSplitViewDelegate {
         profileListViewController.onProfileSelected = { [weak self] profile in
             self?.editorViewController.load(profile: profile)
         }
+        profileListViewController.onProfileSelectionRequested = { [weak self] in
+            self?.confirmSaveIfNeeded() ?? true
+        }
 
         editorViewController.onProfileSaved = { [weak self] profile in
             self?.shouldSkipNextEditorRefresh = true
@@ -117,6 +120,47 @@ final class EditorViewController: NSViewController, NSSplitViewDelegate {
         }
         saveSidebarDefaults()
         editorViewController.savePanelLayout()
+    }
+
+    @discardableResult
+    func saveChanges() -> Bool {
+        editorViewController.saveChanges()
+    }
+
+    func confirmSaveIfNeeded() -> Bool {
+        editorViewController.confirmSaveIfNeeded()
+    }
+
+    func addProfile() {
+        guard confirmSaveIfNeeded() else {
+            return
+        }
+
+        profileListViewController.addBlankProfile()
+    }
+
+    func addLayer() {
+        guard confirmSaveIfNeeded() else {
+            return
+        }
+
+        profileListViewController.addBlankSubProfile()
+    }
+
+    func removeProfile() {
+        guard confirmSaveIfNeeded() else {
+            return
+        }
+
+        profileListViewController.deleteSelectedProfile()
+    }
+
+    func removeLayer() {
+        guard confirmSaveIfNeeded() else {
+            return
+        }
+
+        profileListViewController.deleteSelectedLayer()
     }
 
     private func toggleSidebar() {

@@ -49,8 +49,37 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         onClose?()
     }
 
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        editorViewController?.confirmSaveIfNeeded() ?? true
+    }
+
     func flushPanelLayoutDefaults() {
         editorViewController?.flushPanelLayoutDefaults()
+    }
+
+    @discardableResult
+    func saveChanges() -> Bool {
+        editorViewController?.saveChanges() ?? true
+    }
+
+    func confirmSaveIfNeeded() -> Bool {
+        editorViewController?.confirmSaveIfNeeded() ?? true
+    }
+
+    func addProfile() {
+        editorViewController?.addProfile()
+    }
+
+    func addLayer() {
+        editorViewController?.addLayer()
+    }
+
+    func removeProfile() {
+        editorViewController?.removeProfile()
+    }
+
+    func removeLayer() {
+        editorViewController?.removeLayer()
     }
 
     private func activateEditorApp() {
