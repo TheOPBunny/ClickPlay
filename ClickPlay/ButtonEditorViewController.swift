@@ -30,6 +30,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private enum DefaultsKey {
         static let inspectorExpandedWidth = "Editor.inspectorExpandedWidth"
         static let inspectorCollapsed = "Editor.inspectorCollapsed"
+        static let snappingEnabled = "Editor.snappingEnabled"
     }
 
     private final class PreviewCanvasView: NSView {
@@ -142,6 +143,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     private let compatibilityModeCheckbox = NSButton(checkboxWithTitle: "Compatibility Mode", target: nil, action: nil)
     private let showGridCheckbox = NSButton(checkboxWithTitle: "Show Grid", target: nil, action: nil)
+    private let snappingCheckbox = NSButton(checkboxWithTitle: "Snap", target: nil, action: nil)
     private let addPopupButton = NSPopUpButton(frame: .zero, pullsDown: true)
     private let previewView = GamepadPreviewView()
     private lazy var previewCanvasView = PreviewCanvasView(previewView: previewView)
@@ -256,6 +258,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         showGridCheckbox.state = .on
         showGridCheckbox.target = self
         showGridCheckbox.action = #selector(showGridChanged)
+        snappingCheckbox.target = self
+        snappingCheckbox.action = #selector(snappingChanged)
 
         addPopupButton.addItem(withTitle: "Add...")
         addPopupButton.addItem(withTitle: "Button")
@@ -281,6 +285,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             leftSidebarToggleButton,
             compatibilityModeCheckbox,
             showGridCheckbox,
+            snappingCheckbox,
             NSView(),
             rightInspectorToggleButton,
             addPopupButton,
@@ -502,6 +507,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private func loadInspectorDefaults() {
         let defaults = UserDefaults.standard
         isInspectorCollapsed = defaults.bool(forKey: DefaultsKey.inspectorCollapsed)
+        snappingCheckbox.state = defaults.object(forKey: DefaultsKey.snappingEnabled) as? Bool == false ? .off : .on
 
         let savedWidth = defaults.double(forKey: DefaultsKey.inspectorExpandedWidth)
         if savedWidth > 0 {
@@ -513,6 +519,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         let defaults = UserDefaults.standard
         defaults.set(isInspectorCollapsed, forKey: DefaultsKey.inspectorCollapsed)
         defaults.set(Double(lastExpandedInspectorWidth), forKey: DefaultsKey.inspectorExpandedWidth)
+        defaults.set(snappingCheckbox.state == .on, forKey: DefaultsKey.snappingEnabled)
     }
 
     private func makeLabel(_ text: String) -> NSTextField {
@@ -718,6 +725,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     @objc private func showGridChanged() {
         previewCanvasView.showsGrid = showGridCheckbox.state == .on
+    }
+
+    @objc private func snappingChanged() {
+        UserDefaults.standard.set(snappingCheckbox.state == .on, forKey: DefaultsKey.snappingEnabled)
     }
 
     @objc private func addPopupChanged() {
@@ -1486,6 +1497,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private func snappedGeometries(
         _ proposedGeometries: [GamepadButton: ButtonEditorGeometry]
     ) -> CanvasGeometryChangeResult {
+        guard snappingCheckbox.state == .on else {
+            return CanvasGeometryChangeResult(geometries: proposedGeometries, guides: [])
+        }
+
         guard !proposedGeometries.isEmpty else {
             return CanvasGeometryChangeResult(geometries: proposedGeometries, guides: [])
         }
