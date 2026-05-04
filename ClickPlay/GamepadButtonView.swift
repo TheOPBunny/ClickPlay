@@ -381,7 +381,11 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        ProfileStore.shared.setActiveSubProfile(targetID)
+        if let appDelegate = NSApp.delegate as? AppDelegate {
+            appDelegate.activateSubProfileIfAllowed(targetID)
+        } else {
+            ProfileStore.shared.setActiveSubProfile(targetID)
+        }
     }
 
     private func beginJoystickCapture(with event: NSEvent) {

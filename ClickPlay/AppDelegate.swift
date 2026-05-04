@@ -297,7 +297,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func switchProfile(_ sender: NSMenuItem) {
         guard let idStr = sender.representedObject as? String,
               let id = UUID(uuidString: idStr) else { return }
+        activateProfileIfAllowed(id)
+    }
+
+    @discardableResult
+    func activateProfileIfAllowed(_ id: UUID) -> Bool {
+        guard confirmEditorNavigationIfNeeded() else {
+            rebuildMenu()
+            return false
+        }
+
         ProfileStore.shared.setActive(id)
+        return true
+    }
+
+    @discardableResult
+    func activateSubProfileIfAllowed(_ id: UUID) -> Bool {
+        guard confirmEditorNavigationIfNeeded() else {
+            return false
+        }
+
+        ProfileStore.shared.setActiveSubProfile(id)
+        return true
     }
 
     @objc func setActiveProfileOpacity(_ sender: NSMenuItem) {
@@ -384,6 +405,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         default:
             return false
         }
+    }
+
+    private func confirmEditorNavigationIfNeeded() -> Bool {
+        editorWindowController?.confirmSaveIfNeeded() ?? true
     }
 
     private func startTrackingActiveApplications() {
