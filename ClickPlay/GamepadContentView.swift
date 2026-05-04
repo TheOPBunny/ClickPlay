@@ -224,7 +224,7 @@ final class GamepadContentView: NSView {
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         updateLayout()
-        buildButtons(profile: currentProfile)
+        buildButtons(profile: currentProfile, releasesExistingInputs: false)
     }
 
     private func setup() {
@@ -296,8 +296,10 @@ final class GamepadContentView: NSView {
         padSurface.frame = NSRect(x: 0, y: 0, width: bounds.width, height: padHeight)
     }
 
-    private func buildButtons(profile: Profile) {
-        releaseAllButtonsForRebuild()
+    private func buildButtons(profile: Profile, releasesExistingInputs: Bool = true) {
+        if releasesExistingInputs {
+            releaseAllButtonsForRebuild()
+        }
         currentProfile = profile
 
         if isMinimized || padSurface.bounds.isEmpty {
@@ -335,11 +337,13 @@ final class GamepadContentView: NSView {
 
             if let view = buttonViews[button] {
                 view.frame = frame
-                view.updateConfig(
-                    cfg,
-                    compatibilityModeEnabled: profile.compatibilityMode,
-                    activeSubProfileID: profile.id
-                )
+                if releasesExistingInputs {
+                    view.updateConfig(
+                        cfg,
+                        compatibilityModeEnabled: profile.compatibilityMode,
+                        activeSubProfileID: profile.id
+                    )
+                }
             } else {
                 let view = GamepadButtonView(
                     button: button,
