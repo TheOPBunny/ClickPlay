@@ -1153,6 +1153,9 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 || lhs.shape != rhs.shape
                 || lhs.enabled != rhs.enabled
                 || lhs.interactionMode != rhs.interactionMode
+                || lhs.rightClickKeyBindings != rhs.rightClickKeyBindings
+                || lhs.rightClickFallsBackToPrimary != rhs.rightClickFallsBackToPrimary
+                || lhs.rightClickInteractionMode != rhs.rightClickInteractionMode
                 || lhs.joystick != rhs.joystick
                 || lhs.action != rhs.action
         }
