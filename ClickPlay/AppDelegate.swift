@@ -1,6 +1,6 @@
 import Cocoa
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     var gamepadWindow: GamepadWindow?
     var statusItem: NSStatusItem?
@@ -8,6 +8,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let supportedOpacityValues: [Double] = [0.25, 0.4, 0.55, 0.7, 0.85, 1.0]
     private var lastActiveNonSelfApplication: NSRunningApplication?
     private var workspaceActivationObserver: NSObjectProtocol?
+    private var addProfileFromTemplateItem: NSMenuItem?
+    private var addLayerFromTemplateItem: NSMenuItem?
 
     deinit {
         if let workspaceActivationObserver {
@@ -79,10 +81,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         appItem.submenu = appMenu
 
         let fileMenu = NSMenu(title: "File")
+        fileMenu.delegate = self
         fileMenu.addItem(NSMenuItem(title: "Save Changes", action: #selector(saveEditorChanges(_:)), keyEquivalent: "s"))
         fileMenu.addItem(NSMenuItem.separator())
         fileMenu.addItem(NSMenuItem(title: "Add Profile", action: #selector(addEditorProfile(_:)), keyEquivalent: ""))
         fileMenu.addItem(NSMenuItem(title: "Add Layer", action: #selector(addEditorLayer(_:)), keyEquivalent: ""))
+        let addProfileFromTemplateItem = NSMenuItem(title: "Add Profile from Template", action: nil, keyEquivalent: "")
+        addProfileFromTemplateItem.submenu = makeTemplateCreationMenu(kind: .profile)
+        self.addProfileFromTemplateItem = addProfileFromTemplateItem
+        fileMenu.addItem(addProfileFromTemplateItem)
+        let addLayerFromTemplateItem = NSMenuItem(title: "Add Layer from Template", action: nil, keyEquivalent: "")
+        addLayerFromTemplateItem.submenu = makeTemplateCreationMenu(kind: .layer)
+        self.addLayerFromTemplateItem = addLayerFromTemplateItem
+        fileMenu.addItem(addLayerFromTemplateItem)
+        fileMenu.addItem(NSMenuItem.separator())
+        fileMenu.addItem(NSMenuItem(title: "Save Current as Template…", action: #selector(saveCurrentEditorSelectionAsTemplate(_:)), keyEquivalent: ""))
+        fileMenu.addItem(NSMenuItem(title: "Manage Templates…", action: #selector(showTemplateManager(_:)), keyEquivalent: ""))
         fileMenu.addItem(NSMenuItem.separator())
         fileMenu.addItem(NSMenuItem(title: "Remove Profile", action: #selector(removeEditorProfile(_:)), keyEquivalent: ""))
         fileMenu.addItem(NSMenuItem(title: "Remove Layer", action: #selector(removeEditorLayer(_:)), keyEquivalent: ""))
@@ -118,6 +132,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         editItem.submenu = editMenu
 
         NSApp.mainMenu = mainMenu
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu.title == "File" else {
+            return
+        }
+
+        addProfileFromTemplateItem?.submenu = makeTemplateCreationMenu(kind: .profile)
+        addLayerFromTemplateItem?.submenu = makeTemplateCreationMenu(kind: .layer)
     }
 
     func setupStatusBar() {
@@ -269,6 +292,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return fadeMenu
     }
 
+    private func makeTemplateCreationMenu(kind: ProfileTemplateKind) -> NSMenu {
+        let menu = NSMenu(title: kind == .profile ? "Add Profile from Template" : "Add Layer from Template")
+        let defaultSelector = kind == .profile
+            ? #selector(addDefaultTemplateProfile(_:))
+            : #selector(addDefaultTemplateLayer(_:))
+        let defaultItem = NSMenuItem(title: "Default Template", action: defaultSelector, keyEquivalent: "")
+        defaultItem.target = self
+        menu.addItem(defaultItem)
+
+        menu.addItem(NSMenuItem.separator())
+        let templates = ProfileTemplateStore.shared.templates(kind: kind)
+        guard !templates.isEmpty else {
+            let emptyItem = NSMenuItem(title: "No Saved Templates", action: nil, keyEquivalent: "")
+            emptyItem.isEnabled = false
+            menu.addItem(emptyItem)
+            return menu
+        }
+
+        for template in templates {
+            let selector = kind == .profile
+                ? #selector(addProfileFromSavedTemplate(_:))
+                : #selector(addLayerFromSavedTemplate(_:))
+            let item = NSMenuItem(title: template.name, action: selector, keyEquivalent: "")
+            item.target = self
+            item.representedObject = template.id.uuidString
+            menu.addItem(item)
+        }
+
+        return menu
+    }
+
     func launchGamepad() {
         DispatchQueue.main.async {
             if let gamepadWindow = self.gamepadWindow {
@@ -371,6 +425,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         getEditorWindowController().addLayer()
     }
 
+    @objc func addDefaultTemplateProfile(_ sender: Any?) {
+        getEditorWindowController().showEditorWindow()
+        getEditorWindowController().addDefaultTemplateProfile()
+    }
+
+    @objc func addDefaultTemplateLayer(_ sender: Any?) {
+        getEditorWindowController().showEditorWindow()
+        getEditorWindowController().addDefaultTemplateLayer()
+    }
+
+    @objc func addProfileFromSavedTemplate(_ sender: NSMenuItem) {
+        guard let templateID = templateID(from: sender) else { return }
+        getEditorWindowController().showEditorWindow()
+        getEditorWindowController().addProfileFromTemplate(id: templateID)
+    }
+
+    @objc func addLayerFromSavedTemplate(_ sender: NSMenuItem) {
+        guard let templateID = templateID(from: sender) else { return }
+        getEditorWindowController().showEditorWindow()
+        getEditorWindowController().addLayerFromTemplate(id: templateID)
+    }
+
+    @objc func saveCurrentEditorSelectionAsTemplate(_ sender: Any?) {
+        getEditorWindowController().showEditorWindow()
+        getEditorWindowController().saveCurrentAsTemplate()
+    }
+
+    @objc func showTemplateManager(_ sender: Any?) {
+        getEditorWindowController().showEditorWindow()
+        getEditorWindowController().showTemplateManager()
+    }
+
     @objc func removeEditorProfile(_ sender: Any?) {
         getEditorWindowController().showEditorWindow()
         getEditorWindowController().removeProfile()
@@ -409,6 +495,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func confirmEditorNavigationIfNeeded() -> Bool {
         editorWindowController?.confirmSaveIfNeeded() ?? true
+    }
+
+    private func templateID(from sender: NSMenuItem) -> UUID? {
+        guard let idString = sender.representedObject as? String else {
+            return nil
+        }
+
+        return UUID(uuidString: idString)
     }
 
     private func startTrackingActiveApplications() {
