@@ -125,6 +125,16 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         noteUserActivity()
     }
 
+    func hideGamepad() {
+        releaseAllInputs()
+        inactivityTimer?.invalidate()
+        orderOut(nil)
+    }
+
+    func releaseAllInputs() {
+        (contentView as? GamepadContentView)?.releaseAllInputs()
+    }
+
     func reloadProfile() {
         var profile = ProfileStore.shared.activeResolvedProfile
         profile.name = ProfileStore.shared.activeResolvedProfileTitle
@@ -136,9 +146,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     }
 
     @objc private func hideOverlay() {
-        (contentView as? GamepadContentView)?.releaseAllInputs()
-        inactivityTimer?.invalidate()
-        orderOut(nil)
+        hideGamepad()
     }
 
     private func toggleMinimized() {

@@ -47,6 +47,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         editorWindowController?.flushPanelLayoutDefaults()
+        gamepadWindow?.releaseAllInputs()
+        KeyInjector.shared.releaseAllHeldKeys()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -330,7 +332,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func hideGamepad() {
-        gamepadWindow?.orderOut(nil)
+        gamepadWindow?.hideGamepad()
     }
 
     @objc func saveEditorChanges(_ sender: Any?) {
