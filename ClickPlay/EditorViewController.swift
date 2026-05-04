@@ -1,6 +1,6 @@
 import Cocoa
 
-final class ConfiguratorViewController: NSViewController, NSSplitViewDelegate {
+final class EditorViewController: NSViewController, NSSplitViewDelegate {
 
     private enum Metrics {
         static let minimumSidebarWidth: CGFloat = 160
@@ -10,8 +10,8 @@ final class ConfiguratorViewController: NSViewController, NSSplitViewDelegate {
     }
 
     private enum DefaultsKey {
-        static let sidebarExpandedWidth = "Configurator.sidebarExpandedWidth"
-        static let sidebarCollapsed = "Configurator.sidebarCollapsed"
+        static let sidebarExpandedWidth = "Editor.sidebarExpandedWidth"
+        static let sidebarCollapsed = "Editor.sidebarCollapsed"
     }
 
     private let profileListViewController = ProfileListViewController()

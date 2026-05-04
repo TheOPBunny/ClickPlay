@@ -1,12 +1,12 @@
 import Cocoa
 
-final class ConfiguratorWindowController: NSWindowController, NSWindowDelegate {
+final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
     var onClose: (() -> Void)?
-    private var configuratorViewController: ConfiguratorViewController?
+    private var editorViewController: EditorViewController?
 
     convenience init() {
-        let viewController = ConfiguratorViewController()
+        let viewController = EditorViewController()
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1180, height: 780),
             styleMask: [.titled, .closable, .resizable, .miniaturizable],
@@ -14,17 +14,17 @@ final class ConfiguratorWindowController: NSWindowController, NSWindowDelegate {
             defer: false
         )
 
-        window.title = "Gamepad Configurator"
+        window.title = "Click Play Editor"
         window.contentViewController = viewController
         window.center()
         window.isReleasedWhenClosed = false
         window.collectionBehavior = [.moveToActiveSpace]
         window.tabbingMode = .disallowed
-        window.setFrameAutosaveName("ConfiguratorWindow")
+        window.setFrameAutosaveName("EditorWindow")
         window.contentMinSize = NSSize(width: 760, height: 680)
 
         self.init(window: window)
-        configuratorViewController = viewController
+        editorViewController = viewController
         window.delegate = self
     }
 
@@ -50,7 +50,7 @@ final class ConfiguratorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func flushPanelLayoutDefaults() {
-        configuratorViewController?.flushPanelLayoutDefaults()
+        editorViewController?.flushPanelLayoutDefaults()
     }
 
     private func activateEditorApp() {
