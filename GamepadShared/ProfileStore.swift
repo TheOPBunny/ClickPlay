@@ -272,6 +272,14 @@ final class ProfileStore {
         save()
     }
 
+    func rename(_ id: UUID, to name: String) {
+        guard let idx = profiles.firstIndex(where: { $0.id == id }) else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, profiles[idx].name != trimmed else { return }
+        profiles[idx].name = trimmed
+        save()
+    }
+
     func delete(_ id: UUID) {
         guard profiles.count > 1 else { return }
         profiles.removeAll { $0.id == id }
@@ -346,6 +354,23 @@ final class ProfileStore {
         if profiles[parentIndex].activeSubProfileID == nil {
             profiles[parentIndex].activeSubProfileID = savedSubProfile.id
         }
+        save()
+    }
+
+    func renameSubProfile(_ subProfileID: UUID, in parentProfileID: UUID, to name: String) {
+        guard let parentIndex = profiles.firstIndex(where: { $0.id == parentProfileID }),
+              let childIndex = profiles[parentIndex].subProfiles.firstIndex(where: { $0.id == subProfileID }) else {
+            return
+        }
+
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, profiles[parentIndex].subProfiles[childIndex].name != trimmed else { return }
+        let previousNames = subProfileNames(in: profiles[parentIndex])
+        profiles[parentIndex].subProfiles[childIndex].name = trimmed
+        profiles[parentIndex] = reconciledSubProfileSwitchButtons(
+            in: profiles[parentIndex],
+            previousNames: previousNames
+        )
         save()
     }
 

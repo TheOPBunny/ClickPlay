@@ -66,7 +66,7 @@ Implemented:
 
 ## Joystick Concept
 
-- [ ] Design and prototype a virtual joystick mode.
+- [x] Design and prototype a virtual joystick mode.
 
 Requirements:
 - Pressing the joystick button should capture the mouse.
@@ -77,8 +77,8 @@ Requirements:
 
 ## Miscellaneous
 
-- [ ] Create and add an app icon.
-- [ ] Pick a better product name.
+- [x] Create and add an app icon.
+- [x] Pick a better product name.
 
 ## Notes
 

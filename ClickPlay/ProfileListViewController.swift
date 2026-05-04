@@ -1,8 +1,10 @@
 import Cocoa
 
-final class ProfileListViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
+final class ProfileListViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate {
 
     var onProfileSelected: ((Profile) -> Void)?
+    var onProfileSelectionRequested: (() -> Bool)?
+    private typealias SidebarClipboard = (profile: Profile, isLayer: Bool)
 
     private final class SidebarItem: NSObject {
         let profileID: UUID
@@ -21,10 +23,12 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
     private let outlineView = NSOutlineView()
     private let scrollView = NSScrollView()
     private let titleLabel = NSTextField(labelWithString: "Profiles")
-    private let bar = NSStackView()
     private var isReloadingSelection = false
     private var isCollapsed = false
+    private var localClipboard: SidebarClipboard?
     private var templateManagerWindowController: NSWindowController?
+    private var lastSelectionChangeTime = Date.distantPast
+    private let renameAfterSelectionDelay: TimeInterval = 0.65
 
     private var profiles: [Profile] {
         ProfileStore.shared.profiles
@@ -39,14 +43,20 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
 
         let nameColumn = NSTableColumn(identifier: .init("name"))
         nameColumn.title = "Profiles"
+        nameColumn.isEditable = true
 
         outlineView.addTableColumn(nameColumn)
         outlineView.outlineTableColumn = nameColumn
         outlineView.headerView = nil
         outlineView.dataSource = self
         outlineView.delegate = self
+        outlineView.target = self
+        outlineView.action = #selector(outlineClicked(_:))
         outlineView.rowHeight = 28
         outlineView.usesAlternatingRowBackgroundColors = true
+        let contextMenu = NSMenu()
+        contextMenu.delegate = self
+        outlineView.menu = contextMenu
 
         scrollView.documentView = outlineView
         scrollView.hasVerticalScroller = true
@@ -65,32 +75,18 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         header.edgeInsets = NSEdgeInsets(top: 4, left: 6, bottom: 4, right: 6)
         header.translatesAutoresizingMaskIntoConstraints = false
 
-        bar.addArrangedSubview(makeButton(title: "+", action: #selector(showAddProfileMenu(_:))))
-        bar.addArrangedSubview(makeButton(title: "⎘", action: #selector(duplicateSelection)))
-        bar.addArrangedSubview(makeButton(title: "−", action: #selector(deleteSelection)))
-        bar.addArrangedSubview(makeButton(title: "...", action: #selector(showTemplateMenu(_:))))
-        bar.addArrangedSubview(NSView())
-        bar.orientation = .horizontal
-        bar.spacing = 4
-        bar.translatesAutoresizingMaskIntoConstraints = false
-
         view.addSubview(header)
         view.addSubview(scrollView)
-        view.addSubview(bar)
 
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: view.topAnchor),
             header.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             header.heightAnchor.constraint(equalToConstant: 32),
-            bar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 4),
-            bar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -4),
-            bar.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -4),
-            bar.heightAnchor.constraint(equalToConstant: 26),
             scrollView.topAnchor.constraint(equalTo: header.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: bar.topAnchor, constant: -4),
+            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
 
         reload()
@@ -100,7 +96,6 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         isCollapsed = collapsed
         titleLabel.isHidden = collapsed
         scrollView.isHidden = collapsed
-        bar.isHidden = collapsed
     }
 
     func reload() {
@@ -145,10 +140,46 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         let resolvedName = item.isSubProfile
             ? subProfile(with: item.profileID, parentID: item.parentID)?.name
             : profile(with: item.profileID)?.name
-        let label = NSTextField(labelWithString: resolvedName ?? "")
-        label.font = item.isSubProfile ? .systemFont(ofSize: 13) : .boldSystemFont(ofSize: 13)
-        label.lineBreakMode = .byTruncatingTail
-        return label
+        let identifier = NSUserInterfaceItemIdentifier("ProfileNameCell")
+        let cell = outlineView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView ?? NSTableCellView()
+        cell.identifier = identifier
+
+        let textField: NSTextField
+        if let existingTextField = cell.textField {
+            textField = existingTextField
+        } else {
+            textField = NSTextField()
+            textField.isBordered = false
+            textField.drawsBackground = false
+            textField.translatesAutoresizingMaskIntoConstraints = false
+            cell.addSubview(textField)
+            cell.textField = textField
+            NSLayoutConstraint.activate([
+                textField.leadingAnchor.constraint(equalTo: cell.leadingAnchor),
+                textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor),
+                textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+            ])
+        }
+
+        textField.stringValue = resolvedName ?? ""
+        textField.font = item.isSubProfile ? .systemFont(ofSize: 13) : .boldSystemFont(ofSize: 13)
+        textField.lineBreakMode = .byTruncatingTail
+        textField.isEditable = true
+        return cell
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, setObjectValue object: Any?, for tableColumn: NSTableColumn?, byItem item: Any?) {
+        guard let item = item as? SidebarItem,
+              let name = object as? String else {
+            return
+        }
+
+        if let parentID = item.parentID {
+            ProfileStore.shared.renameSubProfile(item.profileID, in: parentID, to: name)
+            return
+        }
+
+        ProfileStore.shared.rename(item.profileID, to: name)
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
@@ -157,6 +188,13 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         }
 
         guard let item = outlineView.item(atRow: outlineView.selectedRow) as? SidebarItem else {
+            return
+        }
+
+        lastSelectionChangeTime = Date()
+
+        guard onProfileSelectionRequested?() ?? true else {
+            restoreActiveSelection()
             return
         }
 
@@ -169,12 +207,6 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
 
         ProfileStore.shared.setActive(item.profileID)
         onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
-    }
-
-    private func makeButton(title: String, action: Selector) -> NSButton {
-        let button = NSButton(title: title, target: self, action: action)
-        button.bezelStyle = .smallSquare
-        return button
     }
 
     @objc private func showAddProfileMenu(_ sender: NSButton) {
@@ -203,12 +235,12 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         menu.popUp(positioning: nil, at: CGPoint(x: 0, y: sender.bounds.maxY + 2), in: sender)
     }
 
-    @objc private func addBlankProfile() {
+    @objc func addBlankProfile() {
         let profile = Profile.makeBlank(name: "Profile \(profiles.count + 1)").asTopLevelContainer()
         add(profile: profile)
     }
 
-    @objc private func addBlankSubProfile() {
+    @objc func addBlankSubProfile() {
         addSubProfile(fromTemplate: false)
     }
 
@@ -322,7 +354,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
     }
 
-    @objc private func duplicateSelection() {
+    @objc func duplicateSelection() {
         guard let item = outlineView.item(atRow: outlineView.selectedRow) as? SidebarItem else {
             return
         }
@@ -343,7 +375,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
     }
 
-    @objc private func deleteSelection() {
+    @objc func deleteSelection() {
         guard let item = outlineView.item(atRow: outlineView.selectedRow) as? SidebarItem else {
             return
         }
@@ -356,6 +388,76 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
 
         ProfileStore.shared.delete(item.profileID)
         onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+    }
+
+    @objc func cut(_ sender: Any?) {
+        guard copySelectionToLocalClipboard() else {
+            return
+        }
+
+        deleteSelection()
+    }
+
+    @objc func copy(_ sender: Any?) {
+        _ = copySelectionToLocalClipboard()
+    }
+
+    @objc func paste(_ sender: Any?) {
+        guard let localClipboard else {
+            return
+        }
+
+        if localClipboard.isLayer {
+            guard let parentID = selectedParentID() else {
+                return
+            }
+
+            var layer = localClipboard.profile.copyWithNewIDs()
+            layer.subProfiles = []
+            layer.activeSubProfileID = nil
+            _ = ProfileStore.shared.addSubProfile(layer, to: parentID)
+            onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+            return
+        }
+
+        let profile = localClipboard.profile.copyWithNewIDs().asTopLevelContainer()
+        add(profile: profile)
+    }
+
+    @objc func rename(_ sender: Any?) {
+        beginRenameSelected()
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        if outlineView.clickedRow >= 0 {
+            outlineView.selectRowIndexes(IndexSet(integer: outlineView.clickedRow), byExtendingSelection: false)
+        }
+
+        menu.removeAllItems()
+        addContextItem("Cut", action: #selector(cut(_:)), to: menu, enabled: canDeleteSelection)
+        addContextItem("Copy", action: #selector(copy(_:)), to: menu, enabled: selectedSidebarItem() != nil)
+        addContextItem("Paste", action: #selector(paste(_:)), to: menu, enabled: localClipboard != nil)
+        menu.addItem(NSMenuItem.separator())
+        addContextItem("Duplicate", action: #selector(duplicateSelection), to: menu, enabled: selectedSidebarItem() != nil)
+        addContextItem("Delete", action: #selector(deleteSelection), to: menu, enabled: canDeleteSelection)
+        menu.addItem(NSMenuItem.separator())
+        addContextItem("Rename", action: #selector(rename(_:)), to: menu, enabled: selectedSidebarItem() != nil)
+    }
+
+    func deleteSelectedProfile() {
+        guard let item = selectedSidebarItem(), !item.isSubProfile else {
+            return
+        }
+
+        deleteSelection()
+    }
+
+    func deleteSelectedLayer() {
+        guard let item = selectedSidebarItem(), item.isSubProfile else {
+            return
+        }
+
+        deleteSelection()
     }
 
     private func expandAllProfiles() {
@@ -386,6 +488,12 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         outlineView.deselectAll(nil)
     }
 
+    private func restoreActiveSelection() {
+        isReloadingSelection = true
+        selectActiveSubProfile()
+        isReloadingSelection = false
+    }
+
     private func selectedParentID() -> UUID? {
         guard let item = outlineView.item(atRow: outlineView.selectedRow) as? SidebarItem else {
             return ProfileStore.shared.activeProfileID
@@ -396,6 +504,66 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
 
     private func selectedSidebarItem() -> SidebarItem? {
         outlineView.item(atRow: outlineView.selectedRow) as? SidebarItem
+    }
+
+    private var canDeleteSelection: Bool {
+        guard let item = selectedSidebarItem() else {
+            return false
+        }
+
+        if item.isSubProfile, let parentID = item.parentID {
+            return (profile(with: parentID)?.subProfiles.count ?? 0) > 1
+        }
+
+        return profiles.count > 1
+    }
+
+    private func addContextItem(_ title: String, action: Selector, to menu: NSMenu, enabled: Bool) {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        item.isEnabled = enabled
+        menu.addItem(item)
+    }
+
+    private func copySelectionToLocalClipboard() -> Bool {
+        guard let item = selectedSidebarItem(),
+              let profile = profile(for: item) else {
+            return false
+        }
+
+        localClipboard = (profile, item.isSubProfile)
+        return true
+    }
+
+    private func beginRenameSelected() {
+        let selectedRow = outlineView.selectedRow
+        guard selectedRow >= 0 else {
+            return
+        }
+
+        outlineView.editColumn(0, row: selectedRow, with: nil, select: true)
+    }
+
+    @objc private func outlineClicked(_ sender: NSOutlineView) {
+        guard sender.clickedRow >= 0,
+              sender.clickedColumn >= 0,
+              sender.window?.currentEvent?.clickCount == 1,
+              sender.clickedRow == sender.selectedRow,
+              clickedNameCellContainsCurrentEvent(row: sender.clickedRow),
+              Date().timeIntervalSince(lastSelectionChangeTime) >= renameAfterSelectionDelay else {
+            return
+        }
+
+        beginRenameSelected()
+    }
+
+    private func clickedNameCellContainsCurrentEvent(row: Int) -> Bool {
+        guard let event = outlineView.window?.currentEvent else {
+            return false
+        }
+
+        let eventPoint = outlineView.convert(event.locationInWindow, from: nil)
+        return outlineView.frameOfCell(atColumn: 0, row: row).contains(eventPoint)
     }
 
     private func profile(for item: SidebarItem) -> Profile? {
