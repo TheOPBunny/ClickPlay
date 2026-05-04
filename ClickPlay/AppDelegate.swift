@@ -28,7 +28,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Signing & Capabilities, set Team and let it stabilize, then copy the
         // built .app to /Applications and run it from there instead of via ⌘R.
         let trusted = AXIsProcessTrusted()
-        NSLog("OnScreenGamepad launched. Accessibility trusted: \(trusted)")
+        NSLog("Click Play launched. Accessibility trusted: \(trusted)")
 
         if trusted {
             launchGamepad()
@@ -56,10 +56,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         mainMenu.addItem(appItem)
         mainMenu.addItem(editItem)
 
-        let appMenu = NSMenu(title: "OnScreenGamepad")
+        let appMenu = NSMenu(title: "Click Play")
         appMenu.addItem(
             NSMenuItem(
-                title: "Quit OnScreenGamepad",
+                title: "Quit Click Play",
                 action: #selector(NSApplication.terminate(_:)),
                 keyEquivalent: "q"
             )
@@ -101,7 +101,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NSLog("ERROR: Could not create status bar item")
             return
         }
-        btn.title = "🎮"
+        configureStatusBarIcon(for: btn)
         btn.target = self
         btn.action = #selector(statusBarClicked)
         btn.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -116,6 +116,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.rebuildMenu()
             self?.gamepadWindow?.reloadProfile()
         }
+    }
+
+    private func configureStatusBarIcon(for button: NSStatusBarButton) {
+        button.title = ""
+        button.toolTip = "Click Play"
+
+        guard let iconURL = Bundle.main.url(forResource: "Click-Play-menubar-template", withExtension: "png"),
+              let icon = NSImage(contentsOf: iconURL) else {
+            NSLog("ERROR: Could not load Click Play menu bar icon")
+            button.title = "CP"
+            return
+        }
+
+        let iconHeight: CGFloat = 16
+        let aspectRatio = icon.size.width / icon.size.height
+        icon.size = NSSize(width: iconHeight * aspectRatio, height: iconHeight)
+        icon.isTemplate = true
+        button.image = icon
+        button.imagePosition = .imageOnly
     }
 
     @objc func statusBarClicked() {

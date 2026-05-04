@@ -9,6 +9,7 @@ struct CanvasButtonObject {
     var labelBold: Bool
     var labelItalic: Bool
     var shape: ButtonShape
+    var type: ButtonType
     var isEnabled: Bool
     var isSelected: Bool
 }
@@ -244,7 +245,14 @@ final class GamepadPreviewView: NSView {
         case let .resize(id, corner, startFrame, startMouse):
             let deltaX = modelPoint.x - startMouse.x
             let deltaY = modelPoint.y - startMouse.y
-            let geometry = resizedGeometry(startFrame: startFrame, corner: corner, deltaX: deltaX, deltaY: deltaY)
+            let minimumSize = object(for: id).map { minimumEditorSize(for: $0.type) } ?? minimumEditorSize(for: .keyboard)
+            let geometry = resizedGeometry(
+                startFrame: startFrame,
+                corner: corner,
+                deltaX: deltaX,
+                deltaY: deltaY,
+                minimumSize: minimumSize
+            )
             applyGeometryChange([id: geometry])
 
         case let .marqueeSelect(start, _):
@@ -408,10 +416,11 @@ final class GamepadPreviewView: NSView {
         startFrame: CGRect,
         corner: ResizeCorner,
         deltaX: CGFloat,
-        deltaY: CGFloat
+        deltaY: CGFloat,
+        minimumSize: CGSize
     ) -> ButtonEditorGeometry {
-        let minWidth: CGFloat = 20
-        let minHeight: CGFloat = 14
+        let minWidth = minimumSize.width
+        let minHeight = minimumSize.height
 
         switch corner {
         case .topLeft:
@@ -482,6 +491,11 @@ final class GamepadPreviewView: NSView {
 
     private func drawButton(_ object: CanvasButtonObject) {
         let canvasFrame = canvasFrame(for: object.frame)
+        if object.type == .joystick {
+            drawJoystick(object, in: canvasFrame)
+            return
+        }
+
         let path = buttonPath(for: object.shape, in: canvasFrame)
         NSColor(hex: object.colorHex).withAlphaComponent(0.85).setFill()
         path.fill()
@@ -500,6 +514,49 @@ final class GamepadPreviewView: NSView {
 
         for corner in ResizeCorner.allCases {
             drawResizeHandle(handleRect(for: corner, objectFrame: canvasFrame))
+        }
+    }
+
+    private func drawJoystick(_ object: CanvasButtonObject, in frame: CGRect) {
+        let inset = max(
+            CGFloat(ButtonSizing.joystickMinimumOuterInset),
+            min(frame.width, frame.height) * CGFloat(ButtonSizing.joystickOuterInsetFraction)
+        )
+        let outerRect = frame.insetBy(dx: inset, dy: inset)
+        let path = NSBezierPath(roundedRect: outerRect, xRadius: 8, yRadius: 8)
+        NSColor(hex: object.colorHex).withAlphaComponent(0.36).setFill()
+        path.fill()
+        NSColor.white.withAlphaComponent(0.35).setStroke()
+        path.lineWidth = 2
+        path.stroke()
+
+        let knobDiameter = joystickKnobDiameter(for: frame.size)
+        let knobRect = CGRect(
+            x: frame.midX - knobDiameter / 2,
+            y: frame.midY - knobDiameter / 2,
+            width: knobDiameter,
+            height: knobDiameter
+        )
+        let knobPath = NSBezierPath(ovalIn: knobRect)
+        NSColor(hex: object.colorHex).withAlphaComponent(0.88).setFill()
+        knobPath.fill()
+        NSColor.white.withAlphaComponent(0.72).setStroke()
+        knobPath.lineWidth = 1
+        knobPath.stroke()
+
+        drawLabel(for: object, in: frame)
+
+        guard object.isSelected else {
+            return
+        }
+
+        NSColor.white.setStroke()
+        path.lineWidth = 2
+        path.stroke()
+        drawSelectionGlow(for: .roundedRectangle, in: outerRect)
+
+        for corner in ResizeCorner.allCases {
+            drawResizeHandle(handleRect(for: corner, objectFrame: frame))
         }
     }
 
@@ -555,6 +612,14 @@ final class GamepadPreviewView: NSView {
             return false
         }
 
+        if object.type == .joystick {
+            let inset = max(
+                CGFloat(ButtonSizing.joystickMinimumOuterInset),
+                min(object.frame.width, object.frame.height) * CGFloat(ButtonSizing.joystickOuterInsetFraction)
+            )
+            return object.frame.insetBy(dx: inset, dy: inset).contains(point)
+        }
+
         switch object.shape {
         case .roundedRectangle:
             return true
@@ -567,6 +632,25 @@ final class GamepadPreviewView: NSView {
             let normalizedY = (point.y - object.frame.midY) / (object.frame.height / 2)
             return (normalizedX * normalizedX) + (normalizedY * normalizedY) <= 1
         }
+    }
+
+    private func minimumEditorSize(for type: ButtonType) -> CGSize {
+        let minimumSize = ButtonSizing.minimumSize(for: type)
+        return CGSize(width: CGFloat(minimumSize.width), height: CGFloat(minimumSize.height))
+    }
+
+    private func joystickKnobDiameter(for size: CGSize) -> CGFloat {
+        let shortestSide = min(size.width, size.height)
+        guard shortestSide > 0 else {
+            return CGFloat(ButtonSizing.joystickMinimumKnobDiameter)
+        }
+
+        let scaledDiameter = shortestSide * CGFloat(ButtonSizing.joystickKnobDiameterFraction)
+        let boundedDiameter = min(
+            max(CGFloat(ButtonSizing.joystickMinimumKnobDiameter), scaledDiameter),
+            CGFloat(ButtonSizing.joystickMaximumKnobDiameter)
+        )
+        return min(boundedDiameter, max(6, shortestSide * 0.45))
     }
 
     private func drawResizeHandle(_ rect: CGRect) {

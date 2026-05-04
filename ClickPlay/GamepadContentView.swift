@@ -183,6 +183,7 @@ final class GamepadContentView: NSView {
 
     private var currentProfile: Profile
     private var isMinimized = false
+    private var capturedJoystickButton: GamepadButton?
 
     private var dragStartWindowOrigin: NSPoint = .zero
     private var dragStartLocationInScreen: NSPoint = .zero
@@ -213,6 +214,10 @@ final class GamepadContentView: NSView {
         updateHeader()
         updateLayout()
         buildButtons(profile: currentProfile)
+    }
+
+    func releaseAllInputs() {
+        releaseAllButtonsForRebuild()
     }
 
     override func setFrameSize(_ newSize: NSSize) {
@@ -291,11 +296,13 @@ final class GamepadContentView: NSView {
     }
 
     private func buildButtons(profile: Profile) {
+        releaseAllButtonsForRebuild()
         currentProfile = profile
 
         if isMinimized || padSurface.bounds.isEmpty {
             buttonViews.values.forEach { $0.removeFromSuperview() }
             buttonViews.removeAll()
+            capturedJoystickButton = nil
             return
         }
 
@@ -316,19 +323,22 @@ final class GamepadContentView: NSView {
 
         for button in profile.orderedButtonIDs {
             guard let cfg = profile.buttons[button.rawValue], cfg.enabled else { continue }
-            let cx = CGFloat(cfg.x) * width
-            let cy = CGFloat(cfg.y) * height
-            let bw = CGFloat(cfg.width) * width
-            let bh = CGFloat(cfg.height) * height
+            let rawWidth = CGFloat(cfg.width) * width
+            let rawHeight = CGFloat(cfg.height) * height
+            let minimumSize = ButtonSizing.minimumSize(for: cfg.type)
+            let bw = min(width, max(rawWidth, CGFloat(minimumSize.width)))
+            let bh = min(height, max(rawHeight, CGFloat(minimumSize.height)))
+            let cx = min(max(CGFloat(cfg.x) * width, bw / 2), width - bw / 2)
+            let cy = min(max(CGFloat(cfg.y) * height, bh / 2), height - bh / 2)
             let frame = CGRect(x: cx - bw / 2, y: cy - bh / 2, width: bw, height: bh)
 
             if let view = buttonViews[button] {
+                view.frame = frame
                 view.updateConfig(
                     cfg,
                     compatibilityModeEnabled: profile.compatibilityMode,
                     activeSubProfileID: profile.id
                 )
-                view.frame = frame
             } else {
                 let view = GamepadButtonView(
                     button: button,
@@ -336,12 +346,41 @@ final class GamepadContentView: NSView {
                     compatibilityModeEnabled: profile.compatibilityMode,
                     activeSubProfileID: profile.id
                 )
+                view.onJoystickCaptureChanged = { [weak self, weak view] captured in
+                    guard let self, let view else {
+                        return
+                    }
+                    self.setJoystickCapture(captured, for: view.button)
+                }
                 view.frame = frame
                 padSurface.addSubview(view)
                 buttonViews[button] = view
             }
         }
+        updateButtonVisibilityForJoystickCapture()
         NSLog("[ContentView] Built \(buttonViews.count) buttons")
+    }
+
+    private func releaseAllButtonsForRebuild() {
+        buttonViews.values.forEach { $0.releaseIfNeeded() }
+        capturedJoystickButton = nil
+        updateButtonVisibilityForJoystickCapture()
+    }
+
+    private func setJoystickCapture(_ captured: Bool, for button: GamepadButton) {
+        if captured {
+            capturedJoystickButton = button
+        } else if capturedJoystickButton == button {
+            capturedJoystickButton = nil
+        }
+
+        updateButtonVisibilityForJoystickCapture()
+    }
+
+    private func updateButtonVisibilityForJoystickCapture() {
+        for (button, view) in buttonViews {
+            view.isHidden = capturedJoystickButton.map { $0 != button } ?? false
+        }
     }
 
     private func beginWindowDrag(with event: NSEvent) {

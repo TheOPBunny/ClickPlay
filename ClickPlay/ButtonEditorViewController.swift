@@ -122,7 +122,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private static let buttonCountWarningThreshold = 100
     private static let pasteOffset: Double = 18
     private static let snapThreshold: CGFloat = 5
-    private static let pasteboardType = NSPasteboard.PasteboardType("com.onscreengamepad.canvas-buttons")
+    private static let pasteboardType = NSPasteboard.PasteboardType("com.clickplay.canvas-buttons")
 
     private var profile = ProfileStore.shared.activeResolvedProfile
     private var canvasObjects: [CanvasButtonObject] = []
@@ -237,6 +237,9 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         let addButton = NSButton(title: "Add Button", target: self, action: #selector(addButtonPressed))
         addButton.bezelStyle = .rounded
 
+        let addJoystickButton = NSButton(title: "Add Joystick", target: self, action: #selector(addJoystickPressed))
+        addJoystickButton.bezelStyle = .rounded
+
         let leftSidebarToggleButton = SidebarToggleButton()
         leftSidebarToggleButton.side = .left
         leftSidebarToggleButton.toolTip = "Toggle Profiles Sidebar"
@@ -265,6 +268,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             NSView(),
             rightInspectorToggleButton,
             addButton,
+            addJoystickButton,
             saveButton,
         ])
         topBar.orientation = .horizontal
@@ -533,6 +537,29 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         )
     }
 
+    private func makeNewJoystickConfig() -> ButtonConfig {
+        ButtonConfig(
+            type: .joystick,
+            x: 0,
+            y: 0,
+            width: 96,
+            height: 96,
+            editorWidth: 96,
+            editorHeight: 96,
+            colorHex: "#35A889",
+            keyCode: 13,
+            keyModifiers: 0,
+            label: "Joystick",
+            shape: .oval,
+            enabled: true,
+            interactionMode: .momentary,
+            rightClickKeyBindings: nil,
+            rightClickFallsBackToPrimary: false,
+            rightClickInteractionMode: nil,
+            joystick: .defaultBindings
+        )
+    }
+
     private func nextCustomButtonLabel() -> String {
         let nextNumber = profile.buttons.values.reduce(0) { currentMax, config in
             let label = config.label.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -704,6 +731,20 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         let config = makeNewButtonConfig()
         profile.buttons[button.rawValue] = config
         registerButtonStateUndo(button: button, before: nil, after: config, actionName: "Add Button")
+        syncWorkspaceAfterGeometryChange(selectedButton: button)
+        previewView.reload(objects: canvasObjects, keepSelection: false)
+        previewView.select(button: button)
+    }
+
+    @objc private func addJoystickPressed() {
+        guard confirmAddingButtonIfNeeded() else {
+            return
+        }
+
+        let button = GamepadButton.generated()
+        let config = makeNewJoystickConfig()
+        profile.buttons[button.rawValue] = config
+        registerButtonStateUndo(button: button, before: nil, after: config, actionName: "Add Joystick")
         syncWorkspaceAfterGeometryChange(selectedButton: button)
         previewView.reload(objects: canvasObjects, keepSelection: false)
         previewView.select(button: button)
@@ -909,6 +950,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 labelBold: config.labelBold,
                 labelItalic: config.labelItalic,
                 shape: config.shape,
+                type: config.type,
                 isEnabled: config.enabled,
                 isSelected: false
             )
@@ -927,7 +969,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 continue
             }
 
-            let appliedGeometry = clampedGeometry(proposedGeometry)
+            let appliedGeometry = clampedGeometry(proposedGeometry, type: config.type)
             config.x = appliedGeometry.centerX
             config.y = appliedGeometry.centerY
             config.editorWidth = appliedGeometry.width
@@ -961,6 +1003,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             labelBold: config.labelBold,
             labelItalic: config.labelItalic,
             shape: config.shape,
+            type: config.type,
             isEnabled: config.enabled,
             isSelected: false
         )
@@ -1089,6 +1132,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 || lhs.editorWidth != rhs.editorWidth
                 || lhs.editorHeight != rhs.editorHeight
                 || lhs.colorHex != rhs.colorHex
+                || lhs.type != rhs.type
                 || lhs.keyCode != rhs.keyCode
                 || lhs.keyModifiers != rhs.keyModifiers
                 || lhs.keyBindings != rhs.keyBindings
@@ -1100,6 +1144,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 || lhs.shape != rhs.shape
                 || lhs.enabled != rhs.enabled
                 || lhs.interactionMode != rhs.interactionMode
+                || lhs.joystick != rhs.joystick
                 || lhs.action != rhs.action
         }
     }
@@ -1325,8 +1370,9 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 config.editorHeight = fallbackHeight
             }
 
-            config.editorWidth = max(config.editorWidth, 20)
-            config.editorHeight = max(config.editorHeight, 14)
+            let minimumSize = ButtonSizing.minimumSize(for: config.type)
+            config.editorWidth = max(config.editorWidth, minimumSize.width)
+            config.editorHeight = max(config.editorHeight, minimumSize.height)
             editableProfile.buttons[button.rawValue] = config
         }
 
@@ -1424,7 +1470,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             height: config.editorHeight > 0 ? config.editorHeight : config.height,
             anchoredResize: nil
         )
-        let clamped = clampedGeometry(geometry)
+        let clamped = clampedGeometry(geometry, type: config.type)
         config.x = clamped.centerX
         config.y = clamped.centerY
         config.editorWidth = clamped.width
@@ -1513,10 +1559,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         var guides: [CanvasAlignmentGuide] = []
 
         if let xSnap {
+            let minimumSize = minimumEditorSize(for: button)
             let width = anchoredResize.resizesFromLeft
                 ? anchoredResize.anchorX - xSnap
                 : xSnap - anchoredResize.anchorX
-            snappedGeometry.width = max(width, 20)
+            snappedGeometry.width = max(width, minimumSize.width)
             snappedGeometry.centerX = anchoredResize.resizesFromLeft
                 ? anchoredResize.anchorX - (snappedGeometry.width / 2)
                 : anchoredResize.anchorX + (snappedGeometry.width / 2)
@@ -1524,10 +1571,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         }
 
         if let ySnap {
+            let minimumSize = minimumEditorSize(for: button)
             let height = anchoredResize.resizesFromBottom
                 ? anchoredResize.anchorY - ySnap
                 : ySnap - anchoredResize.anchorY
-            snappedGeometry.height = max(height, 14)
+            snappedGeometry.height = max(height, minimumSize.height)
             snappedGeometry.centerY = anchoredResize.resizesFromBottom
                 ? anchoredResize.anchorY - (snappedGeometry.height / 2)
                 : anchoredResize.anchorY + (snappedGeometry.height / 2)
@@ -1638,15 +1686,24 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         )
     }
 
-    private func clampedGeometry(_ geometry: ButtonEditorGeometry) -> ButtonEditorGeometry {
+    private func minimumEditorSize(for button: GamepadButton) -> (width: Double, height: Double) {
+        guard let config = profile.buttons[button.rawValue] else {
+            return ButtonSizing.minimumSize(for: .keyboard)
+        }
+
+        return ButtonSizing.minimumSize(for: config.type)
+    }
+
+    private func clampedGeometry(_ geometry: ButtonEditorGeometry, type: ButtonType) -> ButtonEditorGeometry {
         if let anchoredResize = geometry.anchoredResize {
-            return clampedAnchoredGeometry(geometry, anchoredResize: anchoredResize)
+            return clampedAnchoredGeometry(geometry, type: type, anchoredResize: anchoredResize)
         }
 
         let maxWidth = Self.maximumWorkspaceSize.width
         let maxHeight = Self.maximumWorkspaceSize.height
-        let width = min(max(geometry.width, 20), maxWidth)
-        let height = min(max(geometry.height, 14), maxHeight)
+        let minimumSize = ButtonSizing.minimumSize(for: type)
+        let width = min(max(geometry.width, minimumSize.width), maxWidth)
+        let height = min(max(geometry.height, minimumSize.height), maxHeight)
         let halfWidth = width / 2
         let halfHeight = height / 2
 
@@ -1672,6 +1729,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     private func clampedAnchoredGeometry(
         _ geometry: ButtonEditorGeometry,
+        type: ButtonType,
         anchoredResize: AnchoredButtonResize
     ) -> ButtonEditorGeometry {
         let workspaceMinX: Double
@@ -1698,8 +1756,9 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         let maxHeight = anchoredResize.resizesFromBottom
             ? anchoredResize.anchorY - workspaceMinY
             : workspaceMaxY - anchoredResize.anchorY
-        let width = min(max(geometry.width, 20), max(20, maxWidth))
-        let height = min(max(geometry.height, 14), max(14, maxHeight))
+        let minimumSize = ButtonSizing.minimumSize(for: type)
+        let width = min(max(geometry.width, minimumSize.width), max(minimumSize.width, maxWidth))
+        let height = min(max(geometry.height, minimumSize.height), max(minimumSize.height, maxHeight))
         let centerX = anchoredResize.resizesFromLeft
             ? anchoredResize.anchorX - (width / 2)
             : anchoredResize.anchorX + (width / 2)

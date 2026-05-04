@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## Project Overview
-OnScreenGamepad is a macOS AppKit status-bar utility that displays an always-on-top on-screen gamepad. Users click and hold buttons with the mouse, and the app injects keyboard events into other apps and games using `CGEvent`.
+Click Play is a macOS AppKit status-bar utility that displays an always-on-top on-screen gamepad. Users click and hold buttons with the mouse, and the app injects keyboard events into other apps and games using `CGEvent`.
 
 This is currently a functional prototype. Prefer improving the existing architecture over introducing major framework changes.
 
@@ -42,7 +42,7 @@ This is currently a functional prototype. Prefer improving the existing architec
 - Profile changes should reload the UI without requiring app restart.
 
 ## Data and Persistence
-- Profiles are stored at `~/Library/Application Support/OnScreenGamepad/profiles.json`.
+- Profiles are stored at `~/Library/Application Support/Click Play/profiles.json`.
 - Preserve backward compatibility for saved profiles unless a migration is intentionally added.
 - Keep `GamepadButton.rawValue` stable unless there is a deliberate migration plan, because profile button configs are keyed by those values.
 

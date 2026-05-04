@@ -1,0 +1,1576 @@
+import Cocoa
+
+final class GamepadButtonView: NSView {
+
+    private final class CenteredLabelView: NSView {
+        var stringValue = "" {
+            didSet { needsDisplay = true }
+        }
+        var font: NSFont = .systemFont(ofSize: 11) {
+            didSet { needsDisplay = true }
+        }
+
+        override var isFlipped: Bool { true }
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            nil
+        }
+
+        override func draw(_ dirtyRect: NSRect) {
+            super.draw(dirtyRect)
+
+            let paragraphStyle = NSMutableParagraphStyle()
+            paragraphStyle.alignment = .center
+            let attributedLabel = NSAttributedString(
+                string: stringValue,
+                attributes: [
+                    .font: font,
+                    .foregroundColor: NSColor.white,
+                    .paragraphStyle: paragraphStyle,
+                ]
+            )
+            let measuredSize = attributedLabel.size()
+            let drawRect = CGRect(
+                x: 2,
+                y: max(0, bounds.midY - ceil(measuredSize.height) / 2),
+                width: max(0, bounds.width - 4),
+                height: ceil(measuredSize.height)
+            )
+            attributedLabel.draw(in: drawRect)
+        }
+    }
+
+    private enum PressSource {
+        case primary
+        case secondary
+        case joystickLeftClick
+        case joystickScrollUp
+        case joystickScrollDown
+    }
+
+    private final class PressState {
+        var pressedBinding: (keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)?
+        var pressedBindings: [(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)] = []
+        var isPressed = false
+        var autoReleaseWorkItem: DispatchWorkItem?
+        var sequenceRepeatWorkItem: DispatchWorkItem?
+    }
+
+    private struct ResolvedInput {
+        let bindings: [ButtonKeyBinding]
+        let mode: ButtonInteractionMode
+        let multiKeyActivationMode: MultiKeyActivationMode
+    }
+
+    private enum JoystickDirection: CaseIterable {
+        case up
+        case upRight
+        case right
+        case downRight
+        case down
+        case downLeft
+        case left
+        case upLeft
+    }
+
+    private enum JoystickVerticalDirection {
+        case up
+        case down
+    }
+
+    private enum JoystickHorizontalDirection {
+        case left
+        case right
+    }
+
+    private enum JoystickScrollDirection {
+        case up
+        case down
+    }
+
+    private static let compatibilityTapDuration: TimeInterval = 0.033
+    private static let joystickDeadzoneRadius: CGFloat = 18
+    private static let joystickIdleReturnDelay: TimeInterval = 0.075
+    private static let joystickCardinalDominanceRatio: CGFloat = 1.75
+    private static let joystickMinimumDeltaForAxisReset: CGFloat = 0.5
+    private static let joystickParkingInterval: TimeInterval = 0.04
+    private static let joystickParkingSuppressionWindow: TimeInterval = 0.012
+    private static let joystickParkingMatchTolerance: CGFloat = 3
+    private static let joystickScrollActivationInterval: TimeInterval = 0.18
+
+    let button: GamepadButton
+    private var config: ButtonConfig
+    private var compatibilityModeEnabled: Bool
+    private var activeSubProfileID: UUID?
+    private let primaryState = PressState()
+    private let secondaryState = PressState()
+    private let joystickLeftClickState = PressState()
+    private let joystickScrollUpState = PressState()
+    private let joystickScrollDownState = PressState()
+    private let shapeLayer = CAShapeLayer()
+    private let joystickOuterLayer = CAShapeLayer()
+    private let joystickKnobLayer = CAShapeLayer()
+    private let label = CenteredLabelView(frame: .zero)
+    private var isSwitchPressed = false
+    private var isJoystickCaptured = false
+    private var joystickOffset = CGPoint.zero
+    private var activeJoystickDirection: JoystickDirection?
+    private var activeJoystickBindings: [(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)] = []
+    private var lockedJoystickVerticalDirection: JoystickVerticalDirection?
+    private var joystickEventTap: CFMachPort?
+    private var joystickEventTapRunLoopSource: CFRunLoopSource?
+    private var joystickIdleReturnWorkItem: DispatchWorkItem?
+    private var joystickIdleReturnGeneration: UInt64 = 0
+    private var lastJoystickMovementTime: TimeInterval = 0
+    private var joystickParkingWorkItem: DispatchWorkItem?
+    private var pendingJoystickParkingPoint: CGPoint?
+    private var pendingJoystickParkingSuppressionDeadline: TimeInterval = 0
+    private var isJoystickCursorHidden = false
+    private var lastJoystickScrollActivation: (direction: JoystickScrollDirection, time: TimeInterval)?
+    private var trackingArea: NSTrackingArea?
+    var onJoystickCaptureChanged: ((Bool) -> Void)?
+
+    init(button: GamepadButton, config: ButtonConfig, compatibilityModeEnabled: Bool, activeSubProfileID: UUID?) {
+        self.button = button
+        self.config = config
+        self.compatibilityModeEnabled = compatibilityModeEnabled
+        self.activeSubProfileID = activeSubProfileID
+        super.init(frame: .zero)
+        setup()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func setup() {
+        wantsLayer = true
+        layer?.masksToBounds = false
+        shapeLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2
+        layer?.addSublayer(shapeLayer)
+        joystickOuterLayer.contentsScale = shapeLayer.contentsScale
+        joystickKnobLayer.contentsScale = shapeLayer.contentsScale
+        layer?.addSublayer(joystickOuterLayer)
+        layer?.addSublayer(joystickKnobLayer)
+
+        label.stringValue = config.resolvedDisplayLabel
+        label.font = config.resolvedLabelFont
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.topAnchor.constraint(equalTo: topAnchor),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor),
+            label.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+
+        updateAppearance(animated: false)
+        NSLog("[Button \(button.rawValue)] Created frame will be set by parent, keyBindings=\(config.keyBindings.map(\.keyCode))")
+    }
+
+    override func layout() {
+        super.layout()
+        updateShapePath()
+        updateJoystickLayers(baseColor: NSColor(hex: config.colorHex))
+    }
+
+    func updateConfig(_ newConfig: ButtonConfig, compatibilityModeEnabled: Bool, activeSubProfileID: UUID?) {
+        let wasJoystick = isJoystick
+        releaseIfNeeded()
+        config = newConfig
+        self.compatibilityModeEnabled = compatibilityModeEnabled
+        self.activeSubProfileID = activeSubProfileID
+        if wasJoystick || isJoystick {
+            resetJoystickRuntimeState()
+        }
+        label.stringValue = config.resolvedDisplayLabel
+        label.font = config.resolvedLabelFont
+        updateAppearance(animated: false)
+    }
+
+    func releaseIfNeeded() {
+        releaseJoystickCapture(warpCursorToCenter: false)
+
+        if isSubProfileSwitch {
+            isSwitchPressed = false
+            updateAppearance(animated: false)
+            return
+        }
+
+        releaseState(primaryState)
+        releaseState(secondaryState)
+        updateAppearance(animated: false)
+    }
+
+    override var acceptsFirstResponder: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        NSLog("[Button \(button.rawValue)] acceptsFirstMouse called -> true")
+        return true
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard containsAnyInteractivePointCandidate(point) else {
+            return nil
+        }
+
+        return self
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let ta = trackingArea { removeTrackingArea(ta) }
+        trackingArea = NSTrackingArea(
+            rect: bounds,
+            options: [.activeAlways, .mouseEnteredAndExited, .mouseMoved, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(trackingArea!)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard containsInteractivePoint(convert(event.locationInWindow, from: nil)) else {
+            return
+        }
+
+        NSLog("[Button \(button.rawValue)] mouseDown")
+        if config.type == .joystick {
+            beginJoystickCapture(with: event)
+            return
+        }
+
+        if isSubProfileSwitch {
+            handleSubProfileSwitchPressStarted()
+            return
+        }
+
+        handlePressStarted(source: .primary)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        NSLog("[Button \(button.rawValue)] mouseUp")
+        if config.type == .joystick {
+            return
+        }
+
+        if isSubProfileSwitch {
+            handleSubProfileSwitchPressEnded(inside: containsInteractivePoint(convert(event.locationInWindow, from: nil)))
+            return
+        }
+
+        handlePressEnded(source: .primary)
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        if config.type == .joystick {
+            if isJoystickCaptured {
+                releaseJoystickCapture(warpCursorToCenter: true)
+            }
+            return
+        }
+
+        guard containsInteractivePoint(convert(event.locationInWindow, from: nil)), !isSubProfileSwitch else {
+            return
+        }
+
+        NSLog("[Button \(button.rawValue)] rightMouseDown")
+        handlePressStarted(source: .secondary)
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        if config.type == .joystick {
+            return
+        }
+
+        guard !isSubProfileSwitch else {
+            return
+        }
+
+        NSLog("[Button \(button.rawValue)] rightMouseUp")
+        handlePressEnded(source: .secondary)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        if config.type == .joystick {
+            return
+        }
+
+        if isSubProfileSwitch {
+            let inside = containsInteractivePoint(convert(event.locationInWindow, from: nil))
+            if inside != isSwitchPressed {
+                isSwitchPressed = inside
+                updateAppearance(animated: true)
+            }
+            return
+        }
+
+        handleDrag(source: .primary, event: event)
+    }
+
+    override func rightMouseDragged(with event: NSEvent) {
+        if config.type == .joystick, isJoystickCaptured {
+            releaseJoystickCapture(warpCursorToCenter: true)
+            return
+        }
+
+        guard !isSubProfileSwitch else {
+            return
+        }
+
+        handleDrag(source: .secondary, event: event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        NSLog("[Button \(button.rawValue)] mouseExited")
+        if config.type == .joystick {
+            return
+        }
+
+        if isSubProfileSwitch {
+            if isSwitchPressed {
+                isSwitchPressed = false
+                updateAppearance(animated: true)
+            }
+            return
+        }
+
+        releaseMomentaryOnExit(source: .primary)
+        releaseMomentaryOnExit(source: .secondary)
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        guard config.type != .joystick else { return }
+    }
+
+    private var isSubProfileSwitch: Bool {
+        config.action.targetSubProfileID != nil
+    }
+
+    private var isCurrentSubProfileSwitch: Bool {
+        guard let targetID = config.action.targetSubProfileID else {
+            return false
+        }
+
+        return targetID == activeSubProfileID
+    }
+
+    private var isVisuallyPressed: Bool {
+        isSwitchPressed || primaryState.isPressed || secondaryState.isPressed || isJoystickCaptured
+    }
+
+    private var isJoystick: Bool {
+        config.type == .joystick
+    }
+
+    private func handleSubProfileSwitchPressStarted() {
+        guard !isCurrentSubProfileSwitch else {
+            return
+        }
+
+        isSwitchPressed = true
+        updateAppearance(animated: true)
+    }
+
+    private func handleSubProfileSwitchPressEnded(inside: Bool) {
+        defer {
+            if isSwitchPressed {
+                isSwitchPressed = false
+                updateAppearance(animated: true)
+            }
+        }
+
+        guard inside, !isCurrentSubProfileSwitch, let targetID = config.action.targetSubProfileID else {
+            return
+        }
+
+        ProfileStore.shared.setActiveSubProfile(targetID)
+    }
+
+    private func beginJoystickCapture(with event: NSEvent) {
+        guard !isJoystickCaptured else {
+            return
+        }
+
+        isJoystickCaptured = true
+        joystickOffset = .zero
+        activeJoystickDirection = nil
+        activeJoystickBindings = []
+        lockedJoystickVerticalDirection = nil
+        lastJoystickScrollActivation = nil
+        joystickIdleReturnGeneration &+= 1
+        lastJoystickMovementTime = ProcessInfo.processInfo.systemUptime
+        CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
+        hideJoystickCursorIfNeeded()
+        installJoystickEventMonitors()
+        parkJoystickCursor()
+        scheduleJoystickCursorParking()
+        onJoystickCaptureChanged?(true)
+        updateAppearance(animated: true)
+        NSLog("[Button \(button.rawValue)] joystickCaptureStarted")
+    }
+
+    private func updateJoystickCapture(deltaX: CGFloat, deltaY: CGFloat) {
+        guard isJoystickCaptured else {
+            return
+        }
+
+        noteJoystickMovementActivity()
+        let movementDelta = CGPoint(x: deltaX, y: deltaY)
+        joystickOffset = clampedJoystickOffset(joystickOffset(afterApplying: movementDelta))
+        updateActiveJoystickDirection()
+
+        scheduleJoystickIdleReturnIfNeeded()
+        updateAppearance(animated: false)
+    }
+
+    private func noteJoystickMovementActivity() {
+        lastJoystickMovementTime = ProcessInfo.processInfo.systemUptime
+    }
+
+    private func resetJoystickRuntimeState() {
+        joystickOffset = .zero
+        activeJoystickDirection = nil
+        activeJoystickBindings = []
+        lockedJoystickVerticalDirection = nil
+        lastJoystickScrollActivation = nil
+        joystickIdleReturnWorkItem?.cancel()
+        joystickIdleReturnWorkItem = nil
+        joystickIdleReturnGeneration &+= 1
+        joystickParkingWorkItem?.cancel()
+        joystickParkingWorkItem = nil
+        clearPendingJoystickParkingSuppression()
+    }
+
+    private func releaseJoystickCapture(warpCursorToCenter: Bool) {
+        guard isJoystickCaptured || activeJoystickDirection != nil || !activeJoystickBindings.isEmpty else {
+            return
+        }
+
+        releaseActiveJoystickBindings()
+        releaseState(joystickLeftClickState)
+        releaseState(joystickScrollUpState)
+        releaseState(joystickScrollDownState)
+        activeJoystickDirection = nil
+        joystickOffset = .zero
+        lockedJoystickVerticalDirection = nil
+        lastJoystickScrollActivation = nil
+        joystickIdleReturnWorkItem?.cancel()
+        joystickIdleReturnWorkItem = nil
+        joystickIdleReturnGeneration &+= 1
+        joystickParkingWorkItem?.cancel()
+        joystickParkingWorkItem = nil
+        clearPendingJoystickParkingSuppression()
+
+        if isJoystickCaptured {
+            isJoystickCaptured = false
+            removeJoystickEventMonitors()
+            CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
+            unhideJoystickCursorIfNeeded()
+            if warpCursorToCenter {
+                warpCursorToJoystickCenter()
+            }
+            onJoystickCaptureChanged?(false)
+            NSLog("[Button \(button.rawValue)] joystickCaptureEnded")
+        }
+
+        updateAppearance(animated: true)
+    }
+
+    private func installJoystickEventMonitors() {
+        removeJoystickEventMonitors()
+
+        let eventMask = Self.joystickEventMask
+        guard let eventTap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: eventMask,
+            callback: Self.joystickEventTapCallback,
+            userInfo: Unmanaged.passUnretained(self).toOpaque()
+        ) else {
+            NSLog("[Button \(button.rawValue)] ERROR: joystickEventTapCreationFailed")
+            return
+        }
+
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: eventTap, enable: true)
+
+        joystickEventTap = eventTap
+        joystickEventTapRunLoopSource = source
+    }
+
+    private func removeJoystickEventMonitors() {
+        joystickIdleReturnWorkItem?.cancel()
+        joystickIdleReturnWorkItem = nil
+        joystickIdleReturnGeneration &+= 1
+        joystickParkingWorkItem?.cancel()
+        joystickParkingWorkItem = nil
+        clearPendingJoystickParkingSuppression()
+
+        if let joystickEventTapRunLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), joystickEventTapRunLoopSource, .commonModes)
+            self.joystickEventTapRunLoopSource = nil
+        }
+
+        if let joystickEventTap {
+            CGEvent.tapEnable(tap: joystickEventTap, enable: false)
+            self.joystickEventTap = nil
+        }
+    }
+
+    private func hideJoystickCursorIfNeeded() {
+        guard !isJoystickCursorHidden else {
+            return
+        }
+
+        NSCursor.hide()
+        isJoystickCursorHidden = true
+    }
+
+    private func unhideJoystickCursorIfNeeded() {
+        guard isJoystickCursorHidden else {
+            return
+        }
+
+        NSCursor.unhide()
+        isJoystickCursorHidden = false
+    }
+
+    private func scheduleJoystickIdleReturnIfNeeded() {
+        joystickIdleReturnWorkItem?.cancel()
+        joystickIdleReturnGeneration &+= 1
+
+        guard hypot(joystickOffset.x, joystickOffset.y) > 0.5 else {
+            joystickIdleReturnWorkItem = nil
+            return
+        }
+
+        let generation = joystickIdleReturnGeneration
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.returnJoystickToDeadzoneIfIdle(generation: generation)
+        }
+        joystickIdleReturnWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.joystickIdleReturnDelay, execute: workItem)
+    }
+
+    private func returnJoystickToDeadzoneIfIdle(generation: UInt64) {
+        guard isJoystickCaptured else {
+            return
+        }
+
+        guard generation == joystickIdleReturnGeneration else {
+            return
+        }
+
+        let elapsed = ProcessInfo.processInfo.systemUptime - lastJoystickMovementTime
+        guard elapsed >= Self.joystickIdleReturnDelay else {
+            let remainingDelay = max(0.001, Self.joystickIdleReturnDelay - elapsed)
+            let workItem = DispatchWorkItem { [weak self] in
+                self?.returnJoystickToDeadzoneIfIdle(generation: generation)
+            }
+            joystickIdleReturnWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + remainingDelay, execute: workItem)
+            return
+        }
+
+        joystickIdleReturnWorkItem = nil
+        joystickOffset = .zero
+        updateActiveJoystickDirection()
+        updateAppearance(animated: true)
+    }
+
+    private func joystickOffset(afterApplying movementDelta: CGPoint) -> CGPoint {
+        var nextOffset = CGPoint(
+            x: joystickOffset.x + movementDelta.x,
+            y: joystickOffset.y + movementDelta.y
+        )
+
+        let absoluteX = abs(movementDelta.x)
+        let absoluteY = abs(movementDelta.y)
+        let minimumDelta = Self.joystickMinimumDeltaForAxisReset
+
+        if absoluteY >= minimumDelta,
+           absoluteY >= absoluteX * Self.joystickCardinalDominanceRatio {
+            nextOffset.x = 0
+        } else if absoluteX >= minimumDelta,
+                  absoluteX >= absoluteY * Self.joystickCardinalDominanceRatio {
+            nextOffset.y = 0
+        }
+
+        return nextOffset
+    }
+
+    private func joystickDirection(for offset: CGPoint) -> JoystickDirection? {
+        if let lockedJoystickVerticalDirection {
+            return joystickDirection(forLockedVerticalDirection: lockedJoystickVerticalDirection, offset: offset)
+        }
+
+        let distance = hypot(offset.x, offset.y)
+        let deadzoneRadius = effectiveJoystickDeadzoneRadius
+        guard distance >= deadzoneRadius else {
+            return nil
+        }
+
+        let axisThreshold = deadzoneRadius * 0.55
+        let wantsRight = offset.x > axisThreshold
+        let wantsLeft = offset.x < -axisThreshold
+        let wantsUp = offset.y > axisThreshold
+        let wantsDown = offset.y < -axisThreshold
+
+        if wantsUp {
+            if wantsRight {
+                return .upRight
+            }
+            if wantsLeft {
+                return .upLeft
+            }
+            return .up
+        }
+
+        if wantsDown {
+            if wantsRight {
+                return .downRight
+            }
+            if wantsLeft {
+                return .downLeft
+            }
+            return .down
+        }
+
+        if wantsRight {
+            return .right
+        }
+
+        if wantsLeft {
+            return .left
+        }
+
+        return abs(offset.x) >= abs(offset.y)
+            ? (offset.x >= 0 ? .right : .left)
+            : (offset.y >= 0 ? .up : .down)
+    }
+
+    private func joystickDirection(forLockedVerticalDirection verticalDirection: JoystickVerticalDirection, offset: CGPoint) -> JoystickDirection {
+        let horizontalDirection = joystickHorizontalDirection(for: offset)
+
+        switch (verticalDirection, horizontalDirection) {
+        case (.up, .right):
+            return .upRight
+        case (.up, .left):
+            return .upLeft
+        case (.up, nil):
+            return .up
+        case (.down, .right):
+            return .downRight
+        case (.down, .left):
+            return .downLeft
+        case (.down, nil):
+            return .down
+        }
+    }
+
+    private func joystickHorizontalDirection(for offset: CGPoint) -> JoystickHorizontalDirection? {
+        let deadzoneRadius = effectiveJoystickDeadzoneRadius
+        let axisThreshold = deadzoneRadius * 0.55
+
+        if offset.x > axisThreshold {
+            return .right
+        }
+
+        if offset.x < -axisThreshold {
+            return .left
+        }
+
+        return nil
+    }
+
+    private func updateActiveJoystickDirection() {
+        let nextDirection = joystickDirection(for: joystickOffset)
+        if nextDirection != activeJoystickDirection {
+            setActiveJoystickDirection(nextDirection)
+        }
+    }
+
+    private func setActiveJoystickDirection(_ direction: JoystickDirection?) {
+        releaseActiveJoystickBindings()
+        activeJoystickDirection = direction
+
+        guard let direction else {
+            return
+        }
+
+        activeJoystickBindings = uniqueInputBindings(bindings(for: direction))
+        for binding in activeJoystickBindings {
+            KeyInjector.shared.pressRaw(binding.keyCode, modifiers: binding.modifiers)
+        }
+        NSLog("[Button \(button.rawValue)] joystickDirection=\(direction) bindings=\(activeJoystickBindings.map { $0.keyCode })")
+    }
+
+    private func releaseActiveJoystickBindings() {
+        for binding in activeJoystickBindings.reversed() {
+            KeyInjector.shared.releaseRaw(binding.keyCode, modifiers: binding.modifiers)
+        }
+        activeJoystickBindings = []
+    }
+
+    private func bindings(for direction: JoystickDirection) -> [ButtonKeyBinding] {
+        switch direction {
+        case .up:
+            return [config.joystick.up]
+        case .upRight:
+            return [config.joystick.up, config.joystick.right]
+        case .right:
+            return [config.joystick.right]
+        case .downRight:
+            return [config.joystick.down, config.joystick.right]
+        case .down:
+            return [config.joystick.down]
+        case .downLeft:
+            return [config.joystick.down, config.joystick.left]
+        case .left:
+            return [config.joystick.left]
+        case .upLeft:
+            return [config.joystick.up, config.joystick.left]
+        }
+    }
+
+    private func warpCursorToJoystickCenter() {
+        warpCursor(to: CGPoint(x: bounds.midX, y: bounds.midY))
+    }
+
+    private func parkJoystickCursor() {
+        guard let quartzPoint = quartzPoint(for: CGPoint(x: bounds.midX, y: bounds.midY)) else {
+            return
+        }
+
+        pendingJoystickParkingPoint = quartzPoint
+        pendingJoystickParkingSuppressionDeadline = ProcessInfo.processInfo.systemUptime + Self.joystickParkingSuppressionWindow
+        CGWarpMouseCursorPosition(quartzPoint)
+    }
+
+    private func scheduleJoystickCursorParking() {
+        joystickParkingWorkItem?.cancel()
+
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self, self.isJoystickCaptured else {
+                return
+            }
+
+            self.parkJoystickCursor()
+            self.scheduleJoystickCursorParking()
+        }
+        joystickParkingWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.joystickParkingInterval, execute: workItem)
+    }
+
+    private static var joystickEventMask: CGEventMask {
+        eventMask(for: .mouseMoved)
+            | eventMask(for: .leftMouseDown)
+            | eventMask(for: .leftMouseUp)
+            | eventMask(for: .leftMouseDragged)
+            | eventMask(for: .rightMouseDown)
+            | eventMask(for: .rightMouseDragged)
+            | eventMask(for: .scrollWheel)
+    }
+
+    private static let joystickEventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in
+        guard let userInfo else {
+            return Unmanaged.passUnretained(event)
+        }
+
+        let view = Unmanaged<GamepadButtonView>.fromOpaque(userInfo).takeUnretainedValue()
+        return view.handleJoystickEventTap(type: type, event: event)
+    }
+
+    private static func eventMask(for type: CGEventType) -> CGEventMask {
+        CGEventMask(1 << type.rawValue)
+    }
+
+    private func handleJoystickEventTap(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        guard isJoystickCaptured else {
+            return Unmanaged.passUnretained(event)
+        }
+
+        switch type {
+        case .tapDisabledByTimeout, .tapDisabledByUserInput:
+            if let joystickEventTap {
+                CGEvent.tapEnable(tap: joystickEventTap, enable: true)
+            }
+            hideJoystickCursorIfNeeded()
+            parkJoystickCursor()
+            scheduleJoystickCursorParking()
+            return nil
+
+        case .rightMouseDown, .rightMouseDragged:
+            releaseJoystickCapture(warpCursorToCenter: true)
+            return nil
+
+        case .leftMouseDown:
+            handlePressStarted(source: .joystickLeftClick)
+            return nil
+
+        case .leftMouseUp:
+            handlePressEnded(source: .joystickLeftClick)
+            return nil
+
+        case .scrollWheel:
+            handleJoystickScroll(event)
+            return nil
+
+        case .mouseMoved, .leftMouseDragged:
+            let deltaX = CGFloat(event.getIntegerValueField(.mouseEventDeltaX))
+            let deltaY = CGFloat(-event.getIntegerValueField(.mouseEventDeltaY))
+
+            if shouldSuppressJoystickParkingEvent(event, deltaX: deltaX, deltaY: deltaY) {
+                return nil
+            }
+
+            guard deltaX != 0 || deltaY != 0 else {
+                return nil
+            }
+
+            updateJoystickCapture(deltaX: deltaX, deltaY: deltaY)
+            return nil
+
+        default:
+            return Unmanaged.passUnretained(event)
+        }
+    }
+
+    private func shouldSuppressJoystickParkingEvent(_ event: CGEvent, deltaX: CGFloat, deltaY: CGFloat) -> Bool {
+        guard let pendingJoystickParkingPoint else {
+            return false
+        }
+
+        guard ProcessInfo.processInfo.systemUptime <= pendingJoystickParkingSuppressionDeadline else {
+            clearPendingJoystickParkingSuppression()
+            return false
+        }
+
+        let location = event.location
+        let distance = hypot(
+            location.x - pendingJoystickParkingPoint.x,
+            location.y - pendingJoystickParkingPoint.y
+        )
+        guard distance <= Self.joystickParkingMatchTolerance else {
+            return false
+        }
+
+        if deltaX != 0 || deltaY != 0 {
+            noteJoystickMovementActivity()
+        }
+
+        clearPendingJoystickParkingSuppression()
+        return true
+    }
+
+    private func clearPendingJoystickParkingSuppression() {
+        pendingJoystickParkingPoint = nil
+        pendingJoystickParkingSuppressionDeadline = 0
+    }
+
+    private func handleJoystickScroll(_ event: CGEvent) {
+        let rawDelta = event.getIntegerValueField(.scrollWheelEventDeltaAxis1)
+        guard rawDelta != 0 else {
+            return
+        }
+
+        let direction: JoystickScrollDirection = rawDelta > 0 ? .up : .down
+        guard shouldActivateJoystickScroll(direction) else {
+            return
+        }
+
+        switch joystickScrollAction(for: direction).kind {
+        case .off:
+            return
+        case .axisLock:
+            toggleJoystickAxisLock(for: direction)
+        case .keyCombo:
+            triggerJoystickScrollInput(for: direction)
+        }
+    }
+
+    private func shouldActivateJoystickScroll(_ direction: JoystickScrollDirection) -> Bool {
+        let now = ProcessInfo.processInfo.systemUptime
+        if let lastJoystickScrollActivation,
+           lastJoystickScrollActivation.direction == direction,
+           now - lastJoystickScrollActivation.time < Self.joystickScrollActivationInterval {
+            return false
+        }
+
+        lastJoystickScrollActivation = (direction: direction, time: now)
+        return true
+    }
+
+    private func joystickScrollAction(for direction: JoystickScrollDirection) -> JoystickScrollAction {
+        switch direction {
+        case .up:
+            return config.joystick.scrollUpAction
+        case .down:
+            return config.joystick.scrollDownAction
+        }
+    }
+
+    private func toggleJoystickAxisLock(for direction: JoystickScrollDirection) {
+        let nextVerticalDirection: JoystickVerticalDirection = direction == .up ? .up : .down
+        if lockedJoystickVerticalDirection == nextVerticalDirection {
+            lockedJoystickVerticalDirection = nil
+        } else {
+            lockedJoystickVerticalDirection = nextVerticalDirection
+        }
+
+        updateActiveJoystickDirection()
+        scheduleJoystickIdleReturnIfNeeded()
+        updateAppearance(animated: true)
+    }
+
+    private func triggerJoystickScrollInput(for direction: JoystickScrollDirection) {
+        let source: PressSource = direction == .up ? .joystickScrollUp : .joystickScrollDown
+        guard let input = resolvedInput(for: source) else {
+            return
+        }
+
+        handleDiscreteActivation(source: source, input: input)
+    }
+
+    private func warpCursor(to localPoint: CGPoint) {
+        guard let quartzPoint = quartzPoint(for: localPoint) else {
+            return
+        }
+
+        CGWarpMouseCursorPosition(quartzPoint)
+    }
+
+    private func quartzPoint(for localPoint: CGPoint) -> CGPoint? {
+        guard let window, let screen = window.screen else {
+            return nil
+        }
+
+        let windowPoint = convert(localPoint, to: nil)
+        let screenPoint = window.convertPoint(toScreen: windowPoint)
+        return CGPoint(
+            x: screenPoint.x,
+            y: screen.frame.maxY - screenPoint.y
+        )
+    }
+
+    private func handlePressStarted(source: PressSource) {
+        guard let input = resolvedInput(for: source) else {
+            return
+        }
+
+        if input.mode == .turbo {
+            toggleTurboRepeat(source: source, input: input)
+            return
+        }
+
+        if usesSequentialMultiKey(input) {
+            if input.mode == .toggleHold {
+                toggleSequentialRepeat(source: source, input: input)
+                return
+            }
+
+            playSequentialBindings(source: source, input: input)
+            return
+        }
+
+        if usesSimultaneousMultiKey(input) {
+            if input.mode == .toggleHold {
+                setSimultaneousPressed(!state(for: source).isPressed, source: source, input: input)
+                return
+            }
+
+            if usesCompatibilityTap(input) {
+                setSimultaneousPressed(true, source: source, input: input)
+                scheduleCompatibilityRelease(source: source, input: input)
+                return
+            }
+
+            setSimultaneousPressed(true, source: source, input: input)
+            return
+        }
+
+        if input.mode == .toggleHold {
+            setPressed(!state(for: source).isPressed, source: source, input: input)
+            return
+        }
+
+        if usesCompatibilityTap(input) {
+            setPressed(true, source: source, input: input)
+            scheduleCompatibilityRelease(source: source, input: input)
+            return
+        }
+
+        setPressed(true, source: source, input: input)
+    }
+
+    private func handlePressEnded(source: PressSource) {
+        guard let input = resolvedInput(for: source) else {
+            return
+        }
+
+        guard input.mode != .turbo,
+              !usesSequentialMultiKey(input),
+              input.mode != .toggleHold,
+              !usesCompatibilityTap(input) else {
+            return
+        }
+
+        if usesSimultaneousMultiKey(input) {
+            setSimultaneousPressed(false, source: source, input: input)
+            return
+        }
+
+        setPressed(false, source: source, input: input)
+    }
+
+    private func handleDiscreteActivation(source: PressSource, input: ResolvedInput) {
+        if input.mode == .turbo {
+            toggleTurboRepeat(source: source, input: input)
+            return
+        }
+
+        if usesSequentialMultiKey(input) {
+            if input.mode == .toggleHold {
+                toggleSequentialRepeat(source: source, input: input)
+                return
+            }
+
+            playSequentialBindings(source: source, input: input)
+            return
+        }
+
+        if usesSimultaneousMultiKey(input) {
+            if input.mode == .toggleHold {
+                setSimultaneousPressed(!state(for: source).isPressed, source: source, input: input)
+                return
+            }
+
+            setSimultaneousPressed(true, source: source, input: input)
+            scheduleCompatibilityRelease(source: source, input: input)
+            return
+        }
+
+        if input.mode == .toggleHold {
+            setPressed(!state(for: source).isPressed, source: source, input: input)
+            return
+        }
+
+        setPressed(true, source: source, input: input)
+        scheduleCompatibilityRelease(source: source, input: input)
+    }
+
+    private func handleDrag(source: PressSource, event: NSEvent) {
+        guard let input = resolvedInput(for: source),
+              input.mode != .turbo,
+              !usesSequentialMultiKey(input),
+              input.mode != .toggleHold,
+              !usesCompatibilityTap(input) else {
+            return
+        }
+
+        let inside = containsInteractivePoint(convert(event.locationInWindow, from: nil))
+        let state = state(for: source)
+        if inside != state.isPressed {
+            setCurrentPressed(inside, source: source, input: input)
+        }
+    }
+
+    private func releaseMomentaryOnExit(source: PressSource) {
+        guard let input = resolvedInput(for: source),
+              input.mode != .turbo,
+              !usesSequentialMultiKey(input),
+              input.mode != .toggleHold,
+              !usesCompatibilityTap(input),
+              state(for: source).isPressed else {
+            return
+        }
+
+        setCurrentPressed(false, source: source, input: input)
+    }
+
+    private func resolvedInput(for source: PressSource) -> ResolvedInput? {
+        let primaryBindings = config.keyBindings.isEmpty
+            ? [ButtonKeyBinding(keyCode: config.keyCode, keyModifiers: config.keyModifiers)]
+            : config.keyBindings
+
+        switch source {
+        case .primary:
+            return ResolvedInput(
+                bindings: primaryBindings,
+                mode: config.interactionMode,
+                multiKeyActivationMode: config.multiKeyActivationMode
+            )
+        case .secondary:
+            if let rightClickBindings = config.rightClickKeyBindings, !rightClickBindings.isEmpty {
+                return ResolvedInput(
+                    bindings: rightClickBindings,
+                    mode: config.rightClickInteractionMode ?? config.interactionMode,
+                    multiKeyActivationMode: config.multiKeyActivationMode
+                )
+            }
+
+            guard config.rightClickFallsBackToPrimary else {
+                return nil
+            }
+
+            return ResolvedInput(
+                bindings: primaryBindings,
+                mode: config.rightClickInteractionMode ?? config.interactionMode,
+                multiKeyActivationMode: config.multiKeyActivationMode
+            )
+        case .joystickLeftClick:
+            return resolvedInput(for: config.joystick.leftClickInput)
+        case .joystickScrollUp:
+            return resolvedInput(for: config.joystick.scrollUpAction.input)
+        case .joystickScrollDown:
+            return resolvedInput(for: config.joystick.scrollDownAction.input)
+        }
+    }
+
+    private func resolvedInput(for input: JoystickInputConfig) -> ResolvedInput? {
+        guard !input.keyBindings.isEmpty else {
+            return nil
+        }
+
+        return ResolvedInput(
+            bindings: input.keyBindings,
+            mode: input.interactionMode,
+            multiKeyActivationMode: input.multiKeyActivationMode
+        )
+    }
+
+    private func state(for source: PressSource) -> PressState {
+        switch source {
+        case .primary:
+            return primaryState
+        case .secondary:
+            return secondaryState
+        case .joystickLeftClick:
+            return joystickLeftClickState
+        case .joystickScrollUp:
+            return joystickScrollUpState
+        case .joystickScrollDown:
+            return joystickScrollDownState
+        }
+    }
+
+    private func usesCompatibilityTap(_ input: ResolvedInput) -> Bool {
+        compatibilityModeEnabled && input.mode == .momentary
+    }
+
+    private func usesSequentialMultiKey(_ input: ResolvedInput) -> Bool {
+        input.bindings.count > 1 && input.multiKeyActivationMode == .sequential
+    }
+
+    private func usesSimultaneousMultiKey(_ input: ResolvedInput) -> Bool {
+        input.bindings.count > 1 && input.multiKeyActivationMode == .simultaneous
+    }
+
+    private func scheduleCompatibilityRelease(source: PressSource, input: ResolvedInput) {
+        let state = state(for: source)
+        state.autoReleaseWorkItem?.cancel()
+
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.setCurrentPressed(false, source: source, input: input)
+        }
+        state.autoReleaseWorkItem = workItem
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration, execute: workItem)
+    }
+
+    private func playSequentialBindings(source: PressSource, input: ResolvedInput) {
+        let state = state(for: source)
+        state.autoReleaseWorkItem?.cancel()
+
+        state.isPressed = true
+        updateAppearance(animated: true)
+
+        NSLog("[Button \(button.rawValue)] playSequential source=\(source) keyBindings=\(input.bindings.map(\.keyCode)) mode=\(input.mode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
+        postSequentialBindings(input)
+
+        let workItem = DispatchWorkItem { [weak self, weak state] in
+            state?.isPressed = false
+            self?.updateAppearance(animated: true)
+            state?.autoReleaseWorkItem = nil
+        }
+        state.autoReleaseWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration, execute: workItem)
+    }
+
+    private func toggleSequentialRepeat(source: PressSource, input: ResolvedInput) {
+        let state = state(for: source)
+        if state.sequenceRepeatWorkItem != nil {
+            stopSequentialRepeat(source: source)
+            return
+        }
+
+        state.isPressed = true
+        updateAppearance(animated: true)
+        NSLog("[Button \(button.rawValue)] startSequentialRepeat source=\(source) keyBindings=\(input.bindings.map(\.keyCode))")
+        repeatSequentialBindings(source: source, input: input)
+    }
+
+    private func toggleTurboRepeat(source: PressSource, input: ResolvedInput) {
+        let state = state(for: source)
+        if state.sequenceRepeatWorkItem != nil {
+            stopTurboRepeat(source: source)
+            return
+        }
+
+        state.isPressed = true
+        updateAppearance(animated: true)
+        NSLog("[Button \(button.rawValue)] startTurboRepeat source=\(source) keyBindings=\(input.bindings.map(\.keyCode)) activationMode=\(input.multiKeyActivationMode.rawValue)")
+        repeatTurboActivation(source: source, input: input)
+    }
+
+    private func repeatSequentialBindings(source: PressSource, input: ResolvedInput) {
+        postSequentialBindings(input)
+
+        var workItem: DispatchWorkItem?
+        workItem = DispatchWorkItem { [weak self] in
+            guard workItem?.isCancelled == false else {
+                return
+            }
+
+            self?.repeatSequentialBindings(source: source, input: input)
+        }
+        if let workItem {
+            state(for: source).sequenceRepeatWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration, execute: workItem)
+        }
+    }
+
+    private func stopSequentialRepeat(source: PressSource) {
+        let state = state(for: source)
+        state.sequenceRepeatWorkItem?.cancel()
+        state.sequenceRepeatWorkItem = nil
+        state.isPressed = false
+        updateAppearance(animated: true)
+        NSLog("[Button \(button.rawValue)] stopSequentialRepeat source=\(source)")
+    }
+
+    private func repeatTurboActivation(source: PressSource, input: ResolvedInput) {
+        postTurboActivation(input)
+
+        var workItem: DispatchWorkItem?
+        workItem = DispatchWorkItem { [weak self] in
+            guard workItem?.isCancelled == false else {
+                return
+            }
+
+            self?.repeatTurboActivation(source: source, input: input)
+        }
+        if let workItem {
+            state(for: source).sequenceRepeatWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration, execute: workItem)
+        }
+    }
+
+    private func stopTurboRepeat(source: PressSource) {
+        let state = state(for: source)
+        state.sequenceRepeatWorkItem?.cancel()
+        state.sequenceRepeatWorkItem = nil
+        state.isPressed = false
+        updateAppearance(animated: true)
+        NSLog("[Button \(button.rawValue)] stopTurboRepeat source=\(source)")
+    }
+
+    private func postSequentialBindings(_ input: ResolvedInput) {
+        for binding in input.bindings {
+            let keyCode = CGKeyCode(binding.keyCode)
+            let modifiers = NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
+            KeyInjector.shared.pressRaw(keyCode, modifiers: modifiers)
+            KeyInjector.shared.releaseRaw(keyCode, modifiers: modifiers)
+        }
+    }
+
+    private func postTurboActivation(_ input: ResolvedInput) {
+        if usesSimultaneousMultiKey(input) {
+            postSimultaneousTap(input)
+            return
+        }
+
+        if usesSequentialMultiKey(input) {
+            postSequentialBindings(input)
+            return
+        }
+
+        guard let binding = input.bindings.first else {
+            return
+        }
+
+        let keyCode = CGKeyCode(binding.keyCode)
+        let modifiers = NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
+        KeyInjector.shared.pressRaw(keyCode, modifiers: modifiers)
+        KeyInjector.shared.releaseRaw(keyCode, modifiers: modifiers)
+    }
+
+    private func postSimultaneousTap(_ input: ResolvedInput) {
+        let bindings = uniqueInputBindings(input.bindings)
+
+        for binding in bindings {
+            KeyInjector.shared.pressRaw(binding.keyCode, modifiers: binding.modifiers)
+        }
+
+        for binding in bindings.reversed() {
+            KeyInjector.shared.releaseRaw(binding.keyCode, modifiers: binding.modifiers)
+        }
+    }
+
+    private func setPressed(_ pressed: Bool, source: PressSource, input: ResolvedInput) {
+        let state = state(for: source)
+        guard pressed != state.isPressed, let binding = input.bindings.first else { return }
+        state.isPressed = pressed
+        let keyCode = CGKeyCode(binding.keyCode)
+        let modifiers = NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
+        NSLog("[Button \(button.rawValue)] setPressed=\(pressed) source=\(source) keyCode=\(keyCode) modifiers=\(binding.keyModifiers) mode=\(input.mode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
+        if pressed {
+            state.pressedBinding = (keyCode: keyCode, modifiers: modifiers)
+            KeyInjector.shared.pressRaw(keyCode, modifiers: modifiers)
+        } else {
+            let bindingToRelease = state.pressedBinding ?? (keyCode: keyCode, modifiers: modifiers)
+            KeyInjector.shared.releaseRaw(bindingToRelease.keyCode, modifiers: bindingToRelease.modifiers)
+            state.pressedBinding = nil
+            state.autoReleaseWorkItem?.cancel()
+            state.autoReleaseWorkItem = nil
+        }
+        updateAppearance(animated: true)
+    }
+
+    private func setCurrentPressed(_ pressed: Bool, source: PressSource, input: ResolvedInput) {
+        if usesSimultaneousMultiKey(input) {
+            setSimultaneousPressed(pressed, source: source, input: input)
+        } else {
+            setPressed(pressed, source: source, input: input)
+        }
+    }
+
+    private func setSimultaneousPressed(_ pressed: Bool, source: PressSource, input: ResolvedInput) {
+        let state = state(for: source)
+        guard pressed != state.isPressed else { return }
+        state.isPressed = pressed
+        NSLog("[Button \(button.rawValue)] setSimultaneousPressed=\(pressed) source=\(source) keyBindings=\(input.bindings.map(\.keyCode)) mode=\(input.mode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
+
+        if pressed {
+            state.pressedBindings = uniqueInputBindings(input.bindings)
+
+            for binding in state.pressedBindings {
+                KeyInjector.shared.pressRaw(binding.keyCode, modifiers: binding.modifiers)
+            }
+        } else {
+            releasePressedBindings(state)
+        }
+
+        updateAppearance(animated: true)
+    }
+
+    private func releaseState(_ state: PressState) {
+        state.autoReleaseWorkItem?.cancel()
+        state.autoReleaseWorkItem = nil
+        state.sequenceRepeatWorkItem?.cancel()
+        state.sequenceRepeatWorkItem = nil
+
+        if let pressedBinding = state.pressedBinding {
+            KeyInjector.shared.releaseRaw(pressedBinding.keyCode, modifiers: pressedBinding.modifiers)
+            state.pressedBinding = nil
+        }
+
+        releasePressedBindings(state)
+        state.isPressed = false
+    }
+
+    private func releasePressedBindings(_ state: PressState) {
+        for binding in state.pressedBindings.reversed() {
+            KeyInjector.shared.releaseRaw(binding.keyCode, modifiers: binding.modifiers)
+        }
+
+        state.pressedBindings = []
+        state.autoReleaseWorkItem?.cancel()
+        state.autoReleaseWorkItem = nil
+        state.isPressed = false
+    }
+
+    private func uniqueInputBindings(_ bindings: [ButtonKeyBinding]) -> [(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)] {
+        var seenBindings = Set<ButtonKeyBinding>()
+        return bindings.compactMap { binding in
+            guard seenBindings.insert(binding).inserted else {
+                return nil
+            }
+
+            return (
+                keyCode: CGKeyCode(binding.keyCode),
+                modifiers: NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
+            )
+        }
+    }
+
+    deinit {
+        releaseIfNeeded()
+    }
+
+    private func updateAppearance(animated: Bool) {
+        let base = NSColor(hex: config.colorHex)
+        let defaultAlpha = isCurrentSubProfileSwitch ? 0.32 : 0.75
+        let target = isVisuallyPressed ? base.withAlphaComponent(1.0) : base.withAlphaComponent(defaultAlpha)
+        let scale: CGFloat = isVisuallyPressed ? 0.92 : 1.0
+        updateShapePath()
+        updateJoystickLayers(baseColor: base)
+        if animated {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.05
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                shapeLayer.fillColor = target.cgColor
+                layer?.transform = CATransform3DMakeScale(scale, scale, 1)
+            }
+        } else {
+            shapeLayer.fillColor = target.cgColor
+            layer?.transform = CATransform3DMakeScale(scale, scale, 1)
+        }
+    }
+
+    private func updateShapePath() {
+        shapeLayer.frame = bounds
+        shapeLayer.path = buttonPath(in: bounds)
+    }
+
+    private func updateJoystickLayers(baseColor: NSColor) {
+        let showsJoystick = isJoystick
+        label.isHidden = showsJoystick
+        joystickOuterLayer.isHidden = !showsJoystick
+        joystickKnobLayer.isHidden = !showsJoystick
+        shapeLayer.isHidden = showsJoystick
+
+        guard showsJoystick else {
+            return
+        }
+
+        let outerRect = joystickOuterRect
+        joystickOuterLayer.frame = bounds
+        joystickOuterLayer.path = CGPath(roundedRect: outerRect, cornerWidth: 8, cornerHeight: 8, transform: nil)
+        joystickOuterLayer.fillColor = baseColor.withAlphaComponent(isJoystickCaptured ? 0.42 : 0.26).cgColor
+        joystickOuterLayer.strokeColor = NSColor.white.withAlphaComponent(isJoystickCaptured ? 0.65 : 0.32).cgColor
+        joystickOuterLayer.lineWidth = 2
+
+        let knobDiameter = joystickKnobDiameter
+        let clampedOffset = joystickVisualOffset
+        let knobRect = CGRect(
+            x: bounds.midX + clampedOffset.x - knobDiameter / 2,
+            y: bounds.midY + clampedOffset.y - knobDiameter / 2,
+            width: knobDiameter,
+            height: knobDiameter
+        )
+        joystickKnobLayer.frame = bounds
+        joystickKnobLayer.path = CGPath(ellipseIn: knobRect, transform: nil)
+        joystickKnobLayer.fillColor = baseColor.withAlphaComponent(isJoystickCaptured ? 0.95 : 0.72).cgColor
+        joystickKnobLayer.strokeColor = NSColor.white.withAlphaComponent(0.78).cgColor
+        joystickKnobLayer.lineWidth = 1
+    }
+
+    private var joystickVisualOffset: CGPoint {
+        var offset = clampedJoystickOffset(joystickOffset)
+        guard let lockedJoystickVerticalDirection else {
+            return offset
+        }
+
+        let travelLimits = joystickTravelLimits
+        switch lockedJoystickVerticalDirection {
+        case .up:
+            offset.y = travelLimits.height
+        case .down:
+            offset.y = -travelLimits.height
+        }
+        return offset
+    }
+
+    private func clampedJoystickOffset(_ offset: CGPoint) -> CGPoint {
+        let travelLimits = joystickTravelLimits
+        return CGPoint(
+            x: min(max(offset.x, -travelLimits.width), travelLimits.width),
+            y: min(max(offset.y, -travelLimits.height), travelLimits.height)
+        )
+    }
+
+    private var joystickOuterRect: CGRect {
+        let inset = max(
+            CGFloat(ButtonSizing.joystickMinimumOuterInset),
+            min(bounds.width, bounds.height) * CGFloat(ButtonSizing.joystickOuterInsetFraction)
+        )
+        return bounds.insetBy(dx: inset, dy: inset)
+    }
+
+    private var joystickKnobDiameter: CGFloat {
+        let shortestSide = min(bounds.width, bounds.height)
+        guard shortestSide > 0 else {
+            return CGFloat(ButtonSizing.joystickMinimumKnobDiameter)
+        }
+
+        let scaledDiameter = shortestSide * CGFloat(ButtonSizing.joystickKnobDiameterFraction)
+        let boundedDiameter = min(
+            max(CGFloat(ButtonSizing.joystickMinimumKnobDiameter), scaledDiameter),
+            CGFloat(ButtonSizing.joystickMaximumKnobDiameter)
+        )
+        return min(boundedDiameter, max(6, shortestSide * 0.45))
+    }
+
+    private var joystickTravelLimits: CGSize {
+        let outerRect = joystickOuterRect
+        let knobRadius = joystickKnobDiameter / 2
+        return CGSize(
+            width: max(0, outerRect.width / 2 - knobRadius),
+            height: max(0, outerRect.height / 2 - knobRadius)
+        )
+    }
+
+    private var effectiveJoystickDeadzoneRadius: CGFloat {
+        let shortestTravel = min(joystickTravelLimits.width, joystickTravelLimits.height)
+        guard shortestTravel > 0 else {
+            return Self.joystickDeadzoneRadius
+        }
+
+        return min(Self.joystickDeadzoneRadius, max(4, shortestTravel * 0.45))
+    }
+
+    private func buttonPath(in rect: CGRect) -> CGPath {
+        switch config.shape {
+        case .roundedRectangle:
+            return CGPath(roundedRect: rect, cornerWidth: 8, cornerHeight: 8, transform: nil)
+        case .oval:
+            return CGPath(ellipseIn: rect, transform: nil)
+        }
+    }
+
+    private func containsInteractivePoint(_ point: CGPoint) -> Bool {
+        guard bounds.contains(point) else {
+            return false
+        }
+
+        if isJoystick {
+            return joystickOuterRect.contains(point)
+        }
+
+        switch config.shape {
+        case .roundedRectangle:
+            return true
+        case .oval:
+            guard bounds.width > 0, bounds.height > 0 else {
+                return false
+            }
+
+            let normalizedX = (point.x - bounds.midX) / (bounds.width / 2)
+            let normalizedY = (point.y - bounds.midY) / (bounds.height / 2)
+            return (normalizedX * normalizedX) + (normalizedY * normalizedY) <= 1
+        }
+    }
+
+    private func containsAnyInteractivePointCandidate(_ point: CGPoint) -> Bool {
+        if containsInteractivePoint(point) {
+            return true
+        }
+
+        guard let superview else {
+            return false
+        }
+
+        return containsInteractivePoint(convert(point, from: superview))
+    }
+}

@@ -24,7 +24,7 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 - [x] Add an option for buttons to toggle into a held-down state on press.
 - [x] Fade the gamepad to 100% transparency after a configurable period of inactivity.
 - [x] Use system corner dragging to resize.
-- [x] Merge the old `GamepadConfigurator` workflow into `OnScreenGamepad`.
+- [x] Merge the old `GamepadConfigurator` workflow into `Click Play`.
 - [ ] Add mouse event actions for left click, right click, and drag/drop toggle.
 - [ ] Decide when to fully delete the archived standalone `GamepadConfigurator` fallback.
 
@@ -55,7 +55,7 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 - [x] If a label is empty, use the key as the label.
 - [x] Add label styling controls for text size, bold, and italic.
 - [ ] Fix button label vertical centering, especially in circle/oval buttons. Likely fix: stop centering by `NSAttributedString.size()` height alone and compute the text baseline from `NSFont.ascender`, `descender`, and `capHeight` in both the live button label view and configurator preview drawing.
-- [ ] Add an option for right-click to activate a button, or to activate a different recorded key.
+- [x] Add an option for right-click to activate a button, or to activate a different recorded key.
 - [x] Add full user template support: save current profile as a template, create profiles from saved templates, and manage saved templates.
 
 Implemented:
