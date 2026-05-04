@@ -107,7 +107,6 @@ final class ButtonDetailPanel: NSView {
     private var multiKeyActivationModeRow: NSStackView?
     private let enabledCheckbox = NSButton(checkboxWithTitle: "Enabled", target: nil, action: nil)
     private let deleteButton = NSButton(title: "Delete Button", target: nil, action: nil)
-    private var isCollapsed = false
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -206,12 +205,6 @@ final class ButtonDetailPanel: NSView {
         config?.editorHeight = height
         widthField.stringValue = String(format: "%.1f", width)
         heightField.stringValue = String(format: "%.1f", height)
-    }
-
-    func setCollapsed(_ collapsed: Bool) {
-        isCollapsed = collapsed
-        titleLabel.isHidden = collapsed
-        scrollView.isHidden = collapsed
     }
 
     private func setup() {

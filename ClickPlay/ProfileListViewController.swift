@@ -24,7 +24,6 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
     private let scrollView = NSScrollView()
     private let titleLabel = NSTextField(labelWithString: "Profiles")
     private var isReloadingSelection = false
-    private var isCollapsed = false
     private var localClipboard: SidebarClipboard?
     private var templateManagerWindowController: NSWindowController?
     private var lastSelectionChangeTime = Date.distantPast
@@ -90,12 +89,6 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         ])
 
         reload()
-    }
-
-    func setCollapsed(_ collapsed: Bool) {
-        isCollapsed = collapsed
-        titleLabel.isHidden = collapsed
-        scrollView.isHidden = collapsed
     }
 
     func reload() {
@@ -209,32 +202,6 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
     }
 
-    @objc private func showAddProfileMenu(_ sender: NSButton) {
-        let menu = NSMenu()
-
-        let templateProfileItem = NSMenuItem(title: "New Profile from Template", action: nil, keyEquivalent: "")
-        templateProfileItem.submenu = makeTemplateSubmenu(kind: .profile)
-        menu.addItem(templateProfileItem)
-
-        let blankProfileItem = NSMenuItem(title: "New Blank Profile", action: #selector(addBlankProfile), keyEquivalent: "")
-        blankProfileItem.target = self
-        menu.addItem(blankProfileItem)
-
-        menu.addItem(NSMenuItem.separator())
-
-        let templateLayerItem = NSMenuItem(title: "New Layer from Template", action: nil, keyEquivalent: "")
-        templateLayerItem.submenu = makeTemplateSubmenu(kind: .layer)
-        templateLayerItem.isEnabled = selectedParentID() != nil
-        menu.addItem(templateLayerItem)
-
-        let blankLayerItem = NSMenuItem(title: "New Blank Layer", action: #selector(addBlankSubProfile), keyEquivalent: "")
-        blankLayerItem.target = self
-        blankLayerItem.isEnabled = selectedParentID() != nil
-        menu.addItem(blankLayerItem)
-
-        menu.popUp(positioning: nil, at: CGPoint(x: 0, y: sender.bounds.maxY + 2), in: sender)
-    }
-
     @objc func addBlankProfile() {
         let profile = Profile.makeBlank(name: "Profile \(profiles.count + 1)").asTopLevelContainer()
         add(profile: profile)
@@ -253,11 +220,6 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         addSubProfile(fromTemplate: true)
     }
 
-    @objc private func addProfileFromSavedTemplate(_ sender: NSMenuItem) {
-        guard let templateID = representedTemplateID(sender) else { return }
-        addProfileFromTemplate(id: templateID)
-    }
-
     func addProfileFromTemplate(id templateID: UUID) {
         let existingNames = Set(profiles.map(\.name))
         let baseName = ProfileTemplateStore.shared.templates(kind: .profile)
@@ -267,11 +229,6 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
             return
         }
         add(profile: profile)
-    }
-
-    @objc private func addSubProfileFromSavedTemplate(_ sender: NSMenuItem) {
-        guard let templateID = representedTemplateID(sender) else { return }
-        addSubProfileFromTemplate(id: templateID)
     }
 
     func addSubProfileFromTemplate(id templateID: UUID) {
@@ -287,21 +244,6 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         }
 
         onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
-    }
-
-    @objc private func showTemplateMenu(_ sender: NSButton) {
-        let menu = NSMenu()
-
-        let saveItem = NSMenuItem(title: "Save Current as Template...", action: #selector(saveCurrentAsTemplate), keyEquivalent: "")
-        saveItem.target = self
-        saveItem.isEnabled = selectedSidebarItem() != nil
-        menu.addItem(saveItem)
-
-        let manageItem = NSMenuItem(title: "Manage Templates...", action: #selector(showTemplateManager), keyEquivalent: "")
-        manageItem.target = self
-        menu.addItem(manageItem)
-
-        menu.popUp(positioning: nil, at: CGPoint(x: 0, y: sender.bounds.maxY + 2), in: sender)
     }
 
     @objc func saveCurrentAsTemplate() {
@@ -578,44 +520,6 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         }
 
         return profile(with: item.profileID)
-    }
-
-    private func makeTemplateSubmenu(kind: ProfileTemplateKind) -> NSMenu {
-        let menu = NSMenu()
-        let templates = ProfileTemplateStore.shared.templates(kind: kind)
-
-        let defaultSelector = kind == .profile
-            ? #selector(addDefaultTemplateProfile)
-            : #selector(addDefaultTemplateSubProfile)
-        let defaultItem = NSMenuItem(title: "Default Template", action: defaultSelector, keyEquivalent: "")
-        defaultItem.target = self
-        menu.addItem(defaultItem)
-
-        guard !templates.isEmpty else {
-            menu.addItem(NSMenuItem.separator())
-            let emptyItem = NSMenuItem(title: "No Saved Templates", action: nil, keyEquivalent: "")
-            emptyItem.isEnabled = false
-            menu.addItem(emptyItem)
-            return menu
-        }
-
-        menu.addItem(NSMenuItem.separator())
-        for template in templates {
-            let selector = kind == .profile
-                ? #selector(addProfileFromSavedTemplate(_:))
-                : #selector(addSubProfileFromSavedTemplate(_:))
-            let item = NSMenuItem(title: template.name, action: selector, keyEquivalent: "")
-            item.target = self
-            item.representedObject = template.id.uuidString
-            menu.addItem(item)
-        }
-
-        return menu
-    }
-
-    private func representedTemplateID(_ sender: NSMenuItem) -> UUID? {
-        guard let idString = sender.representedObject as? String else { return nil }
-        return UUID(uuidString: idString)
     }
 
     private func uniqueName(_ baseName: String, existingNames: Set<String>) -> String {

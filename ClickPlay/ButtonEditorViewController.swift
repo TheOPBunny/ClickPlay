@@ -490,7 +490,6 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         }
 
         hasRestoredInspectorLayout = true
-        detailPanel.setCollapsed(false)
         detailPanel.isHidden = isInspectorCollapsed
         editorSplitView.adjustSubviews()
         lastObservedEditorSplitWidth = editorSplitView.bounds.width
@@ -520,12 +519,6 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         defaults.set(isInspectorCollapsed, forKey: DefaultsKey.inspectorCollapsed)
         defaults.set(Double(lastExpandedInspectorWidth), forKey: DefaultsKey.inspectorExpandedWidth)
         defaults.set(snappingCheckbox.state == .on, forKey: DefaultsKey.snappingEnabled)
-    }
-
-    private func makeLabel(_ text: String) -> NSTextField {
-        let label = NSTextField(labelWithString: text)
-        label.font = .systemFont(ofSize: 12)
-        return label
     }
 
     private func makeNewButtonConfig() -> ButtonConfig {
@@ -895,10 +888,6 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         } else {
             detailPanel.clear()
         }
-    }
-
-    @objc private func saveProfile() {
-        saveChanges()
     }
 
     private func showSavedIndicator() {
