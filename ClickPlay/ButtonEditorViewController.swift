@@ -143,7 +143,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     private let compatibilityModeCheckbox = NSButton(checkboxWithTitle: "Compatibility Mode", target: nil, action: nil)
     private let showGridCheckbox = NSButton(checkboxWithTitle: "Show Grid", target: nil, action: nil)
-    private let snappingCheckbox = NSButton(checkboxWithTitle: "Snap", target: nil, action: nil)
+    private let snappingCheckbox = NSButton(checkboxWithTitle: "Snapping", target: nil, action: nil)
     private let addPopupButton = NSPopUpButton(frame: .zero, pullsDown: true)
     private let previewView = GamepadPreviewView()
     private lazy var previewCanvasView = PreviewCanvasView(previewView: previewView)
