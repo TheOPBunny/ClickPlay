@@ -84,6 +84,30 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         editorViewController?.addLayer()
     }
 
+    func addDefaultTemplateProfile() {
+        editorViewController?.addDefaultTemplateProfile()
+    }
+
+    func addDefaultTemplateLayer() {
+        editorViewController?.addDefaultTemplateLayer()
+    }
+
+    func addProfileFromTemplate(id: UUID) {
+        editorViewController?.addProfileFromTemplate(id: id)
+    }
+
+    func addLayerFromTemplate(id: UUID) {
+        editorViewController?.addLayerFromTemplate(id: id)
+    }
+
+    func saveCurrentAsTemplate() {
+        editorViewController?.saveCurrentAsTemplate()
+    }
+
+    func showTemplateManager() {
+        editorViewController?.showTemplateManager()
+    }
+
     func removeProfile() {
         editorViewController?.removeProfile()
     }

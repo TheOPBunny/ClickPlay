@@ -244,17 +244,21 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         addSubProfile(fromTemplate: false)
     }
 
-    @objc private func addDefaultTemplateProfile() {
+    @objc func addDefaultTemplateProfile() {
         let profile = Profile.makeStarterTemplate(name: "Profile \(profiles.count + 1)").asTopLevelContainer()
         add(profile: profile)
     }
 
-    @objc private func addDefaultTemplateSubProfile() {
+    @objc func addDefaultTemplateSubProfile() {
         addSubProfile(fromTemplate: true)
     }
 
     @objc private func addProfileFromSavedTemplate(_ sender: NSMenuItem) {
         guard let templateID = representedTemplateID(sender) else { return }
+        addProfileFromTemplate(id: templateID)
+    }
+
+    func addProfileFromTemplate(id templateID: UUID) {
         let existingNames = Set(profiles.map(\.name))
         let baseName = ProfileTemplateStore.shared.templates(kind: .profile)
             .first { $0.id == templateID }?.name ?? "Profile"
@@ -266,11 +270,13 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
     }
 
     @objc private func addSubProfileFromSavedTemplate(_ sender: NSMenuItem) {
+        guard let templateID = representedTemplateID(sender) else { return }
+        addSubProfileFromTemplate(id: templateID)
+    }
+
+    func addSubProfileFromTemplate(id templateID: UUID) {
         guard let parentID = selectedParentID(),
-              let templateID = representedTemplateID(sender),
-              let parentProfile = profile(with: parentID) else {
-            return
-        }
+              let parentProfile = profile(with: parentID) else { return }
         let existingNames = Set(parentProfile.subProfiles.map(\.name))
         let baseName = ProfileTemplateStore.shared.templates(kind: .layer)
             .first { $0.id == templateID }?.name ?? "Layer"
@@ -298,7 +304,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         menu.popUp(positioning: nil, at: CGPoint(x: 0, y: sender.bounds.maxY + 2), in: sender)
     }
 
-    @objc private func saveCurrentAsTemplate() {
+    @objc func saveCurrentAsTemplate() {
         guard let item = selectedSidebarItem(),
               let selectedProfile = profile(for: item) else {
             return
@@ -313,7 +319,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         ProfileTemplateStore.shared.saveTemplate(named: name, kind: kind, profile: selectedProfile)
     }
 
-    @objc private func showTemplateManager() {
+    @objc func showTemplateManager() {
         if let templateManagerWindowController {
             templateManagerWindowController.showWindow(self)
             templateManagerWindowController.window?.makeKeyAndOrderFront(self)

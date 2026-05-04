@@ -151,6 +151,46 @@ final class EditorViewController: NSViewController, NSSplitViewDelegate {
         profileListViewController.addBlankSubProfile()
     }
 
+    func addDefaultTemplateProfile() {
+        guard confirmSaveIfNeeded() else {
+            return
+        }
+
+        profileListViewController.addDefaultTemplateProfile()
+    }
+
+    func addDefaultTemplateLayer() {
+        guard confirmSaveIfNeeded() else {
+            return
+        }
+
+        profileListViewController.addDefaultTemplateSubProfile()
+    }
+
+    func addProfileFromTemplate(id: UUID) {
+        guard confirmSaveIfNeeded() else {
+            return
+        }
+
+        profileListViewController.addProfileFromTemplate(id: id)
+    }
+
+    func addLayerFromTemplate(id: UUID) {
+        guard confirmSaveIfNeeded() else {
+            return
+        }
+
+        profileListViewController.addSubProfileFromTemplate(id: id)
+    }
+
+    func saveCurrentAsTemplate() {
+        profileListViewController.saveCurrentAsTemplate()
+    }
+
+    func showTemplateManager() {
+        profileListViewController.showTemplateManager()
+    }
+
     func removeProfile() {
         guard confirmSaveIfNeeded() else {
             return
