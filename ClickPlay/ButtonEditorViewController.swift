@@ -136,6 +136,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private var hasRestoredInspectorLayout = false
     private var isApplyingInspectorLayout = false
     private var lastObservedEditorSplitWidth: CGFloat = 0
+    private var savedProfileFingerprint: Data?
 
     private let nameField = NSTextField()
     private let opacitySlider = NSSlider()
@@ -190,6 +191,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         updatePreviewCanvasLayout()
         previewView.reload(objects: canvasObjects, keepSelection: false)
         detailPanel.clear()
+        savedProfileFingerprint = currentSavedProfileFingerprint()
         scrollPreviewToProfileContent()
     }
 
@@ -202,6 +204,54 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         } else {
             load(profile: ProfileStore.shared.activeResolvedProfile)
         }
+    }
+
+    var hasUnsavedChanges: Bool {
+        savedProfileFingerprint != currentSavedProfileFingerprint()
+    }
+
+    func confirmSaveIfNeeded() -> Bool {
+        guard hasUnsavedChanges else {
+            return true
+        }
+
+        let alert = NSAlert()
+        alert.messageText = "Save changes before leaving?"
+        alert.informativeText = "Your editor changes have not been saved yet."
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Discard")
+        alert.addButton(withTitle: "Cancel")
+        alert.alertStyle = .warning
+
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            return saveChanges()
+        case .alertSecondButtonReturn:
+            savedProfileFingerprint = currentSavedProfileFingerprint()
+            return true
+        default:
+            return false
+        }
+    }
+
+    @discardableResult
+    func saveChanges() -> Bool {
+        if !nameField.stringValue.isEmpty {
+            profile.name = nameField.stringValue
+        }
+
+        profile.compatibilityMode = compatibilityModeCheckbox.state == .on
+        clampEditableProfileToWorkspace()
+        let savedProfile = currentSavedProfile()
+        canvasObjects = makeCanvasObjects(from: profile)
+        refreshFittedPadSizeFields()
+        updatePreviewCanvasLayout()
+        previewView.reload(objects: canvasObjects, keepSelection: true)
+
+        onProfileSaved?(savedProfile)
+        savedProfileFingerprint = fingerprint(for: savedProfile)
+        showSavedIndicator()
+        return true
     }
 
     private func buildLayout() {
@@ -876,20 +926,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     @objc private func saveProfile() {
-        if !nameField.stringValue.isEmpty {
-            profile.name = nameField.stringValue
-        }
-
-        profile.compatibilityMode = compatibilityModeCheckbox.state == .on
-        clampEditableProfileToWorkspace()
-        let savedProfile = makeSavedProfile(from: profile).normalizedForSaving()
-        canvasObjects = makeCanvasObjects(from: profile)
-        refreshFittedPadSizeFields()
-        updatePreviewCanvasLayout()
-        previewView.reload(objects: canvasObjects, keepSelection: true)
-
-        onProfileSaved?(savedProfile)
-        showSavedIndicator()
+        saveChanges()
     }
 
     private func showSavedIndicator() {
@@ -1416,6 +1453,20 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         }
 
         return savedProfile
+    }
+
+    private func currentSavedProfile() -> Profile {
+        makeSavedProfile(from: profile).normalizedForSaving()
+    }
+
+    private func currentSavedProfileFingerprint() -> Data? {
+        fingerprint(for: currentSavedProfile())
+    }
+
+    private func fingerprint(for profile: Profile) -> Data? {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return try? encoder.encode(profile)
     }
 
     private func refreshFittedPadSizeFields() {
