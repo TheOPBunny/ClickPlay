@@ -22,10 +22,19 @@ private enum AppStorage {
         let legacyURL = appSupport.appendingPathComponent(legacyDirectoryName).appendingPathComponent(fileName)
         let currentURL = currentDir.appendingPathComponent(fileName)
 
-        try? FileManager.default.createDirectory(at: currentDir, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(at: currentDir, withIntermediateDirectories: true)
+        } catch {
+            NSLog("[AppStorage] ERROR: Could not create storage directory \(currentDir.path): \(error)")
+        }
+
         if !FileManager.default.fileExists(atPath: currentURL.path),
            FileManager.default.fileExists(atPath: legacyURL.path) {
-            try? FileManager.default.copyItem(at: legacyURL, to: currentURL)
+            do {
+                try FileManager.default.copyItem(at: legacyURL, to: currentURL)
+            } catch {
+                NSLog("[AppStorage] ERROR: Could not copy legacy \(fileName): \(error)")
+            }
         }
 
         return currentURL
@@ -96,18 +105,28 @@ final class ProfileTemplateStore {
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let saved = try? JSONDecoder().decode(SavedData.self, from: data) else {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
             templates = []
             return
         }
-        templates = saved.templates
+
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let saved = try JSONDecoder().decode(SavedData.self, from: data)
+            templates = saved.templates
+        } catch {
+            NSLog("[ProfileTemplateStore] ERROR: Could not load templates from \(fileURL.path): \(error)")
+            templates = []
+        }
     }
 
     private func save() {
         let saved = SavedData(templates: templates)
-        if let data = try? JSONEncoder().encode(saved) {
-            try? data.write(to: fileURL)
+        do {
+            let data = try JSONEncoder().encode(saved)
+            try data.write(to: fileURL, options: .atomic)
+        } catch {
+            NSLog("[ProfileTemplateStore] ERROR: Could not save templates to \(fileURL.path): \(error)")
         }
         NotificationCenter.default.post(name: ProfileTemplateStore.templatesDidChange, object: nil)
     }
@@ -186,26 +205,37 @@ final class ProfileStore {
     // MARK: - Persistence
 
     private func load(defaultProfile: Profile) {
-        guard let data = try? Data(contentsOf: fileURL),
-              let saved = try? JSONDecoder().decode(SavedData.self, from: data) else {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
             profiles = [reconciledSubProfileSwitchButtons(in: defaultProfile.asTopLevelContainer())]
             activeProfileID = defaultProfile.id
             return
         }
-        profiles = (saved.profiles.isEmpty ? [defaultProfile] : saved.profiles).map {
-            reconciledSubProfileSwitchButtons(in: $0.asTopLevelContainer())
-        }
-        activeProfileID = saved.activeProfileID ?? profiles[0].id
-        if !profiles.contains(where: { $0.id == activeProfileID }) {
-            activeProfileID = profiles[0].id
+
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let saved = try JSONDecoder().decode(SavedData.self, from: data)
+            profiles = (saved.profiles.isEmpty ? [defaultProfile] : saved.profiles).map {
+                reconciledSubProfileSwitchButtons(in: $0.asTopLevelContainer())
+            }
+            activeProfileID = saved.activeProfileID ?? profiles[0].id
+            if !profiles.contains(where: { $0.id == activeProfileID }) {
+                activeProfileID = profiles[0].id
+            }
+        } catch {
+            NSLog("[ProfileStore] ERROR: Could not load profiles from \(fileURL.path): \(error)")
+            profiles = [reconciledSubProfileSwitchButtons(in: defaultProfile.asTopLevelContainer())]
+            activeProfileID = defaultProfile.id
         }
     }
 
     func save() {
         profiles = profiles.map { reconciledSubProfileSwitchButtons(in: $0.normalizedActiveSubProfileSelection()) }
         let saved = SavedData(profiles: profiles, activeProfileID: activeProfileID)
-        if let data = try? JSONEncoder().encode(saved) {
-            try? data.write(to: fileURL)
+        do {
+            let data = try JSONEncoder().encode(saved)
+            try data.write(to: fileURL, options: .atomic)
+        } catch {
+            NSLog("[ProfileStore] ERROR: Could not save profiles to \(fileURL.path): \(error)")
         }
         NotificationCenter.default.post(name: ProfileStore.profilesDidChange, object: nil)
     }
