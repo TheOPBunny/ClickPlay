@@ -4,7 +4,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     var gamepadWindow: GamepadWindow?
     var statusItem: NSStatusItem?
-    private var configuratorWindowController: ConfiguratorWindowController?
+    private var editorWindowController: EditorWindowController?
     private let supportedOpacityValues: [Double] = [0.25, 0.4, 0.55, 0.7, 0.85, 1.0]
     private var lastActiveNonSelfApplication: NSRunningApplication?
     private var workspaceActivationObserver: NSObjectProtocol?
@@ -46,7 +46,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        configuratorWindowController?.flushPanelLayoutDefaults()
+        editorWindowController?.flushPanelLayoutDefaults()
     }
 
     func setupMainMenu() {
@@ -153,7 +153,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hideItem.target = self
         menu.addItem(hideItem)
 
-        let editProfilesItem = NSMenuItem(title: "Edit Profiles…", action: #selector(showConfigurator), keyEquivalent: ",")
+        let editProfilesItem = NSMenuItem(title: "Open Editor…", action: #selector(showEditor), keyEquivalent: ",")
         editProfilesItem.target = self
         menu.addItem(editProfilesItem)
         menu.addItem(NSMenuItem.separator())
@@ -206,7 +206,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
-        let editProfilesItem = NSMenuItem(title: "Edit Profiles…", action: #selector(showConfigurator), keyEquivalent: "")
+        let editProfilesItem = NSMenuItem(title: "Open Editor…", action: #selector(showEditor), keyEquivalent: "")
         editProfilesItem.target = self
         menu.addItem(editProfilesItem)
 
@@ -310,9 +310,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         gamepadWindow?.orderOut(nil)
     }
 
-    @objc func showConfigurator() {
+    @objc func showEditor() {
         updateLastActiveApplicationIfNeeded(NSWorkspace.shared.frontmostApplication)
-        getConfiguratorWindowController().showEditorWindow()
+        getEditorWindowController().showEditorWindow()
     }
 
     @objc func openAccessibility() {
@@ -365,16 +365,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         application.activate(options: [.activateIgnoringOtherApps])
     }
 
-    private func getConfiguratorWindowController() -> ConfiguratorWindowController {
-        if let configuratorWindowController {
-            return configuratorWindowController
+    private func getEditorWindowController() -> EditorWindowController {
+        if let editorWindowController {
+            return editorWindowController
         }
 
-        let controller = ConfiguratorWindowController()
+        let controller = EditorWindowController()
         controller.onClose = { [weak self] in
             self?.restorePreviousApplicationFocus()
         }
-        configuratorWindowController = controller
+        editorWindowController = controller
         return controller
     }
 }

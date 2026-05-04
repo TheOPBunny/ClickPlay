@@ -28,8 +28,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     private enum DefaultsKey {
-        static let inspectorExpandedWidth = "Configurator.inspectorExpandedWidth"
-        static let inspectorCollapsed = "Configurator.inspectorCollapsed"
+        static let inspectorExpandedWidth = "Editor.inspectorExpandedWidth"
+        static let inspectorCollapsed = "Editor.inspectorCollapsed"
     }
 
     private final class PreviewCanvasView: NSView {
