@@ -3,27 +3,31 @@ import Cocoa
 final class KeyInjector {
 
     static let shared = KeyInjector()
-    private init() {}
+    private init() {
+        queue.setSpecific(key: queueSpecificKey, value: ())
+    }
 
     private struct KeyBinding: Hashable {
         let keyCode: CGKeyCode
         let modifiersRawValue: UInt
     }
 
-    private var heldKeys = Set<KeyBinding>()
+    private var heldKeyCounts: [KeyBinding: Int] = [:]
     private let queue = DispatchQueue(label: "com.gamepad.keyinjector", qos: .userInteractive)
+    private let queueSpecificKey = DispatchSpecificKey<Void>()
 
     func pressRaw(_ keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags = []) {
         queue.async { [self] in
             let supportedModifiers = supportedModifiers(from: modifiers)
             let binding = KeyBinding(keyCode: keyCode, modifiersRawValue: supportedModifiers.rawValue)
-            guard !heldKeys.contains(binding) else {
-                NSLog("[KeyInjector] pressRaw \(keyCode) modifiers=\(binding.modifiersRawValue) — already held, skipping")
+            if let heldCount = heldKeyCounts[binding], heldCount > 0 {
+                heldKeyCounts[binding] = heldCount + 1
+                NSLog("[KeyInjector] pressRaw \(keyCode) modifiers=\(binding.modifiersRawValue) — already held, owners=\(heldCount + 1), skipping")
                 return
             }
             let ok = postEvent(keyCode: keyCode, modifiers: supportedModifiers, keyDown: true)
             if ok {
-                heldKeys.insert(binding)
+                heldKeyCounts[binding] = 1
             }
             NSLog("[KeyInjector] pressRaw \(keyCode) modifiers=\(binding.modifiersRawValue) posted=\(ok)")
         }
@@ -33,9 +37,48 @@ final class KeyInjector {
         queue.async { [self] in
             let supportedModifiers = supportedModifiers(from: modifiers)
             let binding = KeyBinding(keyCode: keyCode, modifiersRawValue: supportedModifiers.rawValue)
-            heldKeys.remove(binding)
+            guard let heldCount = heldKeyCounts[binding], heldCount > 0 else {
+                NSLog("[KeyInjector] releaseRaw \(keyCode) modifiers=\(binding.modifiersRawValue) — not held, skipping")
+                return
+            }
+
+            if heldCount > 1 {
+                heldKeyCounts[binding] = heldCount - 1
+                NSLog("[KeyInjector] releaseRaw \(keyCode) modifiers=\(binding.modifiersRawValue) owners=\(heldCount - 1), keeping held")
+                return
+            }
+
+            heldKeyCounts.removeValue(forKey: binding)
             let ok = postEvent(keyCode: keyCode, modifiers: supportedModifiers, keyDown: false)
             NSLog("[KeyInjector] releaseRaw \(keyCode) modifiers=\(binding.modifiersRawValue) posted=\(ok)")
+        }
+    }
+
+    func releaseAllHeldKeys() {
+        if DispatchQueue.getSpecific(key: queueSpecificKey) != nil {
+            releaseAllHeldKeysOnQueue()
+            return
+        }
+
+        queue.sync {
+            releaseAllHeldKeysOnQueue()
+        }
+    }
+
+    private func releaseAllHeldKeysOnQueue() {
+        let bindingsToRelease = heldKeyCounts.keys.sorted { lhs, rhs in
+            if lhs.modifiersRawValue != rhs.modifiersRawValue {
+                return lhs.modifiersRawValue < rhs.modifiersRawValue
+            }
+
+            return lhs.keyCode < rhs.keyCode
+        }
+        heldKeyCounts.removeAll()
+
+        for binding in bindingsToRelease {
+            let modifiers = NSEvent.ModifierFlags(rawValue: binding.modifiersRawValue)
+            let ok = postEvent(keyCode: binding.keyCode, modifiers: modifiers, keyDown: false)
+            NSLog("[KeyInjector] releaseAllHeldKeys \(binding.keyCode) modifiers=\(binding.modifiersRawValue) posted=\(ok)")
         }
     }
 
