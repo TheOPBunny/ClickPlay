@@ -658,19 +658,6 @@ final class ProfileStore {
         Dictionary(uniqueKeysWithValues: profile.subProfiles.map { ($0.id, $0.name) })
     }
 
-    private func activeSubProfileIndex(in profile: Profile) -> Int? {
-        guard !profile.subProfiles.isEmpty else {
-            return nil
-        }
-
-        if let activeSubProfileID = profile.activeSubProfileID,
-           let index = profile.subProfiles.firstIndex(where: { $0.id == activeSubProfileID }) {
-            return index
-        }
-
-        return 0
-    }
-
     private struct SavedData: Codable {
         var profiles: [Profile]
         var activeProfileID: UUID?
