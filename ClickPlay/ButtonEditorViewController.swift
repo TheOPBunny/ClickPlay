@@ -138,6 +138,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private var lastObservedEditorSplitWidth: CGFloat = 0
     private var savedProfileFingerprint: Data?
     private var shouldScrollToProfileContent = false
+    private var pendingProfileContentScrollRetries = 0
 
     private let compatibilityModeCheckbox = NSButton(checkboxWithTitle: "Compatibility Mode", target: nil, action: nil)
     private let showGridCheckbox = NSButton(checkboxWithTitle: "Show Grid", target: nil, action: nil)
@@ -184,7 +185,12 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         previewView.reload(objects: canvasObjects, keepSelection: false)
         detailPanel.clear()
         savedProfileFingerprint = currentSavedProfileFingerprint()
-        shouldScrollToProfileContent = true
+        prepareProfileContentScroll()
+        scrollToProfileContentIfNeeded()
+    }
+
+    func centerCanvasOnProfileContentWhenReady() {
+        prepareProfileContentScroll()
         scrollToProfileContentIfNeeded()
     }
 
@@ -1804,12 +1810,37 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     private func scrollToProfileContentIfNeeded() {
-        guard shouldScrollToProfileContent, previewScrollView.contentView.bounds.size != .zero else {
+        guard shouldScrollToProfileContent else {
+            return
+        }
+
+        updatePreviewCanvasLayout()
+
+        guard previewScrollView.contentView.bounds.size != .zero,
+              previewCanvasView.frame.size != .zero else {
+            scheduleProfileContentScrollRetry()
             return
         }
 
         shouldScrollToProfileContent = false
+        pendingProfileContentScrollRetries = 0
         scrollPreviewToProfileContent()
+    }
+
+    private func prepareProfileContentScroll() {
+        shouldScrollToProfileContent = true
+        pendingProfileContentScrollRetries = 3
+    }
+
+    private func scheduleProfileContentScrollRetry() {
+        guard pendingProfileContentScrollRetries > 0 else {
+            return
+        }
+
+        pendingProfileContentScrollRetries -= 1
+        DispatchQueue.main.async { [weak self] in
+            self?.scrollToProfileContentIfNeeded()
+        }
     }
 
     private func scrollPreviewToCanvasRect(_ rect: CGRect) {

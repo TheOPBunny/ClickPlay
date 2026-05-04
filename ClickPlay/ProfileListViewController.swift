@@ -27,6 +27,8 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
     private var isCollapsed = false
     private var localClipboard: SidebarClipboard?
     private var templateManagerWindowController: NSWindowController?
+    private var lastSelectionChangeTime = Date.distantPast
+    private let renameAfterSelectionDelay: TimeInterval = 0.65
 
     private var profiles: [Profile] {
         ProfileStore.shared.profiles
@@ -188,6 +190,8 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         guard let item = outlineView.item(atRow: outlineView.selectedRow) as? SidebarItem else {
             return
         }
+
+        lastSelectionChangeTime = Date()
 
         guard onProfileSelectionRequested?() ?? true else {
             restoreActiveSelection()
@@ -541,11 +545,25 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
     }
 
     @objc private func outlineClicked(_ sender: NSOutlineView) {
-        guard sender.clickedRow >= 0, sender.clickedRow == sender.selectedRow else {
+        guard sender.clickedRow >= 0,
+              sender.clickedColumn >= 0,
+              sender.window?.currentEvent?.clickCount == 1,
+              sender.clickedRow == sender.selectedRow,
+              clickedNameCellContainsCurrentEvent(row: sender.clickedRow),
+              Date().timeIntervalSince(lastSelectionChangeTime) >= renameAfterSelectionDelay else {
             return
         }
 
         beginRenameSelected()
+    }
+
+    private func clickedNameCellContainsCurrentEvent(row: Int) -> Bool {
+        guard let event = outlineView.window?.currentEvent else {
+            return false
+        }
+
+        let eventPoint = outlineView.convert(event.locationInWindow, from: nil)
+        return outlineView.frameOfCell(atColumn: 0, row: row).contains(eventPoint)
     }
 
     private func profile(for item: SidebarItem) -> Profile? {

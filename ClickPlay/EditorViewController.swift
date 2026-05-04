@@ -131,6 +131,10 @@ final class EditorViewController: NSViewController, NSSplitViewDelegate {
         editorViewController.confirmSaveIfNeeded()
     }
 
+    func centerCanvasOnProfileContentWhenReady() {
+        editorViewController.centerCanvasOnProfileContentWhenReady()
+    }
+
     func addProfile() {
         guard confirmSaveIfNeeded() else {
             return
