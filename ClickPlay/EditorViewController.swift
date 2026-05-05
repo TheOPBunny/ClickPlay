@@ -234,9 +234,8 @@ final class EditorViewController: NSViewController, NSSplitViewDelegate {
     private func setSidebarWidth(_ width: CGFloat) {
         let clampedWidth = min(max(width, Metrics.minimumSidebarWidth), Metrics.maximumSidebarWidth)
         isApplyingSidebarLayout = true
+        defer { isApplyingSidebarLayout = false }
         splitView.setPosition(clampedWidth, ofDividerAt: 0)
-        splitView.layoutSubtreeIfNeeded()
-        isApplyingSidebarLayout = false
     }
 
     private func syncSidebarStateFromCurrentWidth() {

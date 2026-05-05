@@ -459,9 +459,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private func setInspectorWidth(_ width: CGFloat) {
         let dividerPosition = editorSplitView.bounds.width - editorSplitView.dividerThickness - width
         isApplyingInspectorLayout = true
+        defer { isApplyingInspectorLayout = false }
         editorSplitView.setPosition(max(SplitMetrics.minimumPreviewWidth, dividerPosition), ofDividerAt: 0)
-        editorSplitView.layoutSubtreeIfNeeded()
-        isApplyingInspectorLayout = false
     }
 
     func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
@@ -1170,7 +1169,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private func updatePreviewCanvasLayout() {
         previewCanvasView.showsGrid = showGridCheckbox.state == .on
         previewCanvasView.updateCanvasSize(visibleSize: previewScrollView.contentView.bounds.size)
-        previewCanvasView.layoutSubtreeIfNeeded()
+        previewCanvasView.needsLayout = true
     }
 
     private func reloadPreview(keepSelection: Bool) {
