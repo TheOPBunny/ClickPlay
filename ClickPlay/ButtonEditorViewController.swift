@@ -375,6 +375,9 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         detailPanel.onDelete = { [weak self] button in
             self?.deleteButton(button)
         }
+        detailPanel.onDeleteGroup = { [weak self] groupID in
+            self?.deleteGroup(groupID)
+        }
         detailPanel.onGroupColorChanged = { [weak self] groupID, colorHex in
             self?.applyColor(colorHex, toGroup: groupID)
         }
@@ -641,7 +644,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 return !selectedIDs.isEmpty && !isTextInputFirstResponder
             }
 
-            return !deletableSelectedIDs.isEmpty && !isTextInputFirstResponder
+            return (selectedGroupID != nil || !deletableSelectedIDs.isEmpty) && !isTextInputFirstResponder
         case #selector(paste(_:)):
             return canPasteButtons && !isTextInputFirstResponder
         case #selector(alignLeft(_:)), #selector(alignCenterX(_:)), #selector(alignRight(_:)),
@@ -700,6 +703,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     @objc func delete(_ sender: Any?) {
         guard !isTextInputFirstResponder else {
+            return
+        }
+
+        if let selectedGroupID {
+            deleteGroup(selectedGroupID)
             return
         }
 
@@ -1010,6 +1018,39 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         canvasObjects = makeCanvasObjects(from: profile)
         reloadPreview(keepSelection: false)
         detailPanel.clear()
+    }
+
+    private func deleteGroup(_ groupID: UUID) {
+        guard let group = buttonGroup(for: groupID) else {
+            return
+        }
+
+        var beforeStates: [GamepadButton: ButtonConfig?] = [:]
+        var afterStates: [GamepadButton: ButtonConfig?] = [:]
+        let beforeGroups = profile.buttonGroups
+
+        for buttonID in group.memberButtonIDs {
+            let button = GamepadButton(buttonID)
+            guard !isProtectedSwitchButton(button) else {
+                continue
+            }
+
+            beforeStates[button] = profile.buttons[buttonID]
+            afterStates[button] = nil
+            profile.buttons.removeValue(forKey: buttonID)
+        }
+
+        profile.buttonGroups.removeAll { $0.id == groupID }
+        profile.buttonGroups = sanitizedEditorGroups(profile.buttonGroups)
+        selectedGroupID = nil
+        refreshEditorAfterButtonSetChange(selection: [])
+        registerEditorStateUndo(
+            beforeButtons: beforeStates,
+            afterButtons: afterStates,
+            beforeGroups: beforeGroups,
+            afterGroups: profile.buttonGroups,
+            actionName: "Delete Group"
+        )
     }
 
     private var isTextInputFirstResponder: Bool {
