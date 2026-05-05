@@ -1036,7 +1036,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             }
 
             beforeStates[button] = profile.buttons[buttonID]
-            afterStates[button] = nil
+            afterStates[button] = Optional<ButtonConfig?>.some(nil)
             profile.buttons.removeValue(forKey: buttonID)
         }
 
@@ -1117,7 +1117,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
         for button in buttonsToDelete {
             beforeStates[button] = profile.buttons[button.rawValue]
-            afterStates[button] = nil
+            afterStates[button] = Optional<ButtonConfig?>.some(nil)
             profile.buttons.removeValue(forKey: button.rawValue)
         }
 
