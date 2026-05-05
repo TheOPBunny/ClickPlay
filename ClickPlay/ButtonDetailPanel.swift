@@ -30,6 +30,7 @@ final class ButtonDetailPanel: NSView {
 
     var onChanged: ((GamepadButton, ButtonConfig) -> Void)?
     var onDelete: ((GamepadButton) -> Void)?
+    var onDeleteGroup: ((UUID) -> Void)?
     var onGroupColorChanged: ((UUID, String) -> Void)?
 
     private var config: ButtonConfig?
@@ -146,6 +147,7 @@ final class ButtonDetailPanel: NSView {
         interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
         multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
         updateMultiKeyActivationModeVisibility()
+        deleteButton.title = "Delete Button"
         deleteButton.isEnabled = false
         updateControlVisibility()
     }
@@ -156,13 +158,16 @@ final class ButtonDetailPanel: NSView {
         groupID = group.id
         titleLabel.stringValue = "Editing group: \(group.name)"
         colorWell.color = NSColor(hex: colorHex ?? "#888888")
-        deleteButton.isEnabled = false
+        deleteButton.title = "Delete Group"
+        deleteButton.isEnabled = true
         updateControlVisibility()
     }
 
     func load(button: GamepadButton, config: ButtonConfig) {
         self.button = button
         self.config = config
+        groupID = nil
+        deleteButton.title = "Delete Button"
         deleteButton.isEnabled = true
         let isProtectedSwitch = config.action.isProtectedSwitch
         titleLabel.stringValue = isProtectedSwitch ? "Editing switch: \(config.resolvedDisplayLabel)" : "Editing: \(config.resolvedDisplayLabel)"
@@ -636,6 +641,11 @@ final class ButtonDetailPanel: NSView {
     }
 
     @objc private func deletePressed() {
+        if let groupID {
+            onDeleteGroup?(groupID)
+            return
+        }
+
         guard let button else {
             return
         }
@@ -1037,12 +1047,13 @@ final class ButtonDetailPanel: NSView {
         if groupID != nil {
             contentStack.arrangedSubviews.forEach { row in
                 if let colorRow {
-                    row.isHidden = row !== colorRow
+                    row.isHidden = row !== colorRow && row !== deleteButton
                 } else {
-                    row.isHidden = true
+                    row.isHidden = row !== deleteButton
                 }
             }
-            deleteButton.isEnabled = false
+            deleteButton.isHidden = false
+            deleteButton.isEnabled = true
             return
         }
 

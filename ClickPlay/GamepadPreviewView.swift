@@ -205,7 +205,10 @@ final class GamepadPreviewView: NSView {
             return
         }
 
-        if selectedIDs.count == 1, let selectedID = selectedIDs.first, let object = object(for: selectedID) {
+        if selectedIDs.count == 1,
+           let selectedID = selectedIDs.first,
+           groupID(containing: selectedID) == nil,
+           let object = object(for: selectedID) {
             for corner in ResizeCorner.allCases {
                 addCursorRect(handleRect(for: corner, objectFrame: canvasFrame(for: object.frame)), cursor: corner.cursor)
             }
@@ -245,7 +248,19 @@ final class GamepadPreviewView: NSView {
             return
         }
 
+        if event.clickCount >= 2,
+           let button = button(at: modelPoint),
+           groupID(containing: button) != nil {
+            setSelection([button])
+            return
+        }
+
         if isCommandClick, let button = button(at: modelPoint) {
+            if let groupID = groupID(containing: button) {
+                setGroupSelection(groupID)
+                return
+            }
+
             toggleSelection(button)
             return
         }
@@ -253,8 +268,7 @@ final class GamepadPreviewView: NSView {
         if let selectedGroupID,
            let button = button(at: modelPoint),
            group(for: selectedGroupID)?.memberIDs.contains(button) == true {
-            setSelection([button])
-            beginMove(button: button, startMouse: modelPoint)
+            beginGroupMove(groupID: selectedGroupID, startMouse: modelPoint)
             return
         }
 
@@ -266,6 +280,12 @@ final class GamepadPreviewView: NSView {
         }
 
         if let selectedHit = button(at: modelPoint, restrictedTo: selectedIDs) {
+            if let groupID = groupID(containing: selectedHit) {
+                setGroupSelection(groupID)
+                beginGroupMove(groupID: groupID, startMouse: modelPoint)
+                return
+            }
+
             beginMove(button: selectedHit, startMouse: modelPoint)
             return
         }
@@ -591,6 +611,9 @@ final class GamepadPreviewView: NSView {
         guard selectedIDs.count == 1, let selectedID = selectedIDs.first, let object = object(for: selectedID) else {
             return nil
         }
+        guard groupID(containing: selectedID) == nil else {
+            return nil
+        }
 
         let canvasFrame = canvasFrame(for: object.frame)
         for corner in ResizeCorner.allCases where handleRect(for: corner, objectFrame: canvasFrame).contains(point) {
@@ -753,8 +776,10 @@ final class GamepadPreviewView: NSView {
 
         drawSelectionGlow(for: object.shape, in: canvasFrame)
 
-        for corner in ResizeCorner.allCases {
-            drawResizeHandle(handleRect(for: corner, objectFrame: canvasFrame))
+        if groupID(containing: object.id) == nil {
+            for corner in ResizeCorner.allCases {
+                drawResizeHandle(handleRect(for: corner, objectFrame: canvasFrame))
+            }
         }
     }
 
