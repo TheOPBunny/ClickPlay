@@ -330,6 +330,17 @@ final class ProfileStore {
         save()
     }
 
+    func restoreProfile(_ profile: Profile, at index: Int, activeProfileID restoredActiveProfileID: UUID) {
+        let restoredProfile = profile.asTopLevelContainer()
+        profiles.removeAll { $0.id == restoredProfile.id }
+        let insertionIndex = min(max(index, 0), profiles.count)
+        profiles.insert(restoredProfile, at: insertionIndex)
+        activeProfileID = profiles.contains { $0.id == restoredActiveProfileID }
+            ? restoredActiveProfileID
+            : restoredProfile.id
+        save()
+    }
+
     @discardableResult
     func duplicate(_ id: UUID) -> Profile? {
         guard let sourceProfile = profiles.first(where: { $0.id == id }) else { return nil }
@@ -476,6 +487,29 @@ final class ProfileStore {
         }
         profiles[parentIndex] = reconciledSubProfileSwitchButtons(in: profiles[parentIndex])
         activeProfileID = parentProfileID
+        save()
+    }
+
+    func restoreSubProfile(
+        _ subProfile: Profile,
+        in parentProfileID: UUID,
+        at index: Int,
+        activeProfileID restoredActiveProfileID: UUID,
+        activeSubProfileID restoredActiveSubProfileID: UUID?
+    ) {
+        guard let parentIndex = profiles.firstIndex(where: { $0.id == parentProfileID }) else { return }
+
+        var restoredSubProfile = subProfile
+        restoredSubProfile.subProfiles = []
+        restoredSubProfile.activeSubProfileID = nil
+        profiles[parentIndex].subProfiles.removeAll { $0.id == restoredSubProfile.id }
+        let insertionIndex = min(max(index, 0), profiles[parentIndex].subProfiles.count)
+        profiles[parentIndex].subProfiles.insert(restoredSubProfile, at: insertionIndex)
+        profiles[parentIndex].activeSubProfileID = restoredActiveSubProfileID
+        profiles[parentIndex] = reconciledSubProfileSwitchButtons(in: profiles[parentIndex])
+        activeProfileID = profiles.contains { $0.id == restoredActiveProfileID }
+            ? restoredActiveProfileID
+            : parentProfileID
         save()
     }
 

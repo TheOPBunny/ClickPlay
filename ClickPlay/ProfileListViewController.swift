@@ -1,6 +1,6 @@
 import Cocoa
 
-final class ProfileListViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate {
+final class ProfileListViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate, NSMenuItemValidation {
 
     var onProfileSelected: ((Profile) -> Void)?
     var onProfileSelectionRequested: (() -> Bool)?
@@ -20,9 +20,24 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         }
     }
 
+    private struct ProfileDeleteUndoContext {
+        var profile: Profile
+        var index: Int
+        var activeProfileID: UUID
+    }
+
+    private struct LayerDeleteUndoContext {
+        var layer: Profile
+        var parentID: UUID
+        var index: Int
+        var activeProfileID: UUID
+        var activeSubProfileID: UUID?
+    }
+
     private let outlineView = NSOutlineView()
     private let scrollView = NSScrollView()
     private let titleLabel = NSTextField(labelWithString: "Profiles")
+    private let sidebarUndoManager = UndoManager()
     private var isReloadingSelection = false
     private var localClipboard: SidebarClipboard?
     private var templateManagerWindowController: NSWindowController?
@@ -35,6 +50,10 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
 
     override func loadView() {
         view = NSView(frame: NSRect(x: 0, y: 0, width: 200, height: 400))
+    }
+
+    override var undoManager: UndoManager? {
+        sidebarUndoManager
     }
 
     override func viewDidLoad() {
@@ -324,17 +343,41 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
     }
 
     @objc func deleteSelection() {
-        guard let item = outlineView.item(atRow: outlineView.selectedRow) as? SidebarItem else {
+        guard let item = outlineView.item(atRow: outlineView.selectedRow) as? SidebarItem,
+              canDeleteSelection,
+              let selectedProfile = profile(for: item),
+              confirmDelete(profile: selectedProfile, isLayer: item.isSubProfile) else {
             return
         }
 
         if let parentID = item.parentID {
+            guard let parentProfile = profile(with: parentID),
+                  let index = parentProfile.subProfiles.firstIndex(where: { $0.id == item.profileID }) else {
+                return
+            }
+            let undoContext = LayerDeleteUndoContext(
+                layer: selectedProfile,
+                parentID: parentID,
+                index: index,
+                activeProfileID: ProfileStore.shared.activeProfileID,
+                activeSubProfileID: parentProfile.activeSubProfileID
+            )
             ProfileStore.shared.deleteSubProfile(item.profileID, in: parentID)
+            registerLayerDeleteUndo(undoContext)
             onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
             return
         }
 
+        guard let index = profiles.firstIndex(where: { $0.id == item.profileID }) else {
+            return
+        }
+        let undoContext = ProfileDeleteUndoContext(
+            profile: selectedProfile,
+            index: index,
+            activeProfileID: ProfileStore.shared.activeProfileID
+        )
         ProfileStore.shared.delete(item.profileID)
+        registerProfileDeleteUndo(undoContext)
         onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
     }
 
@@ -372,8 +415,39 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         add(profile: profile)
     }
 
+    @objc func delete(_ sender: Any?) {
+        deleteSelection()
+    }
+
     @objc func rename(_ sender: Any?) {
         beginRenameSelected()
+    }
+
+    @objc func undo(_ sender: Any?) {
+        sidebarUndoManager.undo()
+    }
+
+    @objc func redo(_ sender: Any?) {
+        sidebarUndoManager.redo()
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(undo(_:)):
+            menuItem.title = sidebarUndoManager.undoMenuItemTitle
+            return sidebarUndoManager.canUndo
+        case #selector(redo(_:)):
+            menuItem.title = sidebarUndoManager.redoMenuItemTitle
+            return sidebarUndoManager.canRedo
+        case #selector(cut(_:)), #selector(delete(_:)):
+            return canDeleteSelection
+        case #selector(copy(_:)):
+            return selectedSidebarItem() != nil
+        case #selector(paste(_:)):
+            return localClipboard != nil
+        default:
+            return true
+        }
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -520,6 +594,71 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         }
 
         return profile(with: item.profileID)
+    }
+
+    private func confirmDelete(profile: Profile, isLayer: Bool) -> Bool {
+        let itemKind = isLayer ? "Layer" : "Profile"
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Delete \(itemKind)?"
+        alert.informativeText = "\"\(profile.name)\" will be removed. You can undo this from the Edit menu."
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    private func registerProfileDeleteUndo(_ context: ProfileDeleteUndoContext) {
+        sidebarUndoManager.registerUndo(withTarget: self) { target in
+            target.restoreDeletedProfile(context)
+        }
+        sidebarUndoManager.setActionName("Delete Profile")
+    }
+
+    private func restoreDeletedProfile(_ context: ProfileDeleteUndoContext) {
+        ProfileStore.shared.restoreProfile(
+            context.profile,
+            at: context.index,
+            activeProfileID: context.activeProfileID
+        )
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        sidebarUndoManager.registerUndo(withTarget: self) { target in
+            target.redoProfileDelete(context)
+        }
+        sidebarUndoManager.setActionName("Delete Profile")
+    }
+
+    private func redoProfileDelete(_ context: ProfileDeleteUndoContext) {
+        ProfileStore.shared.delete(context.profile.id)
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        registerProfileDeleteUndo(context)
+    }
+
+    private func registerLayerDeleteUndo(_ context: LayerDeleteUndoContext) {
+        sidebarUndoManager.registerUndo(withTarget: self) { target in
+            target.restoreDeletedLayer(context)
+        }
+        sidebarUndoManager.setActionName("Delete Layer")
+    }
+
+    private func restoreDeletedLayer(_ context: LayerDeleteUndoContext) {
+        ProfileStore.shared.restoreSubProfile(
+            context.layer,
+            in: context.parentID,
+            at: context.index,
+            activeProfileID: context.activeProfileID,
+            activeSubProfileID: context.activeSubProfileID
+        )
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        sidebarUndoManager.registerUndo(withTarget: self) { target in
+            target.redoLayerDelete(context)
+        }
+        sidebarUndoManager.setActionName("Delete Layer")
+    }
+
+    private func redoLayerDelete(_ context: LayerDeleteUndoContext) {
+        ProfileStore.shared.deleteSubProfile(context.layer.id, in: context.parentID)
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        registerLayerDeleteUndo(context)
     }
 
     private func uniqueName(_ baseName: String, existingNames: Set<String>) -> String {
