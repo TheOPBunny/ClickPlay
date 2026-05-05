@@ -128,6 +128,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private var profile = ProfileStore.shared.activeResolvedProfile
     private var canvasObjects: [CanvasButtonObject] = []
     private var selectedIDs = Set<GamepadButton>()
+    private var selectedGroupID: UUID?
     private var localClipboard: [ClipboardButton] = []
     private var pasteCount = 0
     private var profileIDsWarnedForHighButtonCount = Set<UUID>()
@@ -140,10 +141,14 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private var savedProfileFingerprint: Data?
     private var shouldScrollToProfileContent = false
     private var pendingProfileContentScrollRetries = 0
+    private var templatesDidChangeObserver: NSObjectProtocol?
 
     private let compatibilityModeCheckbox = NSButton(checkboxWithTitle: "Compatibility Mode", target: nil, action: nil)
     private let showGridCheckbox = NSButton(checkboxWithTitle: "Show Grid", target: nil, action: nil)
     private let snappingCheckbox = NSButton(checkboxWithTitle: "Snapping", target: nil, action: nil)
+    private let groupButton = NSButton(title: "Group", target: nil, action: nil)
+    private let ungroupButton = NSButton(title: "Ungroup", target: nil, action: nil)
+    private let saveGroupButton = NSButton(title: "Save Group", target: nil, action: nil)
     private let addPopupButton = NSPopUpButton(frame: .zero, pullsDown: true)
     private let previewView = GamepadPreviewView()
     private lazy var previewCanvasView = PreviewCanvasView(previewView: previewView)
@@ -167,6 +172,12 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         load(profile: ProfileStore.shared.activeResolvedProfile)
     }
 
+    deinit {
+        if let templatesDidChangeObserver {
+            NotificationCenter.default.removeObserver(templatesDidChangeObserver)
+        }
+    }
+
     override func viewDidLayout() {
         super.viewDidLayout()
         restoreInspectorLayoutIfNeeded()
@@ -177,15 +188,18 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     func load(profile: Profile) {
         editorUndoManager.removeAllActions()
         selectedIDs = []
+        selectedGroupID = nil
         self.profile = makeEditableProfile(from: profile)
         previewView.usesCenteredOrigin = profile.editorCoordinateMode == .centered
         clampEditableProfileToWorkspace()
+        self.profile.buttonGroups = sanitizedEditorGroups(self.profile.buttonGroups)
         canvasObjects = makeCanvasObjects(from: self.profile)
         compatibilityModeCheckbox.state = self.profile.compatibilityMode ? .on : .off
         refreshFittedPadSizeFields()
         updatePreviewCanvasLayout()
-        previewView.reload(objects: canvasObjects, keepSelection: false)
+        previewView.reload(objects: canvasObjects, groups: makeCanvasGroups(from: self.profile), keepSelection: false)
         detailPanel.clear()
+        updateGroupToolbarState()
         savedProfileFingerprint = currentSavedProfileFingerprint()
         prepareProfileContentScroll()
         scrollToProfileContentIfNeeded()
@@ -239,11 +253,12 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     func saveChanges() -> Bool {
         profile.compatibilityMode = compatibilityModeCheckbox.state == .on
         clampEditableProfileToWorkspace()
+        profile.buttonGroups = sanitizedEditorGroups(profile.buttonGroups)
         let savedProfile = currentSavedProfile()
         canvasObjects = makeCanvasObjects(from: profile)
         refreshFittedPadSizeFields()
         updatePreviewCanvasLayout()
-        previewView.reload(objects: canvasObjects, keepSelection: true)
+        reloadPreview(keepSelection: true)
 
         onProfileSaved?(savedProfile)
         savedProfileFingerprint = fingerprint(for: savedProfile)
@@ -261,11 +276,14 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         snappingCheckbox.target = self
         snappingCheckbox.action = #selector(snappingChanged)
 
-        addPopupButton.addItem(withTitle: "Add...")
-        addPopupButton.addItem(withTitle: "Button")
-        addPopupButton.lastItem?.tag = 1
-        addPopupButton.addItem(withTitle: "Joystick")
-        addPopupButton.lastItem?.tag = 2
+        [groupButton, ungroupButton, saveGroupButton].forEach { button in
+            button.bezelStyle = .rounded
+            button.target = self
+        }
+        groupButton.action = #selector(groupSelectedButtons)
+        ungroupButton.action = #selector(ungroupSelectedGroup)
+        saveGroupButton.action = #selector(saveSelectedGroupAsTemplate)
+        rebuildAddMenu()
         addPopupButton.target = self
         addPopupButton.action = #selector(addPopupChanged)
 
@@ -286,6 +304,9 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             compatibilityModeCheckbox,
             showGridCheckbox,
             snappingCheckbox,
+            groupButton,
+            ungroupButton,
+            saveGroupButton,
             NSView(),
             rightInspectorToggleButton,
             addPopupButton,
@@ -302,12 +323,19 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         previewScrollView.drawsBackground = false
         previewScrollView.documentView = previewCanvasView
 
-        previewView.onSelectionChanged = { [weak self] selectedIDs in
+        previewView.onSelectionChanged = { [weak self] selectedIDs, selectedGroupID in
             guard let self else {
                 return
             }
 
             self.selectedIDs = selectedIDs
+            self.selectedGroupID = selectedGroupID
+            self.updateGroupToolbarState()
+            if let selectedGroupID, let group = self.buttonGroup(for: selectedGroupID) {
+                self.detailPanel.loadGroup(group, colorHex: self.commonColorHex(for: group))
+                return
+            }
+
             guard selectedIDs.count == 1, let button = selectedIDs.first, let config = self.profile.buttons[button.rawValue] else {
                 self.detailPanel.clear()
                 return
@@ -342,10 +370,21 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 actionName: "Edit Button"
             )
             self.syncWorkspaceAfterGeometryChange(selectedButton: button)
-            self.previewView.reload(objects: self.canvasObjects, keepSelection: true)
+            self.reloadPreview(keepSelection: true)
         }
         detailPanel.onDelete = { [weak self] button in
             self?.deleteButton(button)
+        }
+        detailPanel.onGroupColorChanged = { [weak self] groupID, colorHex in
+            self?.applyColor(colorHex, toGroup: groupID)
+        }
+
+        templatesDidChangeObserver = NotificationCenter.default.addObserver(
+            forName: ProfileTemplateStore.templatesDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.rebuildAddMenu()
         }
 
         editorSplitView.isVertical = true
@@ -713,7 +752,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     @objc private func compatibilityModeChanged() {
         profile.compatibilityMode = compatibilityModeCheckbox.state == .on
-        previewView.reload(objects: canvasObjects, keepSelection: true)
+        reloadPreview(keepSelection: true)
     }
 
     @objc private func showGridChanged() {
@@ -722,6 +761,34 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     @objc private func snappingChanged() {
         UserDefaults.standard.set(snappingCheckbox.state == .on, forKey: DefaultsKey.snappingEnabled)
+    }
+
+    private func rebuildAddMenu() {
+        addPopupButton.removeAllItems()
+        addPopupButton.addItem(withTitle: "Add...")
+        addPopupButton.addItem(withTitle: "Button")
+        addPopupButton.lastItem?.tag = 1
+        addPopupButton.addItem(withTitle: "Joystick")
+        addPopupButton.lastItem?.tag = 2
+
+        let groupItem = NSMenuItem(title: "Group", action: nil, keyEquivalent: "")
+        let groupMenu = NSMenu(title: "Group")
+        let templates = ProfileTemplateStore.shared.templates(kind: .group)
+        if templates.isEmpty {
+            let emptyItem = NSMenuItem(title: "No Saved Groups", action: nil, keyEquivalent: "")
+            emptyItem.isEnabled = false
+            groupMenu.addItem(emptyItem)
+        } else {
+            for template in templates {
+                let item = NSMenuItem(title: template.name, action: #selector(addGroupFromTemplate(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = template.id.uuidString
+                groupMenu.addItem(item)
+            }
+        }
+        groupItem.submenu = groupMenu
+        addPopupButton.menu?.addItem(NSMenuItem.separator())
+        addPopupButton.menu?.addItem(groupItem)
     }
 
     @objc private func addPopupChanged() {
@@ -747,7 +814,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         profile.buttons[button.rawValue] = config
         registerButtonStateUndo(button: button, before: nil, after: config, actionName: "Add Button")
         syncWorkspaceAfterGeometryChange(selectedButton: button)
-        previewView.reload(objects: canvasObjects, keepSelection: false)
+        reloadPreview(keepSelection: false)
         previewView.select(button: button)
     }
 
@@ -761,8 +828,142 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         profile.buttons[button.rawValue] = config
         registerButtonStateUndo(button: button, before: nil, after: config, actionName: "Add Joystick")
         syncWorkspaceAfterGeometryChange(selectedButton: button)
-        previewView.reload(objects: canvasObjects, keepSelection: false)
+        reloadPreview(keepSelection: false)
         previewView.select(button: button)
+    }
+
+    @objc private func groupSelectedButtons() {
+        let selectedButtonIDs = profile.orderedButtonIDs
+            .filter { selectedIDs.contains($0) }
+            .map(\.rawValue)
+        guard selectedButtonIDs.count >= 2, selectedButtonIDs.allSatisfy({ groupID(containingButtonID: $0) == nil }) else {
+            return
+        }
+
+        let beforeGroups = profile.buttonGroups
+        let group = ButtonGroup(
+            name: nextGroupName(),
+            memberButtonIDs: selectedButtonIDs
+        )
+        profile.buttonGroups.append(group)
+        profile.buttonGroups = sanitizedEditorGroups(profile.buttonGroups)
+        selectedIDs = []
+        selectedGroupID = group.id
+        reloadPreview(keepSelection: false)
+        previewView.select(group: group.id)
+        detailPanel.loadGroup(group, colorHex: commonColorHex(for: group))
+        updateGroupToolbarState()
+        registerGroupStateUndo(before: beforeGroups, after: profile.buttonGroups, actionName: "Group Buttons")
+    }
+
+    @objc private func ungroupSelectedGroup() {
+        guard let selectedGroupID else {
+            return
+        }
+
+        let beforeGroups = profile.buttonGroups
+        profile.buttonGroups.removeAll { $0.id == selectedGroupID }
+        self.selectedGroupID = nil
+        reloadPreview(keepSelection: false)
+        previewView.select(buttons: [])
+        detailPanel.clear()
+        updateGroupToolbarState()
+        registerGroupStateUndo(before: beforeGroups, after: profile.buttonGroups, actionName: "Ungroup Buttons")
+    }
+
+    @objc private func saveSelectedGroupAsTemplate() {
+        guard let selectedGroupID, let group = buttonGroup(for: selectedGroupID) else {
+            return
+        }
+
+        let alert = NSAlert()
+        alert.messageText = "Save Group Template"
+        alert.informativeText = "Choose a name for this group."
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+
+        let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        textField.stringValue = group.name
+        textField.selectText(nil)
+        alert.accessoryView = textField
+
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            return
+        }
+
+        var templateProfile = profile
+        let memberIDs = Set(group.memberButtonIDs)
+        templateProfile.buttons = profile.buttons.filter { memberIDs.contains($0.key) }
+        templateProfile.buttonGroups = [group]
+        templateProfile.subProfiles = []
+        templateProfile.activeSubProfileID = nil
+
+        ProfileTemplateStore.shared.saveTemplate(
+            named: textField.stringValue,
+            kind: .group,
+            profile: makeSavedProfile(from: templateProfile)
+        )
+    }
+
+    @objc private func addGroupFromTemplate(_ sender: NSMenuItem) {
+        defer { addPopupButton.selectItem(at: 0) }
+
+        guard let idString = sender.representedObject as? String,
+              let templateID = UUID(uuidString: idString),
+              var groupProfile = ProfileTemplateStore.shared.makeGroup(fromTemplateID: templateID) else {
+            return
+        }
+
+        groupProfile = makeEditableProfile(from: groupProfile)
+        guard confirmAddingButtonIfNeeded(),
+              let sourceGroup = groupProfile.buttonGroups.first else {
+            return
+        }
+
+        let sourceBounds = buttonContentBounds(for: groupProfile) ?? .zero
+        let offset = insertionOffset(forBounds: sourceBounds)
+        var beforeButtons: [GamepadButton: ButtonConfig?] = [:]
+        var afterButtons: [GamepadButton: ButtonConfig?] = [:]
+        var insertedSelection = Set<GamepadButton>()
+
+        for button in groupProfile.orderedButtonIDs {
+            guard var config = groupProfile.buttons[button.rawValue] else {
+                continue
+            }
+
+            config.x += offset.x
+            config.y += offset.y
+            config.enabled = true
+            config = configByApplyingGeometryClamp(config)
+            profile.buttons[button.rawValue] = config
+            beforeButtons[button] = nil
+            afterButtons[button] = config
+            insertedSelection.insert(button)
+        }
+
+        let beforeGroups = profile.buttonGroups
+        let newGroup = ButtonGroup(
+            name: sourceGroup.name,
+            memberButtonIDs: sourceGroup.memberButtonIDs.filter { profile.buttons[$0] != nil }
+        )
+        profile.buttonGroups.append(newGroup)
+        profile.buttonGroups = sanitizedEditorGroups(profile.buttonGroups)
+        selectedIDs = []
+        selectedGroupID = newGroup.id
+
+        refreshEditorAfterButtonSetChange(selection: [])
+        previewView.select(group: newGroup.id)
+        if let group = buttonGroup(for: newGroup.id) {
+            detailPanel.loadGroup(group, colorHex: commonColorHex(for: group))
+        }
+        updateGroupToolbarState()
+        registerEditorStateUndo(
+            beforeButtons: beforeButtons,
+            afterButtons: afterButtons,
+            beforeGroups: beforeGroups,
+            afterGroups: profile.buttonGroups,
+            actionName: "Add Group"
+        )
     }
 
     private func confirmAddingButtonIfNeeded() -> Bool {
@@ -794,12 +995,20 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         }
 
         let previousConfig = profile.buttons[button.rawValue]
+        let beforeGroups = profile.buttonGroups
         profile.buttons.removeValue(forKey: button.rawValue)
-        registerButtonStateUndo(button: button, before: previousConfig, after: nil, actionName: "Delete Button")
+        profile.buttonGroups = sanitizedEditorGroups(profile.buttonGroups)
+        registerEditorStateUndo(
+            beforeButtons: [button: previousConfig],
+            afterButtons: [button: nil],
+            beforeGroups: beforeGroups,
+            afterGroups: profile.buttonGroups,
+            actionName: "Delete Button"
+        )
         refreshFittedPadSizeFields()
         updatePreviewCanvasLayout()
         canvasObjects = makeCanvasObjects(from: profile)
-        previewView.reload(objects: canvasObjects, keepSelection: false)
+        reloadPreview(keepSelection: false)
         detailPanel.clear()
     }
 
@@ -863,6 +1072,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
         var beforeStates: [GamepadButton: ButtonConfig?] = [:]
         var afterStates: [GamepadButton: ButtonConfig?] = [:]
+        let beforeGroups = profile.buttonGroups
 
         for button in buttonsToDelete {
             beforeStates[button] = profile.buttons[button.rawValue]
@@ -870,8 +1080,15 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             profile.buttons.removeValue(forKey: button.rawValue)
         }
 
+        profile.buttonGroups = sanitizedEditorGroups(profile.buttonGroups)
         refreshEditorAfterButtonSetChange(selection: [])
-        registerButtonSetUndo(before: beforeStates, after: afterStates, actionName: actionName)
+        registerEditorStateUndo(
+            beforeButtons: beforeStates,
+            afterButtons: afterStates,
+            beforeGroups: beforeGroups,
+            afterGroups: profile.buttonGroups,
+            actionName: actionName
+        )
     }
 
     private func refreshEditorAfterButtonSetChange(selection: Set<GamepadButton>) {
@@ -880,8 +1097,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         updatePreviewCanvasLayout()
         canvasObjects = makeCanvasObjects(from: profile)
         selectedIDs = selection
-        previewView.reload(objects: canvasObjects, keepSelection: false)
+        selectedGroupID = nil
+        reloadPreview(keepSelection: false)
         previewView.select(buttons: selection)
+        updateGroupToolbarState()
 
         if selection.count == 1, let button = selection.first, let config = profile.buttons[button.rawValue] {
             detailPanel.load(button: button, config: config)
@@ -913,6 +1132,14 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         previewCanvasView.layoutSubtreeIfNeeded()
     }
 
+    private func reloadPreview(keepSelection: Bool) {
+        previewView.reload(
+            objects: canvasObjects,
+            groups: makeCanvasGroups(from: profile),
+            keepSelection: keepSelection
+        )
+    }
+
     private func syncWorkspaceAfterGeometryChange(selectedButton: GamepadButton) {
         clampEditableProfileToWorkspace()
         refreshFittedPadSizeFields()
@@ -931,6 +1158,35 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             width: config.editorWidth > 0 ? config.editorWidth : config.width,
             height: config.editorHeight > 0 ? config.editorHeight : config.height
         )
+    }
+
+    private func applyColor(_ colorHex: String, toGroup groupID: UUID) {
+        guard let group = buttonGroup(for: groupID) else {
+            return
+        }
+
+        var beforeStates: [GamepadButton: ButtonConfig?] = [:]
+        var afterStates: [GamepadButton: ButtonConfig?] = [:]
+
+        for buttonID in group.memberButtonIDs {
+            let button = GamepadButton(buttonID)
+            guard var config = profile.buttons[buttonID] else {
+                continue
+            }
+
+            beforeStates[button] = config
+            config.colorHex = colorHex
+            profile.buttons[buttonID] = config
+            afterStates[button] = config
+            syncCanvasObject(for: button, config: config)
+        }
+
+        canvasObjects = makeCanvasObjects(from: profile)
+        reloadPreview(keepSelection: true)
+        if let group = buttonGroup(for: groupID) {
+            detailPanel.loadGroup(group, colorHex: commonColorHex(for: group))
+        }
+        registerButtonSetUndo(before: beforeStates, after: afterStates, actionName: "Edit Group Color")
     }
 
     private func makeCanvasObjects(from profile: Profile) -> [CanvasButtonObject] {
@@ -953,6 +1209,113 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 isSelected: false
             )
         }
+    }
+
+    private func makeCanvasGroups(from profile: Profile) -> [CanvasButtonGroupObject] {
+        var enabledButtonIDs = Set<GamepadButton>()
+        for (key, config) in profile.buttons where config.enabled {
+            enabledButtonIDs.insert(GamepadButton(key))
+        }
+
+        var canvasGroups: [CanvasButtonGroupObject] = []
+        for group in profile.buttonGroups {
+            let memberIDs = group.memberButtonIDs
+                .map { GamepadButton($0) }
+                .filter { enabledButtonIDs.contains($0) }
+            guard memberIDs.count >= 2 else {
+                continue
+            }
+
+            canvasGroups.append(CanvasButtonGroupObject(id: group.id, name: group.name, memberIDs: memberIDs))
+        }
+
+        return canvasGroups
+    }
+
+    private func buttonGroup(for id: UUID) -> ButtonGroup? {
+        profile.buttonGroups.first { $0.id == id }
+    }
+
+    private func groupID(containingButtonID buttonID: String) -> UUID? {
+        profile.buttonGroups.first { $0.memberButtonIDs.contains(buttonID) }?.id
+    }
+
+    private func nextGroupName() -> String {
+        let prefix = "Group "
+        let nextNumber = profile.buttonGroups.reduce(0) { currentMax, group in
+            guard group.name.hasPrefix(prefix) else {
+                return currentMax
+            }
+
+            return max(currentMax, Int(group.name.dropFirst(prefix.count)) ?? 0)
+        } + 1
+
+        return "\(prefix)\(nextNumber)"
+    }
+
+    private func commonColorHex(for group: ButtonGroup) -> String? {
+        let colors = Set(group.memberButtonIDs.compactMap { profile.buttons[$0]?.colorHex })
+        return colors.count == 1 ? colors.first : nil
+    }
+
+    private func updateGroupToolbarState() {
+        let selectedButtonIDs = selectedIDs.map(\.rawValue)
+        groupButton.isEnabled = selectedButtonIDs.count >= 2
+            && selectedButtonIDs.allSatisfy { groupID(containingButtonID: $0) == nil }
+        ungroupButton.isEnabled = selectedGroupID != nil
+        saveGroupButton.isEnabled = selectedGroupID != nil
+    }
+
+    private func sanitizedEditorGroups(_ groups: [ButtonGroup]) -> [ButtonGroup] {
+        let validIDs = Set(profile.buttons.keys)
+        var claimedButtonIDs = Set<String>()
+
+        return groups.compactMap { group in
+            var seen = Set<String>()
+            let members = group.memberButtonIDs.filter { buttonID in
+                guard validIDs.contains(buttonID),
+                      !seen.contains(buttonID),
+                      !claimedButtonIDs.contains(buttonID) else {
+                    return false
+                }
+
+                seen.insert(buttonID)
+                claimedButtonIDs.insert(buttonID)
+                return true
+            }
+
+            guard members.count >= 2 else {
+                return nil
+            }
+
+            let trimmedName = group.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            return ButtonGroup(
+                id: group.id,
+                name: trimmedName.isEmpty ? "Group" : trimmedName,
+                memberButtonIDs: members
+            )
+        }
+    }
+
+    private func insertionOffset(forBounds bounds: CGRect) -> CGPoint {
+        pasteCount += 1
+        let visibleRect = previewScrollView.contentView.bounds
+        var center = CGPoint(x: visibleRect.midX, y: visibleRect.midY)
+        center.x -= previewCanvasView.workspaceOrigin.x
+        center.y -= previewCanvasView.workspaceOrigin.y
+
+        if previewView.usesCenteredOrigin {
+            center.x -= Self.maximumWorkspaceSize.width / 2
+            center.y -= Self.maximumWorkspaceSize.height / 2
+        }
+
+        center.x += CGFloat(pasteCount) * Self.pasteOffset
+        center.y -= CGFloat(pasteCount) * Self.pasteOffset
+
+        return CGPoint(
+            x: center.x - bounds.midX,
+            y: center.y - bounds.midY
+        )
     }
 
     private func applyCanvasGeometries(
@@ -1055,6 +1418,103 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         editorUndoManager.setActionName(actionName)
     }
 
+    private func registerGroupStateUndo(before: [ButtonGroup], after: [ButtonGroup], actionName: String) {
+        guard before != after else {
+            return
+        }
+
+        editorUndoManager.registerUndo(withTarget: self) { target in
+            target.applyGroupState(before, oppositeGroups: after, actionName: actionName)
+        }
+        editorUndoManager.setActionName(actionName)
+    }
+
+    private func registerEditorStateUndo(
+        beforeButtons: [GamepadButton: ButtonConfig?],
+        afterButtons: [GamepadButton: ButtonConfig?],
+        beforeGroups: [ButtonGroup],
+        afterGroups: [ButtonGroup],
+        actionName: String
+    ) {
+        let buttonChanged = beforeButtons.keys.contains { button in
+            buttonStateChanged(beforeButtons[button] ?? nil, afterButtons[button] ?? nil)
+        }
+        guard buttonChanged || beforeGroups != afterGroups else {
+            return
+        }
+
+        editorUndoManager.registerUndo(withTarget: self) { target in
+            target.applyEditorState(
+                buttonStates: beforeButtons,
+                oppositeButtonStates: afterButtons,
+                groups: beforeGroups,
+                oppositeGroups: afterGroups,
+                actionName: actionName
+            )
+        }
+        editorUndoManager.setActionName(actionName)
+    }
+
+    private func applyGroupState(_ groups: [ButtonGroup], oppositeGroups: [ButtonGroup], actionName: String) {
+        profile.buttonGroups = sanitizedEditorGroups(groups)
+        selectedGroupID = profile.buttonGroups.first { group in
+            !oppositeGroups.contains(group)
+        }?.id
+        selectedIDs = []
+        refreshEditorAfterButtonSetChange(selection: [])
+        if let selectedGroupID {
+            previewView.select(group: selectedGroupID)
+        }
+        updateGroupToolbarState()
+
+        editorUndoManager.registerUndo(withTarget: self) { target in
+            target.applyGroupState(oppositeGroups, oppositeGroups: groups, actionName: actionName)
+        }
+        editorUndoManager.setActionName(actionName)
+    }
+
+    private func applyEditorState(
+        buttonStates: [GamepadButton: ButtonConfig?],
+        oppositeButtonStates: [GamepadButton: ButtonConfig?],
+        groups: [ButtonGroup],
+        oppositeGroups: [ButtonGroup],
+        actionName: String
+    ) {
+        for (button, state) in buttonStates {
+            if isProtectedSwitchButton(button), state == nil {
+                continue
+            }
+
+            if let state {
+                profile.buttons[button.rawValue] = configByApplyingGeometryClamp(state)
+            } else {
+                profile.buttons.removeValue(forKey: button.rawValue)
+            }
+        }
+
+        profile.buttonGroups = sanitizedEditorGroups(groups)
+        selectedGroupID = profile.buttonGroups.first { group in
+            !oppositeGroups.contains(group)
+        }?.id
+        selectedIDs = []
+        refreshEditorAfterButtonSetChange(selection: [])
+        if let selectedGroupID {
+            previewView.select(group: selectedGroupID)
+        }
+        updateGroupToolbarState()
+
+        editorUndoManager.registerUndo(withTarget: self) { target in
+            target.applyEditorState(
+                buttonStates: oppositeButtonStates,
+                oppositeButtonStates: buttonStates,
+                groups: oppositeGroups,
+                oppositeGroups: groups,
+                actionName: actionName
+            )
+        }
+        editorUndoManager.setActionName(actionName)
+    }
+
     private func applyButtonState(
         button: GamepadButton,
         state: ButtonConfig?,
@@ -1071,11 +1531,12 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             profile.buttons.removeValue(forKey: button.rawValue)
         }
 
+        profile.buttonGroups = sanitizedEditorGroups(profile.buttonGroups)
         clampEditableProfileToWorkspace()
         canvasObjects = makeCanvasObjects(from: profile)
         refreshFittedPadSizeFields()
         updatePreviewCanvasLayout()
-        previewView.reload(objects: canvasObjects, keepSelection: true)
+        reloadPreview(keepSelection: true)
 
         if let config = profile.buttons[button.rawValue] {
             previewView.select(button: button)
@@ -1107,6 +1568,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             }
         }
 
+        profile.buttonGroups = sanitizedEditorGroups(profile.buttonGroups)
         let nextSelection = Set(states.keys.filter { profile.buttons[$0.rawValue] != nil })
         refreshEditorAfterButtonSetChange(selection: nextSelection)
 
@@ -1175,7 +1637,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         canvasObjects = makeCanvasObjects(from: profile)
         refreshFittedPadSizeFields()
         updatePreviewCanvasLayout()
-        previewView.reload(objects: canvasObjects, keepSelection: true)
+        reloadPreview(keepSelection: true)
 
         if frames.count == 1, let button = frames.keys.first, let config = profile.buttons[button.rawValue] {
             detailPanel.refreshPosition(x: config.x, y: config.y, config: config)
@@ -1310,7 +1772,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         canvasObjects = makeCanvasObjects(from: profile)
         refreshFittedPadSizeFields()
         updatePreviewCanvasLayout()
-        previewView.reload(objects: canvasObjects, keepSelection: true)
+        reloadPreview(keepSelection: true)
 
         if selectedIDs.count == 1, let button = selectedIDs.first, let config = profile.buttons[button.rawValue] {
             detailPanel.refreshPosition(x: config.x, y: config.y, config: config)

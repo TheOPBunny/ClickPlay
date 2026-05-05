@@ -575,7 +575,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
 
 private final class TemplateManagerViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
 
-    private let segmentedControl = NSSegmentedControl(labels: ["Profiles", "Layers"], trackingMode: .selectOne, target: nil, action: nil)
+    private let segmentedControl = NSSegmentedControl(labels: ["Profiles", "Layers", "Groups"], trackingMode: .selectOne, target: nil, action: nil)
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
     private let renameButton = NSButton(title: "Rename", target: nil, action: nil)
@@ -584,7 +584,14 @@ private final class TemplateManagerViewController: NSViewController, NSTableView
     private var templatesDidChangeObserver: NSObjectProtocol?
 
     private var selectedKind: ProfileTemplateKind {
-        segmentedControl.selectedSegment == 1 ? .layer : .profile
+        switch segmentedControl.selectedSegment {
+        case 1:
+            return .layer
+        case 2:
+            return .group
+        default:
+            return .profile
+        }
     }
 
     private var visibleTemplates: [ProfileTemplate] {
@@ -642,7 +649,7 @@ private final class TemplateManagerViewController: NSViewController, NSTableView
         NSLayoutConstraint.activate([
             segmentedControl.topAnchor.constraint(equalTo: view.topAnchor, constant: 14),
             segmentedControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14),
-            segmentedControl.widthAnchor.constraint(equalToConstant: 180),
+            segmentedControl.widthAnchor.constraint(equalToConstant: 240),
 
             scrollView.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 12),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14),

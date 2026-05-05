@@ -3,6 +3,7 @@ import Foundation
 enum ProfileTemplateKind: String, Codable {
     case profile
     case layer
+    case group
 }
 
 struct ProfileTemplate: Codable, Identifiable {
@@ -104,6 +105,11 @@ final class ProfileTemplateStore {
         return layerByRemovingSubProfileSwitches(from: layer).normalizedForSaving()
     }
 
+    func makeGroup(fromTemplateID id: UUID) -> Profile? {
+        guard let template = templates.first(where: { $0.id == id && $0.kind == .group }) else { return nil }
+        return template.profile.copyWithFreshButtonIDs()
+    }
+
     private func load() {
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             templates = []
@@ -140,6 +146,11 @@ final class ProfileTemplateStore {
             layer.subProfiles = []
             layer.activeSubProfileID = nil
             return layerByRemovingSubProfileSwitches(from: layer).normalizedForSaving()
+        case .group:
+            var groupProfile = layerByRemovingSubProfileSwitches(from: profile)
+            groupProfile.subProfiles = []
+            groupProfile.activeSubProfileID = nil
+            return groupProfile.normalizedForSaving()
         }
     }
 
@@ -162,6 +173,8 @@ final class ProfileTemplateStore {
             return "Profile Template"
         case .layer:
             return "Layer Template"
+        case .group:
+            return "Group Template"
         }
     }
 
@@ -229,7 +242,7 @@ final class ProfileStore {
     }
 
     func save() {
-        profiles = profiles.map { reconciledSubProfileSwitchButtons(in: $0.normalizedActiveSubProfileSelection()) }
+        profiles = profiles.map { reconciledSubProfileSwitchButtons(in: $0.normalizedActiveSubProfileSelection()).withSanitizedButtonGroups() }
         let saved = SavedData(profiles: profiles, activeProfileID: activeProfileID)
         do {
             let data = try JSONEncoder().encode(saved)
