@@ -43,6 +43,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
     private var templateManagerWindowController: NSWindowController?
     private var lastSelectionChangeTime = Date.distantPast
     private let renameAfterSelectionDelay: TimeInterval = 0.65
+    private let sidebarDragType = NSPasteboard.PasteboardType("com.clickplay.sidebar-profile-item")
 
     private var profiles: [Profile] {
         ProfileStore.shared.profiles
@@ -72,6 +73,8 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         outlineView.action = #selector(outlineClicked(_:))
         outlineView.rowHeight = 28
         outlineView.usesAlternatingRowBackgroundColors = true
+        outlineView.registerForDraggedTypes([sidebarDragType])
+        outlineView.setDraggingSourceOperationMask(.move, forLocal: true)
         let contextMenu = NSMenu()
         contextMenu.delegate = self
         outlineView.menu = contextMenu
@@ -192,6 +195,76 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         }
 
         ProfileStore.shared.rename(item.profileID, to: name)
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
+        guard let item = item as? SidebarItem else {
+            return nil
+        }
+
+        let pasteboardItem = NSPasteboardItem()
+        pasteboardItem.setString(dragPayload(for: item), forType: sidebarDragType)
+        return pasteboardItem
+    }
+
+    func outlineView(
+        _ outlineView: NSOutlineView,
+        validateDrop info: NSDraggingInfo,
+        proposedItem item: Any?,
+        proposedChildIndex index: Int
+    ) -> NSDragOperation {
+        guard let draggedItem = draggedSidebarItem(from: info.draggingPasteboard) else {
+            return []
+        }
+
+        if draggedItem.isSubProfile {
+            guard let parentID = draggedItem.parentID,
+                  let targetParent = item as? SidebarItem,
+                  !targetParent.isSubProfile,
+                  targetParent.profileID == parentID,
+                  index >= 0 else {
+                return []
+            }
+
+            return .move
+        }
+
+        guard item == nil, index >= 0 else {
+            return []
+        }
+
+        return .move
+    }
+
+    func outlineView(
+        _ outlineView: NSOutlineView,
+        acceptDrop info: NSDraggingInfo,
+        item: Any?,
+        childIndex index: Int
+    ) -> Bool {
+        guard let draggedItem = draggedSidebarItem(from: info.draggingPasteboard) else {
+            return false
+        }
+
+        if draggedItem.isSubProfile {
+            guard let parentID = draggedItem.parentID,
+                  let targetParent = item as? SidebarItem,
+                  targetParent.profileID == parentID,
+                  ProfileStore.shared.moveSubProfile(draggedItem.profileID, in: parentID, to: index) else {
+                return false
+            }
+
+            onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+            return true
+        }
+
+        guard item == nil,
+              ProfileStore.shared.moveProfile(draggedItem.profileID, to: index) else {
+            return false
+        }
+
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        return true
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
@@ -586,6 +659,28 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
 
         let eventPoint = outlineView.convert(event.locationInWindow, from: nil)
         return outlineView.frameOfCell(atColumn: 0, row: row).contains(eventPoint)
+    }
+
+    private func dragPayload(for item: SidebarItem) -> String {
+        [
+            item.profileID.uuidString,
+            item.parentID?.uuidString ?? "",
+        ].joined(separator: "|")
+    }
+
+    private func draggedSidebarItem(from pasteboard: NSPasteboard) -> SidebarItem? {
+        guard let payload = pasteboard.string(forType: sidebarDragType) else {
+            return nil
+        }
+
+        let components = payload.split(separator: "|", omittingEmptySubsequences: false)
+        guard components.count == 2,
+              let profileID = UUID(uuidString: String(components[0])) else {
+            return nil
+        }
+
+        let parentID = components[1].isEmpty ? nil : UUID(uuidString: String(components[1]))
+        return SidebarItem(profileID: profileID, parentID: parentID)
     }
 
     private func profile(for item: SidebarItem) -> Profile? {

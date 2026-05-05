@@ -342,6 +342,25 @@ final class ProfileStore {
     }
 
     @discardableResult
+    func moveProfile(_ id: UUID, to index: Int) -> Bool {
+        guard let sourceIndex = profiles.firstIndex(where: { $0.id == id }) else {
+            return false
+        }
+
+        let movingProfile = profiles.remove(at: sourceIndex)
+        let adjustedIndex = index > sourceIndex ? index - 1 : index
+        let destinationIndex = min(max(adjustedIndex, 0), profiles.count)
+        guard destinationIndex != sourceIndex else {
+            profiles.insert(movingProfile, at: sourceIndex)
+            return false
+        }
+
+        profiles.insert(movingProfile, at: destinationIndex)
+        save()
+        return true
+    }
+
+    @discardableResult
     func duplicate(_ id: UUID) -> Profile? {
         guard let sourceProfile = profiles.first(where: { $0.id == id }) else { return nil }
         let src = sourceProfile.copyWithNewIDs()
@@ -473,6 +492,28 @@ final class ProfileStore {
         activeProfileID = parentProfileID
         save()
         return duplicatedSubProfile
+    }
+
+    @discardableResult
+    func moveSubProfile(_ subProfileID: UUID, in parentProfileID: UUID, to index: Int) -> Bool {
+        guard let parentIndex = profiles.firstIndex(where: { $0.id == parentProfileID }),
+              let sourceIndex = profiles[parentIndex].subProfiles.firstIndex(where: { $0.id == subProfileID }) else {
+            return false
+        }
+
+        let movingSubProfile = profiles[parentIndex].subProfiles.remove(at: sourceIndex)
+        let adjustedIndex = index > sourceIndex ? index - 1 : index
+        let destinationIndex = min(max(adjustedIndex, 0), profiles[parentIndex].subProfiles.count)
+        guard destinationIndex != sourceIndex else {
+            profiles[parentIndex].subProfiles.insert(movingSubProfile, at: sourceIndex)
+            return false
+        }
+
+        profiles[parentIndex].subProfiles.insert(movingSubProfile, at: destinationIndex)
+        profiles[parentIndex] = reconciledSubProfileSwitchButtons(in: profiles[parentIndex])
+        activeProfileID = parentProfileID
+        save()
+        return true
     }
 
     func deleteSubProfile(_ subProfileID: UUID, in parentProfileID: UUID) {
