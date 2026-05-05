@@ -1498,13 +1498,16 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     private func applyGroupState(_ groups: [ButtonGroup], oppositeGroups: [ButtonGroup], actionName: String) {
         profile.buttonGroups = sanitizedEditorGroups(groups)
-        selectedGroupID = profile.buttonGroups.first { group in
+        let restoredGroupID = profile.buttonGroups.first { group in
             !oppositeGroups.contains(group)
         }?.id
-        selectedIDs = []
         refreshEditorAfterButtonSetChange(selection: [])
-        if let selectedGroupID {
-            previewView.select(group: selectedGroupID)
+        if let restoredGroupID {
+            selectedGroupID = restoredGroupID
+            previewView.select(group: restoredGroupID)
+            if let group = buttonGroup(for: restoredGroupID) {
+                detailPanel.loadGroup(group, colorHex: commonColorHex(for: group))
+            }
         }
         updateGroupToolbarState()
 
@@ -1534,13 +1537,16 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         }
 
         profile.buttonGroups = sanitizedEditorGroups(groups)
-        selectedGroupID = profile.buttonGroups.first { group in
+        let restoredGroupID = profile.buttonGroups.first { group in
             !oppositeGroups.contains(group)
         }?.id
-        selectedIDs = []
         refreshEditorAfterButtonSetChange(selection: [])
-        if let selectedGroupID {
-            previewView.select(group: selectedGroupID)
+        if let restoredGroupID {
+            selectedGroupID = restoredGroupID
+            previewView.select(group: restoredGroupID)
+            if let group = buttonGroup(for: restoredGroupID) {
+                detailPanel.loadGroup(group, colorHex: commonColorHex(for: group))
+            }
         }
         updateGroupToolbarState()
 
