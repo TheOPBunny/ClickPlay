@@ -30,9 +30,11 @@ final class ButtonDetailPanel: NSView {
 
     var onChanged: ((GamepadButton, ButtonConfig) -> Void)?
     var onDelete: ((GamepadButton) -> Void)?
+    var onGroupColorChanged: ((UUID, String) -> Void)?
 
     private var config: ButtonConfig?
     private var button: GamepadButton?
+    private var groupID: UUID?
 
     private let titleLabel = NSTextField(labelWithString: "Select a button")
     private let scrollView = NSScrollView()
@@ -92,6 +94,7 @@ final class ButtonDetailPanel: NSView {
     private var rightClickFallbackRow: NSView?
     private var rightClickModeRow: NSStackView?
     private let colorWell = NSColorWell()
+    private var colorRow: NSStackView?
     private let labelSizeField = NSTextField()
     private let labelSizeStepper = NSStepper()
     private let labelBoldCheckbox = NSButton(checkboxWithTitle: "Bold", target: nil, action: nil)
@@ -121,6 +124,7 @@ final class ButtonDetailPanel: NSView {
         titleLabel.stringValue = "Select a button to edit"
         config = nil
         button = nil
+        groupID = nil
         [labelField, labelSizeField, xField, yField, widthField, heightField].forEach { $0.stringValue = "" }
         buttonTypePopup.selectItem(withTag: ButtonType.keyboard.tag)
         keyRecorder.setKeyBindings([ButtonKeyBinding(keyCode: 49, keyModifiers: 0)])
@@ -142,6 +146,16 @@ final class ButtonDetailPanel: NSView {
         interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
         multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
         updateMultiKeyActivationModeVisibility()
+        deleteButton.isEnabled = false
+        updateControlVisibility()
+    }
+
+    func loadGroup(_ group: ButtonGroup, colorHex: String?) {
+        config = nil
+        button = nil
+        groupID = group.id
+        titleLabel.stringValue = "Editing group: \(group.name)"
+        colorWell.color = NSColor(hex: colorHex ?? "#888888")
         deleteButton.isEnabled = false
         updateControlVisibility()
     }
@@ -389,7 +403,9 @@ final class ButtonDetailPanel: NSView {
             joystickScrollDownModeRow,
             joystickScrollDownMultiKeyRow,
         ].compactMap { $0 }.forEach(contentStack.addArrangedSubview)
-        contentStack.addArrangedSubview(makeRow(label: "Color:", control: colorWell))
+        let colorRow = makeRow(label: "Color:", control: colorWell)
+        self.colorRow = colorRow
+        contentStack.addArrangedSubview(colorRow)
         contentStack.addArrangedSubview(makeRow(label: "X (px):", control: xField))
         contentStack.addArrangedSubview(makeRow(label: "Y (px):", control: yField))
         contentStack.addArrangedSubview(makeRow(label: "Shape:", control: shapePopup))
@@ -704,6 +720,11 @@ final class ButtonDetailPanel: NSView {
     }
 
     private func emitChange() {
+        if let groupID {
+            onGroupColorChanged?(groupID, colorWell.color.hexString)
+            return
+        }
+
         guard var config, let button else {
             return
         }
@@ -1013,6 +1034,22 @@ final class ButtonDetailPanel: NSView {
     }
 
     private func updateControlVisibility() {
+        if groupID != nil {
+            contentStack.arrangedSubviews.forEach { row in
+                if let colorRow {
+                    row.isHidden = row !== colorRow
+                } else {
+                    row.isHidden = true
+                }
+            }
+            deleteButton.isEnabled = false
+            return
+        }
+
+        contentStack.arrangedSubviews.forEach { row in
+            row.isHidden = false
+        }
+
         let isProtectedSwitch = config?.action.isProtectedSwitch == true
         let isJoystick = config?.type == .joystick
         let hidesKeyboardControls = isProtectedSwitch || isJoystick

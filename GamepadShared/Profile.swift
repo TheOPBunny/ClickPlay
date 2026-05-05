@@ -389,6 +389,18 @@ struct ButtonConfig: Codable {
     }
 }
 
+struct ButtonGroup: Codable, Identifiable, Equatable {
+    var id: UUID
+    var name: String
+    var memberButtonIDs: [String]
+
+    init(id: UUID = UUID(), name: String, memberButtonIDs: [String]) {
+        self.id = id
+        self.name = name
+        self.memberButtonIDs = memberButtonIDs
+    }
+}
+
 // MARK: - Profile
 
 struct Profile: Codable, Identifiable {
@@ -402,6 +414,7 @@ struct Profile: Codable, Identifiable {
     var displayPadWidth: Double
     var displayPadHeight: Double
     var buttons: [String: ButtonConfig]              // keyed by GamepadButton.rawValue
+    var buttonGroups: [ButtonGroup]
     var subProfiles: [Profile]
     var activeSubProfileID: UUID?
 
@@ -416,6 +429,7 @@ struct Profile: Codable, Identifiable {
         case displayPadWidth
         case displayPadHeight
         case buttons
+        case buttonGroups
         case subProfiles
         case activeSubProfileID
     }
@@ -431,6 +445,7 @@ struct Profile: Codable, Identifiable {
         displayPadWidth: Double? = nil,
         displayPadHeight: Double? = nil,
         buttons: [String: ButtonConfig],
+        buttonGroups: [ButtonGroup] = [],
         subProfiles: [Profile] = [],
         activeSubProfileID: UUID? = nil
     ) {
@@ -444,6 +459,7 @@ struct Profile: Codable, Identifiable {
         self.displayPadWidth = displayPadWidth ?? padWidth
         self.displayPadHeight = displayPadHeight ?? padHeight
         self.buttons = buttons
+        self.buttonGroups = Self.sanitizedButtonGroups(buttonGroups, validButtonIDs: Set(buttons.keys))
         self.subProfiles = subProfiles
         self.activeSubProfileID = activeSubProfileID
     }
@@ -460,6 +476,10 @@ struct Profile: Codable, Identifiable {
         displayPadWidth = try container.decodeIfPresent(Double.self, forKey: .displayPadWidth) ?? padWidth
         displayPadHeight = try container.decodeIfPresent(Double.self, forKey: .displayPadHeight) ?? padHeight
         buttons = try container.decode([String: ButtonConfig].self, forKey: .buttons)
+        buttonGroups = Self.sanitizedButtonGroups(
+            try container.decodeIfPresent([ButtonGroup].self, forKey: .buttonGroups) ?? [],
+            validButtonIDs: Set(buttons.keys)
+        )
         subProfiles = try container.decodeIfPresent([Profile].self, forKey: .subProfiles) ?? []
         activeSubProfileID = try container.decodeIfPresent(UUID.self, forKey: .activeSubProfileID)
     }
@@ -494,6 +514,7 @@ struct Profile: Codable, Identifiable {
     func normalizedForSaving() -> Profile {
         var normalizedProfile = self
         var normalizedButtons: [String: ButtonConfig] = [:]
+        var remappedButtonIDs: [String: String] = [:]
 
         for button in orderedButtonIDs {
             guard let config = buttons[button.rawValue] else {
@@ -502,11 +523,29 @@ struct Profile: Codable, Identifiable {
 
             let key = (button.isGenerated || button.isSubProfileSwitch) ? button.rawValue : GamepadButton.generated().rawValue
             normalizedButtons[key] = config
+            remappedButtonIDs[button.rawValue] = key
         }
 
         normalizedProfile.buttons = normalizedButtons
+        normalizedProfile.buttonGroups = Self.sanitizedButtonGroups(
+            buttonGroups.map { group in
+                ButtonGroup(
+                    id: group.id,
+                    name: group.name,
+                    memberButtonIDs: group.memberButtonIDs.compactMap { remappedButtonIDs[$0] }
+                )
+            },
+            validButtonIDs: Set(normalizedButtons.keys)
+        )
         normalizedProfile.subProfiles = subProfiles.map { $0.normalizedForSaving() }
         return normalizedProfile
+    }
+
+    func withSanitizedButtonGroups() -> Profile {
+        var sanitizedProfile = self
+        sanitizedProfile.buttonGroups = Self.sanitizedButtonGroups(buttonGroups, validButtonIDs: Set(buttons.keys))
+        sanitizedProfile.subProfiles = subProfiles.map { $0.withSanitizedButtonGroups() }
+        return sanitizedProfile
     }
 
     func asTopLevelContainer(baseLayerName: String = "Base") -> Profile {
@@ -522,6 +561,7 @@ struct Profile: Codable, Identifiable {
 
         var container = self
         container.buttons = [:]
+        container.buttonGroups = []
         container.subProfiles = [baseLayer]
         container.activeSubProfileID = baseLayer.id
         return container
@@ -567,6 +607,40 @@ struct Profile: Codable, Identifiable {
         return copiedProfile
     }
 
+    func copyWithFreshButtonIDs(nameSuffix: String = "") -> Profile {
+        var copiedProfile = self
+        copiedProfile.id = UUID()
+        copiedProfile.name += nameSuffix
+
+        var remappedButtons: [String: ButtonConfig] = [:]
+        var copiedIDsBySourceID: [String: String] = [:]
+
+        for button in orderedButtonIDs {
+            guard let config = buttons[button.rawValue] else {
+                continue
+            }
+
+            let copiedButton = GamepadButton.generated()
+            remappedButtons[copiedButton.rawValue] = config
+            copiedIDsBySourceID[button.rawValue] = copiedButton.rawValue
+        }
+
+        copiedProfile.buttons = remappedButtons
+        copiedProfile.buttonGroups = Self.sanitizedButtonGroups(
+            buttonGroups.map { group in
+                ButtonGroup(
+                    id: UUID(),
+                    name: group.name,
+                    memberButtonIDs: group.memberButtonIDs.compactMap { copiedIDsBySourceID[$0] }
+                )
+            },
+            validButtonIDs: Set(remappedButtons.keys)
+        )
+        copiedProfile.subProfiles = []
+        copiedProfile.activeSubProfileID = nil
+        return copiedProfile
+    }
+
     private func remappingSubProfileSwitches(using copiedIDsBySourceID: [UUID: UUID]) -> Profile {
         guard !copiedIDsBySourceID.isEmpty else {
             return self
@@ -594,6 +668,31 @@ struct Profile: Codable, Identifiable {
 
         remappedProfile.buttons = remappedButtons
         return remappedProfile
+    }
+
+    private static func sanitizedButtonGroups(_ groups: [ButtonGroup], validButtonIDs: Set<String>) -> [ButtonGroup] {
+        groups.compactMap { group in
+            var seen = Set<String>()
+            let members = group.memberButtonIDs.filter { buttonID in
+                guard validButtonIDs.contains(buttonID), !seen.contains(buttonID) else {
+                    return false
+                }
+
+                seen.insert(buttonID)
+                return true
+            }
+
+            guard members.count >= 2 else {
+                return nil
+            }
+
+            let trimmedName = group.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            return ButtonGroup(
+                id: group.id,
+                name: trimmedName.isEmpty ? "Group" : trimmedName,
+                memberButtonIDs: members
+            )
+        }
     }
 
     static func makeBlank(name: String = "Blank Profile") -> Profile {
