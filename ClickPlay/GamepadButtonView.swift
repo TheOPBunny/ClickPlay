@@ -48,6 +48,11 @@ final class GamepadButtonView: NSView {
         case joystickScrollDown
     }
 
+    private enum ActiveModeOutline {
+        case toggleHold
+        case turbo
+    }
+
     private final class PressState {
         var pressedBinding: (keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)?
         var pressedBindings: [(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)] = []
@@ -371,6 +376,22 @@ final class GamepadButtonView: NSView {
         config.type == .joystick
     }
 
+    private var activeModeOutline: ActiveModeOutline? {
+        guard !isJoystick, !isSubProfileSwitch else {
+            return nil
+        }
+
+        if hasActiveModeOutline(.turbo) {
+            return .turbo
+        }
+
+        if hasActiveModeOutline(.toggleHold) {
+            return .toggleHold
+        }
+
+        return nil
+    }
+
     private var hoverOutlineColor: NSColor {
         let base = NSColor(hex: config.colorHex)
         guard let color = base.usingColorSpace(.sRGB) else {
@@ -379,6 +400,50 @@ final class GamepadButtonView: NSView {
 
         let luminance = (0.2126 * color.redComponent) + (0.7152 * color.greenComponent) + (0.0722 * color.blueComponent)
         return luminance >= 0.82 ? .black : .white
+    }
+
+    private func hasActiveModeOutline(_ mode: ButtonInteractionMode) -> Bool {
+        isActive(source: .primary, mode: mode) || isActive(source: .secondary, mode: mode)
+    }
+
+    private func isActive(source: PressSource, mode: ButtonInteractionMode) -> Bool {
+        let state = state(for: source)
+        guard state.isPressed, let input = resolvedInput(for: source) else {
+            return false
+        }
+
+        return input.mode == mode
+    }
+
+    private func outlineColor(for activeMode: ActiveModeOutline, baseColor: NSColor) -> NSColor {
+        switch activeMode {
+        case .toggleHold:
+            return isRedButtonColor(baseColor) ? .systemYellow : .systemRed
+        case .turbo:
+            return isGreenButtonColor(baseColor) ? .systemBlue : .systemGreen
+        }
+    }
+
+    private func isRedButtonColor(_ color: NSColor) -> Bool {
+        guard let color = color.usingColorSpace(.sRGB) else {
+            return false
+        }
+
+        return color.redComponent > color.greenComponent * 1.25
+            && color.redComponent > color.blueComponent * 1.25
+            && color.saturationComponent >= 0.35
+            && color.brightnessComponent >= 0.20
+    }
+
+    private func isGreenButtonColor(_ color: NSColor) -> Bool {
+        guard let color = color.usingColorSpace(.sRGB) else {
+            return false
+        }
+
+        return color.greenComponent > color.redComponent * 1.18
+            && color.greenComponent > color.blueComponent * 1.18
+            && color.saturationComponent >= 0.35
+            && color.brightnessComponent >= 0.20
     }
 
     private func updateHoverState(with event: NSEvent, animated: Bool) {
@@ -1457,8 +1522,9 @@ final class GamepadButtonView: NSView {
         let defaultAlpha = isCurrentSubProfileSwitch ? 0.32 : 0.75
         let target = isVisuallyPressed ? base.withAlphaComponent(1.0) : base.withAlphaComponent(defaultAlpha)
         let scale: CGFloat = isVisuallyPressed ? 0.92 : 1.0
-        let strokeColor = isHovered ? hoverOutlineColor.cgColor : nil
-        let lineWidth: CGFloat = isHovered ? 2 : 0
+        let activeOutlineColor = activeModeOutline.map { outlineColor(for: $0, baseColor: base) }
+        let strokeColor = (activeOutlineColor ?? (isHovered ? hoverOutlineColor : nil))?.cgColor
+        let lineWidth: CGFloat = activeOutlineColor == nil ? (isHovered ? 2 : 0) : 3
         updateShapePath()
         updateJoystickLayers(baseColor: base)
         if animated {
