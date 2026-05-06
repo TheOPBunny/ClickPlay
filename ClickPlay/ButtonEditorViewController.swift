@@ -601,10 +601,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private func makeNewButtonConfig() -> ButtonConfig {
         let width = 40.0
         let height = 40.0
+        let origin = nearestEmptySpawnOrigin(for: CGSize(width: width, height: height))
 
         return ButtonConfig(
-            x: 0,
-            y: 0,
+            x: Double(origin.x) + (width / 2),
+            y: Double(origin.y) + (height / 2),
             width: width,
             height: height,
             editorWidth: width,
@@ -619,14 +620,18 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     private func makeNewJoystickConfig() -> ButtonConfig {
-        ButtonConfig(
+        let width = 50.0
+        let height = 50.0
+        let origin = nearestEmptySpawnOrigin(for: CGSize(width: width, height: height))
+
+        return ButtonConfig(
             type: .joystick,
-            x: 0,
-            y: 0,
-            width: 50,
-            height: 50,
-            editorWidth: 50,
-            editorHeight: 50,
+            x: Double(origin.x) + (width / 2),
+            y: Double(origin.y) + (height / 2),
+            width: width,
+            height: height,
+            editorWidth: width,
+            editorHeight: height,
             colorHex: "#000000",
             keyCode: 13,
             keyModifiers: 0,
@@ -965,7 +970,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         }
 
         let sourceBounds = buttonContentBounds(for: groupProfile) ?? .zero
-        let offset = insertionOffset(forBounds: sourceBounds)
+        let targetOrigin = nearestEmptySpawnOrigin(for: sourceBounds.size)
+        let offset = CGPoint(
+            x: targetOrigin.x - sourceBounds.minX,
+            y: targetOrigin.y - sourceBounds.minY
+        )
         var beforeButtons: [GamepadButton: ButtonConfig?] = [:]
         var afterButtons: [GamepadButton: ButtonConfig?] = [:]
         var insertedSelection = Set<GamepadButton>()
@@ -1375,25 +1384,81 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         }
     }
 
-    private func insertionOffset(forBounds bounds: CGRect) -> CGPoint {
-        pasteCount += 1
-        let visibleRect = previewScrollView.contentView.bounds
-        var center = CGPoint(x: visibleRect.midX, y: visibleRect.midY)
-        center.x -= previewCanvasView.workspaceOrigin.x
-        center.y -= previewCanvasView.workspaceOrigin.y
+    private func nearestEmptySpawnOrigin(for size: CGSize) -> CGPoint {
+        let workspaceBounds = editorWorkspaceBounds()
+        let width = min(max(size.width, 1), workspaceBounds.width)
+        let height = min(max(size.height, 1), workspaceBounds.height)
+        let occupiedFrames = enabledEditorFrames()
+        let searchBounds = CGRect(
+            x: workspaceBounds.minX,
+            y: workspaceBounds.minY,
+            width: max(0, workspaceBounds.width - width),
+            height: max(0, workspaceBounds.height - height)
+        )
+        var candidateXs = Set<CGFloat>([searchBounds.minX, 0])
+        var candidateYs = Set<CGFloat>([searchBounds.minY, 0])
 
-        if previewView.usesCenteredOrigin {
-            center.x -= Self.maximumWorkspaceSize.width / 2
-            center.y -= Self.maximumWorkspaceSize.height / 2
+        for frame in occupiedFrames {
+            candidateXs.insert(frame.maxX)
+            candidateXs.insert(frame.minX - width)
+            candidateYs.insert(frame.maxY)
+            candidateYs.insert(frame.minY - height)
         }
 
-        center.x += CGFloat(pasteCount) * Self.pasteOffset
-        center.y -= CGFloat(pasteCount) * Self.pasteOffset
+        let clampedXs = candidateXs.map { clamp($0, min: searchBounds.minX, max: searchBounds.maxX) }
+        let clampedYs = candidateYs.map { clamp($0, min: searchBounds.minY, max: searchBounds.maxY) }
+        let sortedXs = Array(Set(clampedXs)).sorted()
+        let sortedYs = Array(Set(clampedYs)).sorted()
+        var bestOrigin: CGPoint?
+        var bestRank: (distance: CGFloat, y: CGFloat, x: CGFloat)?
 
-        return CGPoint(
-            x: center.x - bounds.midX,
-            y: center.y - bounds.midY
-        )
+        for y in sortedYs {
+            for x in sortedXs {
+                let candidate = CGRect(x: x, y: y, width: width, height: height)
+                guard !occupiedFrames.contains(where: { $0.intersects(candidate) }) else {
+                    continue
+                }
+
+                let distance = (x * x) + (y * y)
+                let rank = (distance: distance, y: y, x: x)
+                if let currentBest = bestRank {
+                    guard rank.distance < currentBest.distance
+                        || (rank.distance == currentBest.distance && rank.y < currentBest.y)
+                        || (rank.distance == currentBest.distance && rank.y == currentBest.y && rank.x < currentBest.x) else {
+                        continue
+                    }
+                }
+
+                bestRank = rank
+                bestOrigin = candidate.origin
+            }
+        }
+
+        return bestOrigin ?? CGPoint(x: searchBounds.minX, y: searchBounds.minY)
+    }
+
+    private func editorWorkspaceBounds() -> CGRect {
+        switch profile.editorCoordinateMode {
+        case .legacyTopLeft:
+            return CGRect(origin: .zero, size: Self.maximumWorkspaceSize)
+        case .centered:
+            return CGRect(
+                x: -Self.maximumWorkspaceSize.width / 2,
+                y: -Self.maximumWorkspaceSize.height / 2,
+                width: Self.maximumWorkspaceSize.width,
+                height: Self.maximumWorkspaceSize.height
+            )
+        }
+    }
+
+    private func enabledEditorFrames() -> [CGRect] {
+        profile.orderedButtonIDs.compactMap { button in
+            guard let config = profile.buttons[button.rawValue], config.enabled else {
+                return nil
+            }
+
+            return editorFrame(for: config)
+        }
     }
 
     private func applyCanvasGeometries(
