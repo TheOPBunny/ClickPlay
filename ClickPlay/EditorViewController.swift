@@ -22,6 +22,7 @@ final class EditorViewController: NSViewController, NSSplitViewDelegate {
     private var isSidebarCollapsed = false
     private var lastExpandedSidebarWidth = Metrics.defaultSidebarWidth
     private var hasRestoredSidebarLayout = false
+    private var isSidebarLayoutRestoreScheduled = false
     private var isApplyingSidebarLayout = false
     private var lastObservedSplitViewWidth: CGFloat = 0
 
@@ -259,16 +260,32 @@ final class EditorViewController: NSViewController, NSSplitViewDelegate {
     }
 
     private func restoreSidebarLayoutIfNeeded() {
-        guard splitView.arrangedSubviews.count > 1, splitView.bounds.width > 0 else {
+        guard !hasRestoredSidebarLayout,
+              !isSidebarLayoutRestoreScheduled,
+              splitView.arrangedSubviews.count > 1,
+              splitView.bounds.width > 0 else {
             return
         }
 
-        hasRestoredSidebarLayout = true
-        profileListViewController.view.isHidden = isSidebarCollapsed
-        splitView.adjustSubviews()
-        lastObservedSplitViewWidth = splitView.bounds.width
-        if !isSidebarCollapsed {
-            setSidebarWidth(lastExpandedSidebarWidth)
+        isSidebarLayoutRestoreScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.hasRestoredSidebarLayout else {
+                return
+            }
+
+            self.isSidebarLayoutRestoreScheduled = false
+            guard self.splitView.arrangedSubviews.count > 1, self.splitView.bounds.width > 0 else {
+                return
+            }
+
+            self.hasRestoredSidebarLayout = true
+            self.profileListViewController.view.isHidden = self.isSidebarCollapsed
+            self.splitView.adjustSubviews()
+            self.lastObservedSplitViewWidth = self.splitView.bounds.width
+
+            if !self.isSidebarCollapsed {
+                self.setSidebarWidth(self.lastExpandedSidebarWidth)
+            }
         }
     }
 
