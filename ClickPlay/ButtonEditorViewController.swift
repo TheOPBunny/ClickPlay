@@ -1527,6 +1527,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             target.applyCanvasFrames(before, oppositeFrames: after)
         }
         editorUndoManager.setActionName("Move/Resize Button")
+        makeCurrentUndoActionAvailable()
     }
 
     private func registerButtonStateUndo(
@@ -1543,6 +1544,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             target.applyButtonState(button: button, state: before, oppositeState: after, actionName: actionName)
         }
         editorUndoManager.setActionName(actionName)
+        makeCurrentUndoActionAvailable()
     }
 
     private func registerButtonSetUndo(
@@ -1558,6 +1560,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             target.applyButtonSetState(states: before, oppositeStates: after, actionName: actionName)
         }
         editorUndoManager.setActionName(actionName)
+        makeCurrentUndoActionAvailable()
     }
 
     private func registerGroupStateUndo(before: [ButtonGroup], after: [ButtonGroup], actionName: String) {
@@ -1569,6 +1572,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             target.applyGroupState(before, oppositeGroups: after, actionName: actionName)
         }
         editorUndoManager.setActionName(actionName)
+        makeCurrentUndoActionAvailable()
     }
 
     private func registerEditorStateUndo(
@@ -1595,6 +1599,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             )
         }
         editorUndoManager.setActionName(actionName)
+        makeCurrentUndoActionAvailable()
     }
 
     private func registerGroupDeleteUndo(
@@ -1615,6 +1620,17 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             )
         }
         editorUndoManager.setActionName("Delete Group")
+        makeCurrentUndoActionAvailable()
+    }
+
+    private func makeCurrentUndoActionAvailable() {
+        guard !editorUndoManager.isUndoing,
+              !editorUndoManager.isRedoing,
+              editorUndoManager.groupingLevel == 1 else {
+            return
+        }
+
+        editorUndoManager.endUndoGrouping()
     }
 
     private func applyGroupState(_ groups: [ButtonGroup], oppositeGroups: [ButtonGroup], actionName: String) {
