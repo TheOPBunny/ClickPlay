@@ -26,7 +26,7 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 - [x] Use system corner dragging to resize.
 - [x] Merge the old `GamepadConfigurator` workflow into `Click Play`.
 - [ ] Add mouse event actions for left click, right click, and drag/drop toggle.
-- [ ] Decide when to fully delete the archived standalone `GamepadConfigurator` fallback.
+- [x] Retire the archived standalone `GamepadConfigurator` fallback.
 
 ## Configurator
 
@@ -47,7 +47,7 @@ Run the app from a stable signed app path and grant Accessibility permission to 
 - [x] Allow a button to be assigned multiple keys, for example `[xxaaa]` or `[abab]`.
 - [x] If a button has multiple keys, add an option to activate them sequentially or simultaneously.
 - [x] Add a "sticky" option so pressing a button keeps it held down until pressed again.
-- [ ] Add a visual cue for buttons being toggle held.
+- [x] Add a visual cue for buttons being toggle held.
 - [x] Add a "turbo" option so pressing a button repeatedly sends its key until pressed again.
 - [x] Center text on buttons.
 - [x] Investigate whether macOS Accessibility dwell actions can be activated.
