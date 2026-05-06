@@ -1177,13 +1177,15 @@ private extension ButtonType {
 
 private extension ButtonShape {
     static var allCases: [ButtonShape] {
-        [.roundedRectangle, .oval]
+        [.roundedRectangle, .square, .oval]
     }
 
     var displayName: String {
         switch self {
         case .roundedRectangle:
             return "Rounded Rectangle"
+        case .square:
+            return "Square"
         case .oval:
             return "Circle/Oval"
         }
@@ -1193,6 +1195,8 @@ private extension ButtonShape {
         switch self {
         case .roundedRectangle:
             return 0
+        case .square:
+            return 2
         case .oval:
             return 1
         }
@@ -1204,6 +1208,8 @@ private extension ButtonShape {
             self = .roundedRectangle
         case 1:
             self = .oval
+        case 2:
+            self = .square
         default:
             return nil
         }

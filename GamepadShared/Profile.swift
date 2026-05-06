@@ -8,6 +8,7 @@ enum ButtonInteractionMode: String, Codable, Equatable {
 
 enum ButtonShape: String, Codable {
     case roundedRectangle
+    case square
     case oval
 }
 

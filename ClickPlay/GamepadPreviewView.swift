@@ -882,6 +882,8 @@ final class GamepadPreviewView: NSView {
         switch shape {
         case .roundedRectangle:
             return NSBezierPath(roundedRect: frame, xRadius: 6, yRadius: 6)
+        case .square:
+            return NSBezierPath(rect: frame)
         case .oval:
             return NSBezierPath(ovalIn: frame)
         }
@@ -901,7 +903,7 @@ final class GamepadPreviewView: NSView {
         }
 
         switch object.shape {
-        case .roundedRectangle:
+        case .roundedRectangle, .square:
             return true
         case .oval:
             guard object.frame.width > 0, object.frame.height > 0 else {
