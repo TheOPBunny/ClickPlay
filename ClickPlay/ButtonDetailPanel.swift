@@ -25,6 +25,7 @@ final class ButtonDetailPanel: NSView {
 
     private enum Metrics {
         static let keyRecorderWidth: CGFloat = 150
+        static let minimumKeyRecorderWidth: CGFloat = 60
         static let keyRecorderHeight: CGFloat = 28
     }
 
@@ -230,9 +231,7 @@ final class ButtonDetailPanel: NSView {
         titleLabel.font = .boldSystemFont(ofSize: 14)
         titleLabel.lineBreakMode = .byTruncatingTail
 
-        keyRecorder.translatesAutoresizingMaskIntoConstraints = false
-        keyRecorder.widthAnchor.constraint(equalToConstant: Metrics.keyRecorderWidth).isActive = true
-        keyRecorder.heightAnchor.constraint(equalToConstant: Metrics.keyRecorderHeight).isActive = true
+        configureKeyRecorderLayout(keyRecorder)
         keyRecorder.onKeyRecorded = { [weak self] bindings in
             self?.applyKeyBindings(bindings)
             self?.emitChange()
@@ -273,9 +272,7 @@ final class ButtonDetailPanel: NSView {
         joystickScrollDownClearButton.action = #selector(clearJoystickScrollDownKey)
         rightClickRecorder.allowsEmptyDisplay = true
         rightClickRecorder.emptyTitle = "Not Set"
-        rightClickRecorder.translatesAutoresizingMaskIntoConstraints = false
-        rightClickRecorder.widthAnchor.constraint(equalToConstant: Metrics.keyRecorderWidth).isActive = true
-        rightClickRecorder.heightAnchor.constraint(equalToConstant: Metrics.keyRecorderHeight).isActive = true
+        configureKeyRecorderLayout(rightClickRecorder)
         rightClickRecorder.onKeyRecorded = { [weak self] bindings in
             self?.applyRightClickKeyBindings(bindings)
             self?.emitChange()
@@ -500,6 +497,17 @@ final class ButtonDetailPanel: NSView {
         return label
     }
 
+    private func configureKeyRecorderLayout(_ recorder: KeyRecorderButton) {
+        recorder.translatesAutoresizingMaskIntoConstraints = false
+        let preferredWidthConstraint = recorder.widthAnchor.constraint(equalToConstant: Metrics.keyRecorderWidth)
+        preferredWidthConstraint.priority = .defaultHigh
+        NSLayoutConstraint.activate([
+            recorder.widthAnchor.constraint(greaterThanOrEqualToConstant: Metrics.minimumKeyRecorderWidth),
+            preferredWidthConstraint,
+            recorder.heightAnchor.constraint(equalToConstant: Metrics.keyRecorderHeight),
+        ])
+    }
+
     private func makeSectionLabel(_ text: String) -> NSTextField {
         let label = NSTextField(labelWithString: text)
         label.font = .boldSystemFont(ofSize: 12)
@@ -530,9 +538,7 @@ final class ButtonDetailPanel: NSView {
     }
 
     private func makeJoystickKeyRow(label: String, recorder: KeyRecorderButton, clearButton: NSButton) -> NSStackView {
-        recorder.translatesAutoresizingMaskIntoConstraints = false
-        recorder.widthAnchor.constraint(equalToConstant: Metrics.keyRecorderWidth).isActive = true
-        recorder.heightAnchor.constraint(equalToConstant: Metrics.keyRecorderHeight).isActive = true
+        configureKeyRecorderLayout(recorder)
 
         let controls = NSStackView(views: [recorder, clearButton])
         controls.orientation = .horizontal
@@ -545,9 +551,7 @@ final class ButtonDetailPanel: NSView {
     }
 
     private func makeJoystickInputKeyRow(label: String, recorder: KeyRecorderButton, clearButton: NSButton) -> NSStackView {
-        recorder.translatesAutoresizingMaskIntoConstraints = false
-        recorder.widthAnchor.constraint(equalToConstant: Metrics.keyRecorderWidth).isActive = true
-        recorder.heightAnchor.constraint(equalToConstant: Metrics.keyRecorderHeight).isActive = true
+        configureKeyRecorderLayout(recorder)
 
         let controls = NSStackView(views: [recorder, clearButton])
         controls.orientation = .horizontal
