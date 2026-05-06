@@ -440,17 +440,22 @@ final class ButtonDetailPanel: NSView {
         addSubview(header)
         addSubview(scrollView)
 
+        let headerHeightConstraint = header.heightAnchor.constraint(equalToConstant: 32)
+        headerHeightConstraint.priority = .defaultHigh
+        let contentContainerMinHeightConstraint = contentContainer.heightAnchor.constraint(greaterThanOrEqualTo: scrollView.contentView.heightAnchor)
+        contentContainerMinHeightConstraint.priority = .defaultHigh
+
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: topAnchor),
             header.leadingAnchor.constraint(equalTo: leadingAnchor),
             header.trailingAnchor.constraint(equalTo: trailingAnchor),
-            header.heightAnchor.constraint(equalToConstant: 32),
+            headerHeightConstraint,
             scrollView.topAnchor.constraint(equalTo: header.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
             contentContainer.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
-            contentContainer.heightAnchor.constraint(greaterThanOrEqualTo: scrollView.contentView.heightAnchor),
+            contentContainerMinHeightConstraint,
             contentStack.topAnchor.constraint(equalTo: contentContainer.topAnchor, constant: 8),
             contentStack.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor, constant: 8),
             contentStack.trailingAnchor.constraint(lessThanOrEqualTo: contentContainer.trailingAnchor, constant: -8),
