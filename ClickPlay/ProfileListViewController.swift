@@ -37,6 +37,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
     private let outlineView = NSOutlineView()
     private let scrollView = NSScrollView()
     private let titleLabel = NSTextField(labelWithString: "Profiles")
+    private let dropIndicatorView = NSView()
     private let sidebarUndoManager = UndoManager()
     private var isReloadingSelection = false
     private var localClipboard: SidebarClipboard?
@@ -75,6 +76,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         outlineView.usesAlternatingRowBackgroundColors = true
         outlineView.registerForDraggedTypes([sidebarDragType])
         outlineView.setDraggingSourceOperationMask(.move, forLocal: true)
+        configureDropIndicator()
         let contextMenu = NSMenu()
         contextMenu.delegate = self
         outlineView.menu = contextMenu
@@ -214,6 +216,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         proposedChildIndex index: Int
     ) -> NSDragOperation {
         guard let draggedItem = draggedSidebarItem(from: info.draggingPasteboard) else {
+            hideDropIndicator()
             return []
         }
 
@@ -224,10 +227,12 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
                 proposedChildIndex: index,
                 draggingInfo: info
             ) else {
+                hideDropIndicator()
                 return []
             }
 
             outlineView.setDropItem(target.parentItem, dropChildIndex: target.childIndex)
+            showDropIndicator(parentItem: target.parentItem, childIndex: target.childIndex)
             return .move
         }
 
@@ -236,10 +241,12 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
             proposedChildIndex: index,
             draggingInfo: info
         ) else {
+            hideDropIndicator()
             return []
         }
 
         outlineView.setDropItem(nil, dropChildIndex: targetIndex)
+        showDropIndicator(parentItem: nil, childIndex: targetIndex)
         return .move
     }
 
@@ -249,6 +256,8 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         item: Any?,
         childIndex index: Int
     ) -> Bool {
+        hideDropIndicator()
+
         guard let draggedItem = draggedSidebarItem(from: info.draggingPasteboard) else {
             return false
         }
@@ -272,6 +281,15 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
 
         onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
         return true
+    }
+
+    func outlineView(
+        _ outlineView: NSOutlineView,
+        draggingSession session: NSDraggingSession,
+        endedAt screenPoint: NSPoint,
+        operation: NSDragOperation
+    ) {
+        hideDropIndicator()
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
@@ -668,22 +686,32 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         return outlineView.frameOfCell(atColumn: 0, row: row).contains(eventPoint)
     }
 
+    private func configureDropIndicator() {
+        dropIndicatorView.wantsLayer = true
+        dropIndicatorView.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
+        dropIndicatorView.layer?.cornerRadius = 1.5
+        dropIndicatorView.isHidden = true
+        dropIndicatorView.autoresizingMask = [.width]
+        outlineView.addSubview(dropIndicatorView)
+    }
+
     private func normalizedProfileDropIndex(
         proposedItem item: Any?,
         proposedChildIndex index: Int,
         draggingInfo: NSDraggingInfo
     ) -> Int? {
-        if item == nil, index >= 0 {
-            return index
-        }
-
-        guard let targetItem = item as? SidebarItem,
+        guard let targetItem = rowSidebarItem(for: draggingInfo),
               !targetItem.isSubProfile,
               let targetIndex = profiles.firstIndex(where: { $0.id == targetItem.profileID }) else {
             return nil
         }
 
-        return targetIndex + rowDropOffset(for: targetItem, draggingInfo: draggingInfo)
+        return targetIndex + rowDropOffset(
+            for: targetItem,
+            itemIndex: targetIndex,
+            itemCount: profiles.count,
+            draggingInfo: draggingInfo
+        )
     }
 
     private func normalizedLayerDropTarget(
@@ -697,24 +725,27 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
             return nil
         }
 
-        if let targetParent = item as? SidebarItem,
-           !targetParent.isSubProfile,
-           targetParent.profileID == parentID {
-            let childIndex = index >= 0 ? index : parentProfile.subProfiles.count
-            return (targetParent, childIndex)
-        }
-
-        guard let targetLayer = item as? SidebarItem,
+        guard let targetLayer = rowSidebarItem(for: draggingInfo),
               targetLayer.parentID == parentID,
               let targetIndex = parentProfile.subProfiles.firstIndex(where: { $0.id == targetLayer.profileID }) else {
             return nil
         }
 
-        let childIndex = targetIndex + rowDropOffset(for: targetLayer, draggingInfo: draggingInfo)
+        let childIndex = targetIndex + rowDropOffset(
+            for: targetLayer,
+            itemIndex: targetIndex,
+            itemCount: parentProfile.subProfiles.count,
+            draggingInfo: draggingInfo
+        )
         return (SidebarItem(profileID: parentID, parentID: nil), childIndex)
     }
 
-    private func rowDropOffset(for item: SidebarItem, draggingInfo: NSDraggingInfo) -> Int {
+    private func rowDropOffset(
+        for item: SidebarItem,
+        itemIndex: Int,
+        itemCount: Int,
+        draggingInfo: NSDraggingInfo
+    ) -> Int {
         let row = outlineView.row(forItem: item)
         guard row >= 0 else {
             return 0
@@ -722,11 +753,141 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
 
         let dropPoint = outlineView.convert(draggingInfo.draggingLocation, from: nil)
         let rowFrame = outlineView.rect(ofRow: row)
-        if outlineView.isFlipped {
-            return dropPoint.y > rowFrame.midY ? 1 : 0
+        let topRelativeY = outlineView.isFlipped
+            ? (dropPoint.y - rowFrame.minY) / max(rowFrame.height, 1)
+            : (rowFrame.maxY - dropPoint.y) / max(rowFrame.height, 1)
+
+        if itemIndex == 0, itemCount > 1 {
+            return topRelativeY > 0.8 ? 1 : 0
         }
 
-        return dropPoint.y < rowFrame.midY ? 1 : 0
+        if itemIndex == itemCount - 1, itemCount > 1 {
+            return topRelativeY > 0.2 ? 1 : 0
+        }
+
+        return topRelativeY > 0.5 ? 1 : 0
+    }
+
+    private func rowSidebarItem(for draggingInfo: NSDraggingInfo) -> SidebarItem? {
+        let dropPoint = outlineView.convert(draggingInfo.draggingLocation, from: nil)
+        let row = outlineView.row(at: dropPoint)
+        guard row >= 0 else {
+            return nil
+        }
+
+        return outlineView.item(atRow: row) as? SidebarItem
+    }
+
+    private func showDropIndicator(parentItem: SidebarItem?, childIndex: Int) {
+        guard let y = dropIndicatorY(parentItem: parentItem, childIndex: childIndex) else {
+            hideDropIndicator()
+            return
+        }
+
+        let height = 3.0
+        let inset = 6.0
+        dropIndicatorView.frame = NSRect(
+            x: inset,
+            y: y - (height / 2),
+            width: max(outlineView.bounds.width - (inset * 2), 0),
+            height: height
+        )
+        dropIndicatorView.isHidden = false
+        outlineView.addSubview(dropIndicatorView, positioned: .above, relativeTo: nil)
+    }
+
+    private func hideDropIndicator() {
+        dropIndicatorView.isHidden = true
+    }
+
+    private func dropIndicatorY(parentItem: SidebarItem?, childIndex: Int) -> CGFloat? {
+        if let parentItem {
+            guard let parentProfile = profile(with: parentItem.profileID),
+                  !parentProfile.subProfiles.isEmpty else {
+                return nil
+            }
+
+            if childIndex < parentProfile.subProfiles.count {
+                let rowItem = SidebarItem(profileID: parentProfile.subProfiles[childIndex].id, parentID: parentProfile.id)
+                return rowEdgeY(for: rowItem, edge: .before)
+            }
+
+            guard let lastSubProfile = parentProfile.subProfiles.last else {
+                return nil
+            }
+
+            let rowItem = SidebarItem(profileID: lastSubProfile.id, parentID: parentProfile.id)
+            return rowEdgeY(for: rowItem, edge: .after)
+        }
+
+        guard !profiles.isEmpty else {
+            return nil
+        }
+
+        if childIndex < profiles.count {
+            let rowItem = SidebarItem(profileID: profiles[childIndex].id, parentID: nil)
+            return rowEdgeY(for: rowItem, edge: .before)
+        }
+
+        guard let lastRow = lastVisibleDescendantRow(of: profiles[profiles.count - 1].id) else {
+            return nil
+        }
+
+        return rowEdgeY(forRow: lastRow, edge: .after)
+    }
+
+    private enum DropIndicatorEdge {
+        case before
+        case after
+    }
+
+    private func rowEdgeY(for item: SidebarItem, edge: DropIndicatorEdge) -> CGFloat? {
+        let row = row(for: item)
+        guard row >= 0 else {
+            return nil
+        }
+
+        return rowEdgeY(forRow: row, edge: edge)
+    }
+
+    private func rowEdgeY(forRow row: Int, edge: DropIndicatorEdge) -> CGFloat {
+        let rowFrame = outlineView.rect(ofRow: row)
+        switch (outlineView.isFlipped, edge) {
+        case (true, .before), (false, .after):
+            return rowFrame.minY
+        case (true, .after), (false, .before):
+            return rowFrame.maxY
+        }
+    }
+
+    private func row(for sidebarItem: SidebarItem) -> Int {
+        for row in 0..<outlineView.numberOfRows {
+            guard let item = outlineView.item(atRow: row) as? SidebarItem,
+                  item.profileID == sidebarItem.profileID,
+                  item.parentID == sidebarItem.parentID else {
+                continue
+            }
+
+            return row
+        }
+
+        return -1
+    }
+
+    private func lastVisibleDescendantRow(of profileID: UUID) -> Int? {
+        var lastRow: Int?
+
+        for row in 0..<outlineView.numberOfRows {
+            guard let item = outlineView.item(atRow: row) as? SidebarItem else {
+                continue
+            }
+
+            if item.profileID == profileID || item.parentID == profileID {
+                lastRow = row
+            }
+        }
+
+        return lastRow
     }
 
     private func dragPayload(for item: SidebarItem) -> String {
