@@ -173,7 +173,7 @@ final class GamepadButtonView: NSView {
         ])
 
         updateAppearance(animated: false)
-        NSLog("[Button \(button.rawValue)] Created frame will be set by parent, keyBindings=\(config.keyBindings.map(\.keyCode))")
+        debugLog("[Button \(button.rawValue)] Created frame will be set by parent, keyBindings=\(config.keyBindings.map(\.keyCode))")
     }
 
     override func layout() {
@@ -214,7 +214,7 @@ final class GamepadButtonView: NSView {
 
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
-        NSLog("[Button \(button.rawValue)] acceptsFirstMouse called -> true")
+        debugLog("[Button \(button.rawValue)] acceptsFirstMouse called -> true")
         return true
     }
 
@@ -244,7 +244,7 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        NSLog("[Button \(button.rawValue)] mouseDown")
+        debugLog("[Button \(button.rawValue)] mouseDown")
         if config.type == .joystick {
             beginJoystickCapture(with: event)
             return
@@ -259,7 +259,7 @@ final class GamepadButtonView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
-        NSLog("[Button \(button.rawValue)] mouseUp")
+        debugLog("[Button \(button.rawValue)] mouseUp")
         if config.type == .joystick {
             return
         }
@@ -285,7 +285,7 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        NSLog("[Button \(button.rawValue)] rightMouseDown")
+        debugLog("[Button \(button.rawValue)] rightMouseDown")
         handlePressStarted(source: .secondary)
     }
 
@@ -298,7 +298,7 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        NSLog("[Button \(button.rawValue)] rightMouseUp")
+        debugLog("[Button \(button.rawValue)] rightMouseUp")
         handlePressEnded(source: .secondary)
     }
 
@@ -339,7 +339,7 @@ final class GamepadButtonView: NSView {
     }
 
     override func mouseExited(with event: NSEvent) {
-        NSLog("[Button \(button.rawValue)] mouseExited")
+        debugLog("[Button \(button.rawValue)] mouseExited")
         setHovered(false, animated: true)
         if config.type == .joystick {
             return
@@ -516,7 +516,7 @@ final class GamepadButtonView: NSView {
         scheduleJoystickCursorParking()
         onJoystickCaptureChanged?(true)
         updateAppearance(animated: true)
-        NSLog("[Button \(button.rawValue)] joystickCaptureStarted")
+        debugLog("[Button \(button.rawValue)] joystickCaptureStarted")
     }
 
     private func updateJoystickCapture(deltaX: CGFloat, deltaY: CGFloat) {
@@ -580,7 +580,7 @@ final class GamepadButtonView: NSView {
                 warpCursorToJoystickCenter()
             }
             onJoystickCaptureChanged?(false)
-            NSLog("[Button \(button.rawValue)] joystickCaptureEnded")
+            debugLog("[Button \(button.rawValue)] joystickCaptureEnded")
         }
 
         updateAppearance(animated: true)
@@ -599,7 +599,7 @@ final class GamepadButtonView: NSView {
             callback: Self.joystickEventTapCallback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
-            NSLog("[Button \(button.rawValue)] ERROR: joystickEventTapCreationFailed")
+            errorLog("[Button \(button.rawValue)] ERROR: joystickEventTapCreationFailed")
             return false
         }
 
@@ -816,7 +816,7 @@ final class GamepadButtonView: NSView {
         for binding in activeJoystickBindings {
             KeyInjector.shared.pressRaw(binding.keyCode, modifiers: binding.modifiers)
         }
-        NSLog("[Button \(button.rawValue)] joystickDirection=\(direction) bindings=\(activeJoystickBindings.map { $0.keyCode })")
+        debugLog("[Button \(button.rawValue)] joystickDirection=\(direction) bindings=\(activeJoystickBindings.map { $0.keyCode })")
     }
 
     private func releaseActiveJoystickBindings() {
@@ -1299,7 +1299,7 @@ final class GamepadButtonView: NSView {
         state.isPressed = true
         updateAppearance(animated: true)
 
-        NSLog("[Button \(button.rawValue)] playSequential source=\(source) keyBindings=\(input.bindings.map(\.keyCode)) mode=\(input.mode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
+        debugLog("[Button \(button.rawValue)] playSequential source=\(source) keyBindings=\(input.bindings.map(\.keyCode)) mode=\(input.mode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
         postSequentialBindings(input)
 
         let workItem = DispatchWorkItem { [weak self, weak state] in
@@ -1320,7 +1320,7 @@ final class GamepadButtonView: NSView {
 
         state.isPressed = true
         updateAppearance(animated: true)
-        NSLog("[Button \(button.rawValue)] startSequentialRepeat source=\(source) keyBindings=\(input.bindings.map(\.keyCode))")
+        debugLog("[Button \(button.rawValue)] startSequentialRepeat source=\(source) keyBindings=\(input.bindings.map(\.keyCode))")
         repeatSequentialBindings(source: source, input: input)
     }
 
@@ -1333,7 +1333,7 @@ final class GamepadButtonView: NSView {
 
         state.isPressed = true
         updateAppearance(animated: true)
-        NSLog("[Button \(button.rawValue)] startTurboRepeat source=\(source) keyBindings=\(input.bindings.map(\.keyCode)) activationMode=\(input.multiKeyActivationMode.rawValue)")
+        debugLog("[Button \(button.rawValue)] startTurboRepeat source=\(source) keyBindings=\(input.bindings.map(\.keyCode)) activationMode=\(input.multiKeyActivationMode.rawValue)")
         repeatTurboActivation(source: source, input: input)
     }
 
@@ -1360,7 +1360,7 @@ final class GamepadButtonView: NSView {
         state.sequenceRepeatWorkItem = nil
         state.isPressed = false
         updateAppearance(animated: true)
-        NSLog("[Button \(button.rawValue)] stopSequentialRepeat source=\(source)")
+        debugLog("[Button \(button.rawValue)] stopSequentialRepeat source=\(source)")
     }
 
     private func repeatTurboActivation(source: PressSource, input: ResolvedInput) {
@@ -1386,7 +1386,7 @@ final class GamepadButtonView: NSView {
         state.sequenceRepeatWorkItem = nil
         state.isPressed = false
         updateAppearance(animated: true)
-        NSLog("[Button \(button.rawValue)] stopTurboRepeat source=\(source)")
+        debugLog("[Button \(button.rawValue)] stopTurboRepeat source=\(source)")
     }
 
     private func postSequentialBindings(_ input: ResolvedInput) {
@@ -1437,7 +1437,7 @@ final class GamepadButtonView: NSView {
         state.isPressed = pressed
         let keyCode = CGKeyCode(binding.keyCode)
         let modifiers = NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
-        NSLog("[Button \(button.rawValue)] setPressed=\(pressed) source=\(source) keyCode=\(keyCode) modifiers=\(binding.keyModifiers) mode=\(input.mode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
+        debugLog("[Button \(button.rawValue)] setPressed=\(pressed) source=\(source) keyCode=\(keyCode) modifiers=\(binding.keyModifiers) mode=\(input.mode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
         if pressed {
             state.pressedBinding = (keyCode: keyCode, modifiers: modifiers)
             KeyInjector.shared.pressRaw(keyCode, modifiers: modifiers)
@@ -1463,7 +1463,7 @@ final class GamepadButtonView: NSView {
         let state = state(for: source)
         guard pressed != state.isPressed else { return }
         state.isPressed = pressed
-        NSLog("[Button \(button.rawValue)] setSimultaneousPressed=\(pressed) source=\(source) keyBindings=\(input.bindings.map(\.keyCode)) mode=\(input.mode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
+        debugLog("[Button \(button.rawValue)] setSimultaneousPressed=\(pressed) source=\(source) keyBindings=\(input.bindings.map(\.keyCode)) mode=\(input.mode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
 
         if pressed {
             state.pressedBindings = uniqueInputBindings(input.bindings)

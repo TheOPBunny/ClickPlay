@@ -19,6 +19,7 @@
 		10B000012FA9000000000001 /* Click-Play-nobg-black.svg in Resources */ = {isa = PBXBuildFile; fileRef = 10B000002FA9000000000001 /* Click-Play-nobg-black.svg */; };
 		10B000032FA9000000000001 /* Click-Play-nobg-white.svg in Resources */ = {isa = PBXBuildFile; fileRef = 10B000022FA9000000000001 /* Click-Play-nobg-white.svg */; };
 		10B000052FA9000000000001 /* Click-Play-menubar-template.png in Resources */ = {isa = PBXBuildFile; fileRef = 10B000042FA9000000000001 /* Click-Play-menubar-template.png */; };
+		10D000012FA9000000000001 /* DebugLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D000002FA9000000000001 /* DebugLog.swift */; };
 		A000 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = B000 /* main.swift */; };
 		A001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B001 /* AppDelegate.swift */; };
 		A002 /* ../GamepadShared/KeyMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = B002 /* ../GamepadShared/KeyMapping.swift */; };
@@ -43,6 +44,7 @@
 		10B000002FA9000000000001 /* Click-Play-nobg-black.svg */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = "Click-Play-nobg-black.svg"; sourceTree = "<group>"; };
 		10B000022FA9000000000001 /* Click-Play-nobg-white.svg */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = "Click-Play-nobg-white.svg"; sourceTree = "<group>"; };
 		10B000042FA9000000000001 /* Click-Play-menubar-template.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Click-Play-menubar-template.png"; sourceTree = "<group>"; };
+		10D000002FA9000000000001 /* DebugLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLog.swift; sourceTree = "<group>"; };
 		B000 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		B001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		B002 /* ../GamepadShared/KeyMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../GamepadShared/KeyMapping.swift; sourceTree = "<group>"; };
@@ -78,6 +80,7 @@
 				B004 /* GamepadButtonView.swift */,
 				B005 /* GamepadContentView.swift */,
 				B006 /* GamepadWindow.swift */,
+				10D000002FA9000000000001 /* DebugLog.swift */,
 				B009 /* ../GamepadShared/Profile.swift */,
 				B010 /* ../GamepadShared/ProfileStore.swift */,
 				B007 /* Info.plist */,
@@ -194,6 +197,7 @@
 				A001 /* AppDelegate.swift in Sources */,
 				A002 /* ../GamepadShared/KeyMapping.swift in Sources */,
 				A003 /* KeyInjector.swift in Sources */,
+				10D000012FA9000000000001 /* DebugLog.swift in Sources */,
 				108EF0DC2F984329009EFAAA /* KeyRecorderButton.swift in Sources */,
 				A004 /* GamepadButtonView.swift in Sources */,
 				108EF0E42F984A0B009EFAAA /* ButtonEditorViewController.swift in Sources */,
