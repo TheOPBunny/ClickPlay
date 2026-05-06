@@ -700,18 +700,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         proposedChildIndex index: Int,
         draggingInfo: NSDraggingInfo
     ) -> Int? {
-        guard let targetItem = rowSidebarItem(for: draggingInfo),
-              !targetItem.isSubProfile,
-              let targetIndex = profiles.firstIndex(where: { $0.id == targetItem.profileID }) else {
-            return nil
-        }
-
-        return targetIndex + rowDropOffset(
-            for: targetItem,
-            itemIndex: targetIndex,
-            itemCount: profiles.count,
-            draggingInfo: draggingInfo
-        )
+        closestProfileDropIndex(to: outlineDropY(for: draggingInfo))
     }
 
     private func normalizedLayerDropTarget(
@@ -725,57 +714,63 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
             return nil
         }
 
-        guard let targetLayer = rowSidebarItem(for: draggingInfo),
-              targetLayer.parentID == parentID,
-              let targetIndex = parentProfile.subProfiles.firstIndex(where: { $0.id == targetLayer.profileID }) else {
+        guard let childIndex = closestLayerDropIndex(
+            in: parentProfile,
+            to: outlineDropY(for: draggingInfo)
+        ) else {
             return nil
         }
 
-        let childIndex = targetIndex + rowDropOffset(
-            for: targetLayer,
-            itemIndex: targetIndex,
-            itemCount: parentProfile.subProfiles.count,
-            draggingInfo: draggingInfo
-        )
         return (SidebarItem(profileID: parentID, parentID: nil), childIndex)
     }
 
-    private func rowDropOffset(
-        for item: SidebarItem,
-        itemIndex: Int,
-        itemCount: Int,
-        draggingInfo: NSDraggingInfo
-    ) -> Int {
-        let row = outlineView.row(forItem: item)
-        guard row >= 0 else {
-            return 0
-        }
-
+    private func outlineDropY(for draggingInfo: NSDraggingInfo) -> CGFloat {
         let dropPoint = outlineView.convert(draggingInfo.draggingLocation, from: nil)
-        let rowFrame = outlineView.rect(ofRow: row)
-        let topRelativeY = outlineView.isFlipped
-            ? (dropPoint.y - rowFrame.minY) / max(rowFrame.height, 1)
-            : (rowFrame.maxY - dropPoint.y) / max(rowFrame.height, 1)
-
-        if itemIndex == 0, itemCount > 1 {
-            return topRelativeY > 0.8 ? 1 : 0
-        }
-
-        if itemIndex == itemCount - 1, itemCount > 1 {
-            return topRelativeY > 0.2 ? 1 : 0
-        }
-
-        return topRelativeY > 0.5 ? 1 : 0
+        return dropPoint.y
     }
 
-    private func rowSidebarItem(for draggingInfo: NSDraggingInfo) -> SidebarItem? {
-        let dropPoint = outlineView.convert(draggingInfo.draggingLocation, from: nil)
-        let row = outlineView.row(at: dropPoint)
-        guard row >= 0 else {
-            return nil
+    private func closestProfileDropIndex(to y: CGFloat) -> Int? {
+        var candidates: [(index: Int, y: CGFloat)] = []
+
+        for (index, profile) in profiles.enumerated() {
+            let rowItem = SidebarItem(profileID: profile.id, parentID: nil)
+            if let edgeY = rowEdgeY(for: rowItem, edge: .before) {
+                candidates.append((index, edgeY))
+            }
         }
 
-        return outlineView.item(atRow: row) as? SidebarItem
+        if let lastProfile = profiles.last,
+           let lastRow = lastVisibleDescendantRow(of: lastProfile.id) {
+            candidates.append((profiles.count, rowEdgeY(forRow: lastRow, edge: .after)))
+        }
+
+        return closestCandidate(to: y, candidates: candidates)
+    }
+
+    private func closestLayerDropIndex(in parentProfile: Profile, to y: CGFloat) -> Int? {
+        var candidates: [(index: Int, y: CGFloat)] = []
+
+        for (index, subProfile) in parentProfile.subProfiles.enumerated() {
+            let rowItem = SidebarItem(profileID: subProfile.id, parentID: parentProfile.id)
+            if let edgeY = rowEdgeY(for: rowItem, edge: .before) {
+                candidates.append((index, edgeY))
+            }
+        }
+
+        if let lastSubProfile = parentProfile.subProfiles.last {
+            let rowItem = SidebarItem(profileID: lastSubProfile.id, parentID: parentProfile.id)
+            if let edgeY = rowEdgeY(for: rowItem, edge: .after) {
+                candidates.append((parentProfile.subProfiles.count, edgeY))
+            }
+        }
+
+        return closestCandidate(to: y, candidates: candidates)
+    }
+
+    private func closestCandidate(to y: CGFloat, candidates: [(index: Int, y: CGFloat)]) -> Int? {
+        candidates.min { left, right in
+            abs(left.y - y) < abs(right.y - y)
+        }?.index
     }
 
     private func showDropIndicator(parentItem: SidebarItem?, childIndex: Int) {
