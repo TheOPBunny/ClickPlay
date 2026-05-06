@@ -218,21 +218,28 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         }
 
         if draggedItem.isSubProfile {
-            guard let parentID = draggedItem.parentID,
-                  let targetParent = item as? SidebarItem,
-                  !targetParent.isSubProfile,
-                  targetParent.profileID == parentID,
-                  index >= 0 else {
+            guard let target = normalizedLayerDropTarget(
+                for: draggedItem,
+                proposedItem: item,
+                proposedChildIndex: index,
+                draggingInfo: info
+            ) else {
                 return []
             }
 
+            outlineView.setDropItem(target.parentItem, dropChildIndex: target.childIndex)
             return .move
         }
 
-        guard item == nil, index >= 0 else {
+        guard let targetIndex = normalizedProfileDropIndex(
+            proposedItem: item,
+            proposedChildIndex: index,
+            draggingInfo: info
+        ) else {
             return []
         }
 
+        outlineView.setDropItem(nil, dropChildIndex: targetIndex)
         return .move
     }
 
@@ -659,6 +666,67 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
 
         let eventPoint = outlineView.convert(event.locationInWindow, from: nil)
         return outlineView.frameOfCell(atColumn: 0, row: row).contains(eventPoint)
+    }
+
+    private func normalizedProfileDropIndex(
+        proposedItem item: Any?,
+        proposedChildIndex index: Int,
+        draggingInfo: NSDraggingInfo
+    ) -> Int? {
+        if item == nil, index >= 0 {
+            return index
+        }
+
+        guard let targetItem = item as? SidebarItem,
+              !targetItem.isSubProfile,
+              let targetIndex = profiles.firstIndex(where: { $0.id == targetItem.profileID }) else {
+            return nil
+        }
+
+        return targetIndex + rowDropOffset(for: targetItem, draggingInfo: draggingInfo)
+    }
+
+    private func normalizedLayerDropTarget(
+        for draggedItem: SidebarItem,
+        proposedItem item: Any?,
+        proposedChildIndex index: Int,
+        draggingInfo: NSDraggingInfo
+    ) -> (parentItem: SidebarItem, childIndex: Int)? {
+        guard let parentID = draggedItem.parentID,
+              let parentProfile = profile(with: parentID) else {
+            return nil
+        }
+
+        if let targetParent = item as? SidebarItem,
+           !targetParent.isSubProfile,
+           targetParent.profileID == parentID {
+            let childIndex = index >= 0 ? index : parentProfile.subProfiles.count
+            return (targetParent, childIndex)
+        }
+
+        guard let targetLayer = item as? SidebarItem,
+              targetLayer.parentID == parentID,
+              let targetIndex = parentProfile.subProfiles.firstIndex(where: { $0.id == targetLayer.profileID }) else {
+            return nil
+        }
+
+        let childIndex = targetIndex + rowDropOffset(for: targetLayer, draggingInfo: draggingInfo)
+        return (SidebarItem(profileID: parentID, parentID: nil), childIndex)
+    }
+
+    private func rowDropOffset(for item: SidebarItem, draggingInfo: NSDraggingInfo) -> Int {
+        let row = outlineView.row(forItem: item)
+        guard row >= 0 else {
+            return 0
+        }
+
+        let dropPoint = outlineView.convert(draggingInfo.draggingLocation, from: nil)
+        let rowFrame = outlineView.rect(ofRow: row)
+        if outlineView.isFlipped {
+            return dropPoint.y > rowFrame.midY ? 1 : 0
+        }
+
+        return dropPoint.y < rowFrame.midY ? 1 : 0
     }
 
     private func dragPayload(for item: SidebarItem) -> String {
