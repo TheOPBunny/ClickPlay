@@ -9,6 +9,9 @@ final class GamepadButtonView: NSView {
         var font: NSFont = .systemFont(ofSize: 11) {
             didSet { needsDisplay = true }
         }
+        var textColor: NSColor = .white {
+            didSet { needsDisplay = true }
+        }
 
         override var isFlipped: Bool { true }
 
@@ -25,7 +28,7 @@ final class GamepadButtonView: NSView {
                 string: stringValue,
                 attributes: [
                     .font: font,
-                    .foregroundColor: NSColor.white,
+                    .foregroundColor: textColor,
                     .paragraphStyle: paragraphStyle,
                 ]
             )
@@ -159,6 +162,7 @@ final class GamepadButtonView: NSView {
 
         label.stringValue = config.resolvedDisplayLabel
         label.font = config.resolvedLabelFont
+        label.textColor = NSColor(hex: config.labelColorHex)
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
         NSLayoutConstraint.activate([
@@ -189,6 +193,7 @@ final class GamepadButtonView: NSView {
         }
         label.stringValue = config.resolvedDisplayLabel
         label.font = config.resolvedLabelFont
+        label.textColor = NSColor(hex: config.labelColorHex)
         updateAppearance(animated: false)
     }
 
