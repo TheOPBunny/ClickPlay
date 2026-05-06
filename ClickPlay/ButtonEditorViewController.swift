@@ -975,9 +975,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             x: targetOrigin.x - sourceBounds.minX,
             y: targetOrigin.y - sourceBounds.minY
         )
-        var beforeButtons: [GamepadButton: ButtonConfig?] = [:]
-        var afterButtons: [GamepadButton: ButtonConfig?] = [:]
-        var insertedSelection = Set<GamepadButton>()
+        var insertedButtons: [GamepadButton: ButtonConfig] = [:]
 
         for button in groupProfile.orderedButtonIDs {
             guard var config = groupProfile.buttons[button.rawValue] else {
@@ -989,9 +987,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             config.enabled = true
             config = configByApplyingGeometryClamp(config)
             profile.buttons[button.rawValue] = config
-            beforeButtons[button] = nil
-            afterButtons[button] = config
-            insertedSelection.insert(button)
+            insertedButtons[button] = config
         }
 
         let beforeGroups = profile.buttonGroups
@@ -1006,16 +1002,15 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
         refreshEditorAfterButtonSetChange(selection: [])
         previewView.select(group: newGroup.id)
+        focusPreviewForEditorCommands()
         if let group = buttonGroup(for: newGroup.id) {
             detailPanel.loadGroup(group, colorHex: commonColorHex(for: group))
         }
         updateGroupToolbarState()
-        registerEditorStateUndo(
-            beforeButtons: beforeButtons,
-            afterButtons: afterButtons,
+        registerAddedGroupUndo(
+            insertedButtons: insertedButtons,
             beforeGroups: beforeGroups,
-            afterGroups: profile.buttonGroups,
-            actionName: "Add Group"
+            afterGroups: profile.buttonGroups
         )
     }
 
@@ -1222,6 +1217,17 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             groups: makeCanvasGroups(from: profile),
             keepSelection: keepSelection
         )
+    }
+
+    private func focusPreviewForEditorCommands() {
+        view.window?.makeFirstResponder(previewView)
+        DispatchQueue.main.async { [weak self] in
+            guard let self else {
+                return
+            }
+
+            self.view.window?.makeFirstResponder(self.previewView)
+        }
     }
 
     private func syncWorkspaceAfterGeometryChange(selectedButton: GamepadButton) {
@@ -1623,6 +1629,27 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         makeCurrentUndoActionAvailable()
     }
 
+    private func registerAddedGroupUndo(
+        insertedButtons: [GamepadButton: ButtonConfig],
+        beforeGroups: [ButtonGroup],
+        afterGroups: [ButtonGroup]
+    ) {
+        guard !insertedButtons.isEmpty || beforeGroups != afterGroups else {
+            return
+        }
+
+        editorUndoManager.registerUndo(withTarget: self) { target in
+            target.applyAddedGroupState(
+                insertedButtons: insertedButtons,
+                groups: beforeGroups,
+                oppositeGroups: afterGroups,
+                restoresButtons: false
+            )
+        }
+        editorUndoManager.setActionName("Add Group")
+        makeCurrentUndoActionAvailable()
+    }
+
     private func makeCurrentUndoActionAvailable() {
         guard !editorUndoManager.isUndoing,
               !editorUndoManager.isRedoing,
@@ -1742,6 +1769,52 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             )
         }
         editorUndoManager.setActionName("Delete Group")
+    }
+
+    private func applyAddedGroupState(
+        insertedButtons: [GamepadButton: ButtonConfig],
+        groups: [ButtonGroup],
+        oppositeGroups: [ButtonGroup],
+        restoresButtons: Bool
+    ) {
+        if restoresButtons {
+            for (button, config) in insertedButtons {
+                profile.buttons[button.rawValue] = configByApplyingGeometryClamp(config)
+            }
+        } else {
+            for button in insertedButtons.keys {
+                guard !isProtectedSwitchButton(button) else {
+                    continue
+                }
+
+                profile.buttons.removeValue(forKey: button.rawValue)
+            }
+        }
+
+        profile.buttonGroups = sanitizedEditorGroups(groups)
+        let restoredGroupID = restoresButtons ? profile.buttonGroups.first { group in
+            !oppositeGroups.contains(group)
+        }?.id : nil
+        refreshEditorAfterButtonSetChange(selection: [])
+        if let restoredGroupID {
+            selectedGroupID = restoredGroupID
+            previewView.select(group: restoredGroupID)
+            focusPreviewForEditorCommands()
+            if let group = buttonGroup(for: restoredGroupID) {
+                detailPanel.loadGroup(group, colorHex: commonColorHex(for: group))
+            }
+        }
+        updateGroupToolbarState()
+
+        editorUndoManager.registerUndo(withTarget: self) { target in
+            target.applyAddedGroupState(
+                insertedButtons: insertedButtons,
+                groups: oppositeGroups,
+                oppositeGroups: groups,
+                restoresButtons: !restoresButtons
+            )
+        }
+        editorUndoManager.setActionName("Add Group")
     }
 
     private func applyButtonState(
