@@ -1657,6 +1657,8 @@ final class GamepadButtonView: NSView {
         switch config.shape {
         case .roundedRectangle:
             return CGPath(roundedRect: rect, cornerWidth: 8, cornerHeight: 8, transform: nil)
+        case .square:
+            return CGPath(rect: rect, transform: nil)
         case .oval:
             return CGPath(ellipseIn: rect, transform: nil)
         }
@@ -1672,7 +1674,7 @@ final class GamepadButtonView: NSView {
         }
 
         switch config.shape {
-        case .roundedRectangle:
+        case .roundedRectangle, .square:
             return true
         case .oval:
             guard bounds.width > 0, bounds.height > 0 else {

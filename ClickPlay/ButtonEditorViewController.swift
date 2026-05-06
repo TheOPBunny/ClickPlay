@@ -599,8 +599,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     private func makeNewButtonConfig() -> ButtonConfig {
-        let width = 80.0
-        let height = 44.0
+        let width = 40.0
+        let height = 40.0
 
         return ButtonConfig(
             x: 0,
@@ -609,10 +609,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             height: height,
             editorWidth: width,
             editorHeight: height,
-            colorHex: "#4C8DFF",
+            colorHex: "#3D3D3D",
             keyCode: 49,
             keyModifiers: 0,
             label: nextCustomButtonLabel(),
+            shape: .square,
             enabled: true
         )
     }
@@ -622,11 +623,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             type: .joystick,
             x: 0,
             y: 0,
-            width: 96,
-            height: 96,
-            editorWidth: 96,
-            editorHeight: 96,
-            colorHex: "#35A889",
+            width: 50,
+            height: 50,
+            editorWidth: 50,
+            editorHeight: 50,
+            colorHex: "#000000",
             keyCode: 13,
             keyModifiers: 0,
             label: "Joystick",
