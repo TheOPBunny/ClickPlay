@@ -111,6 +111,7 @@ final class GamepadButtonView: NSView {
     private let joystickOuterLayer = CAShapeLayer()
     private let joystickKnobLayer = CAShapeLayer()
     private let label = CenteredLabelView(frame: .zero)
+    private var isHovered = false
     private var isSwitchPressed = false
     private var isJoystickCaptured = false
     private var joystickOffset = CGPoint.zero
@@ -188,6 +189,7 @@ final class GamepadButtonView: NSView {
 
     func releaseIfNeeded() {
         releaseJoystickCapture(warpCursorToCenter: false)
+        isHovered = false
 
         if isSubProfileSwitch {
             isSwitchPressed = false
@@ -227,6 +229,7 @@ final class GamepadButtonView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        updateHoverState(with: event, animated: true)
         guard containsInteractivePoint(convert(event.locationInWindow, from: nil)) else {
             return
         }
@@ -260,6 +263,7 @@ final class GamepadButtonView: NSView {
     }
 
     override func rightMouseDown(with event: NSEvent) {
+        updateHoverState(with: event, animated: true)
         if config.type == .joystick {
             if isJoystickCaptured {
                 releaseJoystickCapture(warpCursorToCenter: true)
@@ -289,6 +293,7 @@ final class GamepadButtonView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        updateHoverState(with: event, animated: true)
         if config.type == .joystick {
             return
         }
@@ -306,6 +311,7 @@ final class GamepadButtonView: NSView {
     }
 
     override func rightMouseDragged(with event: NSEvent) {
+        updateHoverState(with: event, animated: true)
         if config.type == .joystick, isJoystickCaptured {
             releaseJoystickCapture(warpCursorToCenter: true)
             return
@@ -318,8 +324,13 @@ final class GamepadButtonView: NSView {
         handleDrag(source: .secondary, event: event)
     }
 
+    override func mouseEntered(with event: NSEvent) {
+        updateHoverState(with: event, animated: true)
+    }
+
     override func mouseExited(with event: NSEvent) {
         NSLog("[Button \(button.rawValue)] mouseExited")
+        setHovered(false, animated: true)
         if config.type == .joystick {
             return
         }
@@ -337,7 +348,7 @@ final class GamepadButtonView: NSView {
     }
 
     override func mouseMoved(with event: NSEvent) {
-        guard config.type != .joystick else { return }
+        updateHoverState(with: event, animated: true)
     }
 
     private var isSubProfileSwitch: Bool {
@@ -358,6 +369,29 @@ final class GamepadButtonView: NSView {
 
     private var isJoystick: Bool {
         config.type == .joystick
+    }
+
+    private var hoverOutlineColor: NSColor {
+        let base = NSColor(hex: config.colorHex)
+        guard let color = base.usingColorSpace(.sRGB) else {
+            return .white
+        }
+
+        let luminance = (0.2126 * color.redComponent) + (0.7152 * color.greenComponent) + (0.0722 * color.blueComponent)
+        return luminance >= 0.82 ? .black : .white
+    }
+
+    private func updateHoverState(with event: NSEvent, animated: Bool) {
+        setHovered(containsInteractivePoint(convert(event.locationInWindow, from: nil)), animated: animated)
+    }
+
+    private func setHovered(_ hovered: Bool, animated: Bool) {
+        guard isHovered != hovered else {
+            return
+        }
+
+        isHovered = hovered
+        updateAppearance(animated: animated)
     }
 
     private func handleSubProfileSwitchPressStarted() {
@@ -1423,6 +1457,8 @@ final class GamepadButtonView: NSView {
         let defaultAlpha = isCurrentSubProfileSwitch ? 0.32 : 0.75
         let target = isVisuallyPressed ? base.withAlphaComponent(1.0) : base.withAlphaComponent(defaultAlpha)
         let scale: CGFloat = isVisuallyPressed ? 0.92 : 1.0
+        let strokeColor = isHovered ? hoverOutlineColor.cgColor : nil
+        let lineWidth: CGFloat = isHovered ? 2 : 0
         updateShapePath()
         updateJoystickLayers(baseColor: base)
         if animated {
@@ -1430,10 +1466,14 @@ final class GamepadButtonView: NSView {
                 ctx.duration = 0.05
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
                 shapeLayer.fillColor = target.cgColor
+                shapeLayer.strokeColor = strokeColor
+                shapeLayer.lineWidth = lineWidth
                 layer?.transform = CATransform3DMakeScale(scale, scale, 1)
             }
         } else {
             shapeLayer.fillColor = target.cgColor
+            shapeLayer.strokeColor = strokeColor
+            shapeLayer.lineWidth = lineWidth
             layer?.transform = CATransform3DMakeScale(scale, scale, 1)
         }
     }
@@ -1458,8 +1498,10 @@ final class GamepadButtonView: NSView {
         joystickOuterLayer.frame = bounds
         joystickOuterLayer.path = CGPath(roundedRect: outerRect, cornerWidth: 8, cornerHeight: 8, transform: nil)
         joystickOuterLayer.fillColor = baseColor.withAlphaComponent(isJoystickCaptured ? 0.42 : 0.26).cgColor
-        joystickOuterLayer.strokeColor = NSColor.white.withAlphaComponent(isJoystickCaptured ? 0.65 : 0.32).cgColor
-        joystickOuterLayer.lineWidth = 2
+        joystickOuterLayer.strokeColor = isHovered
+            ? hoverOutlineColor.cgColor
+            : NSColor.white.withAlphaComponent(isJoystickCaptured ? 0.65 : 0.32).cgColor
+        joystickOuterLayer.lineWidth = isHovered ? 2.5 : 2
 
         let knobDiameter = joystickKnobDiameter
         let clampedOffset = joystickVisualOffset
