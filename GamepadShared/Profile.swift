@@ -212,6 +212,7 @@ struct ButtonConfig: Codable {
     var labelFontSize: Double
     var labelBold: Bool
     var labelItalic: Bool
+    var labelColorHex: String
     var shape: ButtonShape
     var enabled: Bool
     var interactionMode: ButtonInteractionMode
@@ -238,6 +239,7 @@ struct ButtonConfig: Codable {
         case labelFontSize
         case labelBold
         case labelItalic
+        case labelColorHex
         case shape
         case enabled
         case interactionMode
@@ -265,6 +267,7 @@ struct ButtonConfig: Codable {
         labelFontSize: Double = 11,
         labelBold: Bool = true,
         labelItalic: Bool = false,
+        labelColorHex: String = "#FFFFFF",
         shape: ButtonShape = .roundedRectangle,
         enabled: Bool,
         interactionMode: ButtonInteractionMode = .momentary,
@@ -296,6 +299,7 @@ struct ButtonConfig: Codable {
         self.labelFontSize = labelFontSize
         self.labelBold = labelBold
         self.labelItalic = labelItalic
+        self.labelColorHex = labelColorHex
         self.shape = shape
         self.enabled = enabled
         self.interactionMode = interactionMode
@@ -330,6 +334,7 @@ struct ButtonConfig: Codable {
         labelFontSize = try container.decodeIfPresent(Double.self, forKey: .labelFontSize) ?? 11
         labelBold = try container.decodeIfPresent(Bool.self, forKey: .labelBold) ?? true
         labelItalic = try container.decodeIfPresent(Bool.self, forKey: .labelItalic) ?? false
+        labelColorHex = try container.decodeIfPresent(String.self, forKey: .labelColorHex) ?? "#FFFFFF"
         shape = try container.decodeIfPresent(ButtonShape.self, forKey: .shape) ?? .roundedRectangle
         enabled = try container.decode(Bool.self, forKey: .enabled)
         interactionMode = try container.decodeIfPresent(ButtonInteractionMode.self, forKey: .interactionMode) ?? .momentary
@@ -366,6 +371,7 @@ struct ButtonConfig: Codable {
         try container.encode(labelFontSize, forKey: .labelFontSize)
         try container.encode(labelBold, forKey: .labelBold)
         try container.encode(labelItalic, forKey: .labelItalic)
+        try container.encode(labelColorHex, forKey: .labelColorHex)
         try container.encode(shape, forKey: .shape)
         try container.encode(enabled, forKey: .enabled)
         try container.encode(interactionMode, forKey: .interactionMode)
@@ -837,7 +843,7 @@ extension ButtonConfig {
     var resolvedLabelAttributes: [NSAttributedString.Key: Any] {
         [
             .font: resolvedLabelFont,
-            .foregroundColor: NSColor.white,
+            .foregroundColor: NSColor(hex: labelColorHex),
         ]
     }
 

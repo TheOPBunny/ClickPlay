@@ -101,6 +101,7 @@ final class ButtonDetailPanel: NSView {
     private let labelSizeStepper = NSStepper()
     private let labelBoldCheckbox = NSButton(checkboxWithTitle: "Bold", target: nil, action: nil)
     private let labelItalicCheckbox = NSButton(checkboxWithTitle: "Italic", target: nil, action: nil)
+    private let labelColorWell = NSColorWell()
     private let xField = NSTextField()
     private let yField = NSTextField()
     private let widthField = NSTextField()
@@ -144,6 +145,7 @@ final class ButtonDetailPanel: NSView {
         rightClickModePopup.selectItem(withTag: Self.sameAsLeftModeTag)
         labelBoldCheckbox.state = .off
         labelItalicCheckbox.state = .off
+        labelColorWell.color = .white
         shapePopup.selectItem(withTag: ButtonShape.roundedRectangle.tag)
         interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
         multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
@@ -177,6 +179,7 @@ final class ButtonDetailPanel: NSView {
         syncLabelSizeControls(to: config.labelFontSize)
         labelBoldCheckbox.state = config.labelBold ? .on : .off
         labelItalicCheckbox.state = config.labelItalic ? .on : .off
+        labelColorWell.color = NSColor(hex: config.labelColorHex)
         colorWell.color = NSColor(hex: config.colorHex)
         xField.stringValue = String(format: "%.1f", config.x)
         yField.stringValue = String(format: "%.1f", config.y)
@@ -306,6 +309,10 @@ final class ButtonDetailPanel: NSView {
         labelBoldCheckbox.action = #selector(applyPressed)
         labelItalicCheckbox.target = self
         labelItalicCheckbox.action = #selector(applyPressed)
+        labelColorWell.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        labelColorWell.heightAnchor.constraint(equalToConstant: 22).isActive = true
+        labelColorWell.target = self
+        labelColorWell.action = #selector(applyPressed)
         shapePopup.target = self
         shapePopup.action = #selector(applyPressed)
         populateShapes()
@@ -592,6 +599,7 @@ final class ButtonDetailPanel: NSView {
         row.addArrangedSubview(labelSizeStepper)
         row.addArrangedSubview(labelBoldCheckbox)
         row.addArrangedSubview(labelItalicCheckbox)
+        row.addArrangedSubview(labelColorWell)
         return row
     }
 
@@ -754,6 +762,7 @@ final class ButtonDetailPanel: NSView {
         syncLabelSizeControls(to: config.labelFontSize)
         config.labelBold = labelBoldCheckbox.state == .on
         config.labelItalic = labelItalicCheckbox.state == .on
+        config.labelColorHex = labelColorWell.color.hexString
         config.colorHex = colorWell.color.hexString
         config.x = Double(xField.stringValue) ?? config.x
         config.y = Double(yField.stringValue) ?? config.y

@@ -8,6 +8,7 @@ struct CanvasButtonObject {
     var labelFontSize: Double
     var labelBold: Bool
     var labelItalic: Bool
+    var labelColorHex: String
     var shape: ButtonShape
     var type: ButtonType
     var isEnabled: Bool
@@ -841,7 +842,7 @@ final class GamepadPreviewView: NSView {
 
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
-            .foregroundColor: NSColor.white,
+            .foregroundColor: NSColor(hex: object.labelColorHex),
             .paragraphStyle: paragraphStyle,
         ]
         let attributedLabel = NSAttributedString(string: object.label, attributes: attributes)

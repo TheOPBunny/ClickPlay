@@ -1264,6 +1264,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 labelFontSize: config.labelFontSize,
                 labelBold: config.labelBold,
                 labelItalic: config.labelItalic,
+                labelColorHex: config.labelColorHex,
                 shape: config.shape,
                 type: config.type,
                 isEnabled: config.enabled,
@@ -1424,6 +1425,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             labelFontSize: config.labelFontSize,
             labelBold: config.labelBold,
             labelItalic: config.labelItalic,
+            labelColorHex: config.labelColorHex,
             shape: config.shape,
             type: config.type,
             isEnabled: config.enabled,
@@ -1668,6 +1670,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 || lhs.labelFontSize != rhs.labelFontSize
                 || lhs.labelBold != rhs.labelBold
                 || lhs.labelItalic != rhs.labelItalic
+                || lhs.labelColorHex != rhs.labelColorHex
                 || lhs.shape != rhs.shape
                 || lhs.enabled != rhs.enabled
                 || lhs.interactionMode != rhs.interactionMode
