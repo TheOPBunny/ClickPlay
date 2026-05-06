@@ -23,6 +23,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     private enum SplitMetrics {
         static let minimumPreviewWidth: CGFloat = 420
+        static let minimumPreviewHeight: CGFloat = 420
         static let minimumInspectorWidth: CGFloat = 300
         static let defaultInspectorWidth: CGFloat = 320
     }
@@ -153,9 +154,23 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private let previewView = GamepadPreviewView()
     private lazy var previewCanvasView = PreviewCanvasView(previewView: previewView)
     private let previewScrollView = NSScrollView()
-    private let detailPanel = ButtonDetailPanel()
+    private lazy var detailPanel = ButtonDetailPanel(
+        frame: NSRect(
+            x: 0,
+            y: 0,
+            width: SplitMetrics.defaultInspectorWidth,
+            height: SplitMetrics.minimumPreviewHeight
+        )
+    )
     private let editorSplitView = NSSplitView()
-    private let leftColumn = NSView()
+    private lazy var leftColumn = NSView(
+        frame: NSRect(
+            x: 0,
+            y: 0,
+            width: SplitMetrics.minimumPreviewWidth,
+            height: SplitMetrics.minimumPreviewHeight
+        )
+    )
 
     override func loadView() {
         view = NSView(frame: NSRect(x: 0, y: 0, width: 980, height: 700))
@@ -405,7 +420,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
         [topBar, editorSplitView].forEach(view.addSubview(_:))
 
-        let previewMinimumHeightConstraint = previewScrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 420)
+        let previewMinimumHeightConstraint = previewScrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: SplitMetrics.minimumPreviewHeight)
         previewMinimumHeightConstraint.priority = .defaultHigh
 
         NSLayoutConstraint.activate([
