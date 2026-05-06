@@ -18,6 +18,21 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         var isSubProfile: Bool {
             parentID != nil
         }
+
+        override var hash: Int {
+            var hasher = Hasher()
+            hasher.combine(profileID)
+            hasher.combine(parentID)
+            return hasher.finalize()
+        }
+
+        override func isEqual(_ object: Any?) -> Bool {
+            guard let other = object as? SidebarItem else {
+                return false
+            }
+
+            return profileID == other.profileID && parentID == other.parentID
+        }
     }
 
     private struct ProfileDeleteUndoContext {
@@ -732,7 +747,9 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
             return nil
         }
 
-        return (SidebarItem(profileID: parentID, parentID: nil), childIndex)
+        let parentItem = visibleSidebarItem(profileID: parentID, parentID: nil)
+            ?? SidebarItem(profileID: parentID, parentID: nil)
+        return (parentItem, childIndex)
     }
 
     private func outlineDropY(for draggingInfo: NSDraggingInfo) -> CGFloat {
@@ -878,6 +895,20 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         }
 
         return -1
+    }
+
+    private func visibleSidebarItem(profileID: UUID, parentID: UUID?) -> SidebarItem? {
+        for row in 0..<outlineView.numberOfRows {
+            guard let item = outlineView.item(atRow: row) as? SidebarItem,
+                  item.profileID == profileID,
+                  item.parentID == parentID else {
+                continue
+            }
+
+            return item
+        }
+
+        return nil
     }
 
     private func lastVisibleDescendantRow(of profileID: UUID) -> Int? {
