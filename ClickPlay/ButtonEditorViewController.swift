@@ -408,6 +408,9 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
         [topBar, editorSplitView].forEach(view.addSubview(_:))
 
+        let previewMinimumHeightConstraint = previewScrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 420)
+        previewMinimumHeightConstraint.priority = .defaultHigh
+
         NSLayoutConstraint.activate([
             topBar.topAnchor.constraint(equalTo: view.topAnchor, constant: 12),
             topBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
@@ -417,7 +420,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             editorSplitView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
             editorSplitView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
             editorSplitView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -12),
-            previewScrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 420),
+            previewMinimumHeightConstraint,
         ])
     }
 

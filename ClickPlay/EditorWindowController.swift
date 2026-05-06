@@ -17,15 +17,15 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         )
 
         window.title = "Click Play Editor"
-        window.contentViewController = viewController
+        window.contentMinSize = NSSize(width: 760, height: 680)
         if !window.setFrameUsingName(Self.editorFrameAutosaveName) {
             window.center()
         }
+        window.contentViewController = viewController
         window.isReleasedWhenClosed = false
         window.collectionBehavior = [.moveToActiveSpace]
         window.tabbingMode = .disallowed
         window.setFrameAutosaveName(Self.editorFrameAutosaveName)
-        window.contentMinSize = NSSize(width: 760, height: 680)
 
         self.init(window: window)
         editorViewController = viewController
