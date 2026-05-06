@@ -30,7 +30,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Signing & Capabilities, set Team and let it stabilize, then copy the
         // built .app to /Applications and run it from there instead of via ⌘R.
         let trusted = AXIsProcessTrusted()
-        NSLog("Click Play launched. Accessibility trusted: \(trusted)")
+        debugLog("Click Play launched. Accessibility trusted: \(trusted)")
 
         if trusted {
             launchGamepad()
@@ -146,7 +146,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func setupStatusBar() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         guard let btn = statusItem?.button else {
-            NSLog("ERROR: Could not create status bar item")
+            errorLog("ERROR: Could not create status bar item")
             return
         }
         configureStatusBarIcon(for: btn)
@@ -172,7 +172,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         guard let iconURL = Bundle.main.url(forResource: "Click-Play-menubar-template", withExtension: "png"),
               let icon = NSImage(contentsOf: iconURL) else {
-            NSLog("ERROR: Could not load Click Play menu bar icon")
+            errorLog("ERROR: Could not load Click Play menu bar icon")
             button.title = "CP"
             return
         }
@@ -330,17 +330,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 return
             }
 
-            NSLog("Launching gamepad window...")
+            debugLog("Launching gamepad window...")
             self.gamepadWindow = GamepadWindow()
             self.gamepadWindow?.orderFrontRegardless()
-            NSLog("Gamepad window frame: \(self.gamepadWindow?.frame ?? .zero)")
+            debugLog("Gamepad window frame: \(self.gamepadWindow?.frame ?? .zero)")
         }
     }
 
     func pollForPermission() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             if AXIsProcessTrusted() {
-                NSLog("Accessibility permission granted — launching gamepad.")
+                debugLog("Accessibility permission granted — launching gamepad.")
                 self?.launchGamepad()
             } else {
                 self?.pollForPermission()

@@ -22,14 +22,14 @@ final class KeyInjector {
             let binding = KeyBinding(keyCode: keyCode, modifiersRawValue: supportedModifiers.rawValue)
             if let heldCount = heldKeyCounts[binding], heldCount > 0 {
                 heldKeyCounts[binding] = heldCount + 1
-                NSLog("[KeyInjector] pressRaw \(keyCode) modifiers=\(binding.modifiersRawValue) — already held, owners=\(heldCount + 1), skipping")
+                debugLog("[KeyInjector] pressRaw \(keyCode) modifiers=\(binding.modifiersRawValue) - already held, owners=\(heldCount + 1), skipping")
                 return
             }
             let ok = postEvent(keyCode: keyCode, modifiers: supportedModifiers, keyDown: true)
             if ok {
                 heldKeyCounts[binding] = 1
             }
-            NSLog("[KeyInjector] pressRaw \(keyCode) modifiers=\(binding.modifiersRawValue) posted=\(ok)")
+            debugLog("[KeyInjector] pressRaw \(keyCode) modifiers=\(binding.modifiersRawValue) posted=\(ok)")
         }
     }
 
@@ -38,19 +38,19 @@ final class KeyInjector {
             let supportedModifiers = supportedModifiers(from: modifiers)
             let binding = KeyBinding(keyCode: keyCode, modifiersRawValue: supportedModifiers.rawValue)
             guard let heldCount = heldKeyCounts[binding], heldCount > 0 else {
-                NSLog("[KeyInjector] releaseRaw \(keyCode) modifiers=\(binding.modifiersRawValue) — not held, skipping")
+                debugLog("[KeyInjector] releaseRaw \(keyCode) modifiers=\(binding.modifiersRawValue) - not held, skipping")
                 return
             }
 
             if heldCount > 1 {
                 heldKeyCounts[binding] = heldCount - 1
-                NSLog("[KeyInjector] releaseRaw \(keyCode) modifiers=\(binding.modifiersRawValue) owners=\(heldCount - 1), keeping held")
+                debugLog("[KeyInjector] releaseRaw \(keyCode) modifiers=\(binding.modifiersRawValue) owners=\(heldCount - 1), keeping held")
                 return
             }
 
             heldKeyCounts.removeValue(forKey: binding)
             let ok = postEvent(keyCode: keyCode, modifiers: supportedModifiers, keyDown: false)
-            NSLog("[KeyInjector] releaseRaw \(keyCode) modifiers=\(binding.modifiersRawValue) posted=\(ok)")
+            debugLog("[KeyInjector] releaseRaw \(keyCode) modifiers=\(binding.modifiersRawValue) posted=\(ok)")
         }
     }
 
@@ -78,18 +78,18 @@ final class KeyInjector {
         for binding in bindingsToRelease {
             let modifiers = NSEvent.ModifierFlags(rawValue: binding.modifiersRawValue)
             let ok = postEvent(keyCode: binding.keyCode, modifiers: modifiers, keyDown: false)
-            NSLog("[KeyInjector] releaseAllHeldKeys \(binding.keyCode) modifiers=\(binding.modifiersRawValue) posted=\(ok)")
+            debugLog("[KeyInjector] releaseAllHeldKeys \(binding.keyCode) modifiers=\(binding.modifiersRawValue) posted=\(ok)")
         }
     }
 
     @discardableResult
     private func postEvent(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags, keyDown: Bool) -> Bool {
         guard let src = CGEventSource(stateID: .hidSystemState) else {
-            NSLog("[KeyInjector] ERROR: CGEventSource returned nil")
+            errorLog("[KeyInjector] ERROR: CGEventSource returned nil")
             return false
         }
         guard let evt = CGEvent(keyboardEventSource: src, virtualKey: keyCode, keyDown: keyDown) else {
-            NSLog("[KeyInjector] ERROR: CGEvent creation failed for keyCode \(keyCode)")
+            errorLog("[KeyInjector] ERROR: CGEvent creation failed for keyCode \(keyCode)")
             return false
         }
         evt.flags = cgEventFlags(from: modifiers)

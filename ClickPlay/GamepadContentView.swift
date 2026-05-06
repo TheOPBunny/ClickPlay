@@ -322,7 +322,7 @@ final class GamepadContentView: NSView {
 
         let width = padSurface.bounds.width
         let height = padSurface.bounds.height
-        NSLog("[ContentView] buildButtons W=\(width) H=\(height) count=\(profile.buttons.count)")
+        debugLog("[ContentView] buildButtons W=\(width) H=\(height) count=\(profile.buttons.count)")
 
         for button in profile.orderedButtonIDs {
             guard let cfg = profile.buttons[button.rawValue], cfg.enabled else { continue }
@@ -363,7 +363,7 @@ final class GamepadContentView: NSView {
             }
         }
         updateButtonVisibilityForJoystickCapture()
-        NSLog("[ContentView] Built \(buttonViews.count) buttons")
+        debugLog("[ContentView] Built \(buttonViews.count) buttons")
     }
 
     private func releaseAllButtonsForRebuild() {
@@ -402,7 +402,7 @@ final class GamepadContentView: NSView {
         isDraggingWindow = true
         dragStartWindowOrigin = window.frame.origin
         dragStartLocationInScreen = window.convertPoint(toScreen: event.locationInWindow)
-        NSLog("[ContentView] Window drag began at \(dragStartLocationInScreen)")
+        debugLog("[ContentView] Window drag began at \(dragStartLocationInScreen)")
     }
 
     private func continueWindowDrag(with event: NSEvent) {
@@ -417,6 +417,6 @@ final class GamepadContentView: NSView {
     private func endWindowDrag() {
         guard isDraggingWindow else { return }
         isDraggingWindow = false
-        NSLog("[ContentView] Window drag ended")
+            debugLog("[ContentView] Window drag ended")
     }
 }

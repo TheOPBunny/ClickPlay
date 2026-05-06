@@ -96,7 +96,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         alphaValue = profile.opacity
         startInactivityMonitoring()
         noteUserActivity()
-        NSLog("[GamepadWindow] Created. level=\(level.rawValue) ignoresMouseEvents=\(ignoresMouseEvents) canBecomeKey=\(canBecomeKey)")
+        debugLog("[GamepadWindow] Created. level=\(level.rawValue) ignoresMouseEvents=\(ignoresMouseEvents) canBecomeKey=\(canBecomeKey)")
     }
 
     override var canBecomeKey: Bool { false }
@@ -161,7 +161,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         resizeForCurrentState(using: profile)
         (contentView as? GamepadContentView)?.setMinimized(isMinimized)
         noteUserActivity()
-        NSLog("[GamepadWindow] toggleMinimized minimized=\(isMinimized)")
+        debugLog("[GamepadWindow] toggleMinimized minimized=\(isMinimized)")
     }
 
     private func resizeForCurrentState(using profile: Profile) {
@@ -301,7 +301,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         )
         let padWidth = max(GamepadContentView.minimumPadSize.width, contentLayoutRect.width)
         ProfileStore.shared.updateActiveProfileDisplaySize(width: padWidth, height: padHeight)
-        NSLog("[GamepadWindow] Live resize ended width=\(padWidth) height=\(padHeight)")
+        debugLog("[GamepadWindow] Live resize ended width=\(padWidth) height=\(padHeight)")
     }
 
     private func maximumContentSize() -> NSSize {
