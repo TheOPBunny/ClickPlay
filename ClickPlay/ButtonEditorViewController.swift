@@ -155,7 +155,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private let previewScrollView = NSScrollView()
     private let detailPanel = ButtonDetailPanel()
     private let editorSplitView = NSSplitView()
-    private let leftColumn = NSStackView()
+    private let leftColumn = NSView()
 
     override func loadView() {
         view = NSView(frame: NSRect(x: 0, y: 0, width: 980, height: 700))
@@ -395,11 +395,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         editorSplitView.delegate = self
         editorSplitView.translatesAutoresizingMaskIntoConstraints = false
 
-        leftColumn.orientation = .vertical
-        leftColumn.alignment = .width
-        leftColumn.spacing = 6
         leftColumn.translatesAutoresizingMaskIntoConstraints = false
-        leftColumn.addArrangedSubview(previewScrollView)
+        leftColumn.addSubview(previewScrollView)
 
         editorSplitView.addArrangedSubview(leftColumn)
         editorSplitView.addArrangedSubview(detailPanel)
@@ -420,6 +417,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             editorSplitView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
             editorSplitView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
             editorSplitView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -12),
+            previewScrollView.topAnchor.constraint(equalTo: leftColumn.topAnchor),
+            previewScrollView.leadingAnchor.constraint(equalTo: leftColumn.leadingAnchor),
+            previewScrollView.trailingAnchor.constraint(equalTo: leftColumn.trailingAnchor),
+            previewScrollView.bottomAnchor.constraint(equalTo: leftColumn.bottomAnchor),
             previewMinimumHeightConstraint,
         ])
     }
