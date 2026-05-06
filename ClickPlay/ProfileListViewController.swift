@@ -263,10 +263,17 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         }
 
         if draggedItem.isSubProfile {
-            guard let parentID = draggedItem.parentID,
-                  let targetParent = item as? SidebarItem,
-                  targetParent.profileID == parentID,
-                  ProfileStore.shared.moveSubProfile(draggedItem.profileID, in: parentID, to: index) else {
+            guard let target = normalizedLayerDropTarget(
+                for: draggedItem,
+                proposedItem: item,
+                proposedChildIndex: index,
+                draggingInfo: info
+            ),
+                  ProfileStore.shared.moveSubProfile(
+                    draggedItem.profileID,
+                    in: target.parentItem.profileID,
+                    to: target.childIndex
+                  ) else {
                 return false
             }
 
@@ -274,8 +281,12 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
             return true
         }
 
-        guard item == nil,
-              ProfileStore.shared.moveProfile(draggedItem.profileID, to: index) else {
+        guard let targetIndex = normalizedProfileDropIndex(
+            proposedItem: item,
+            proposedChildIndex: index,
+            draggingInfo: info
+        ),
+              ProfileStore.shared.moveProfile(draggedItem.profileID, to: targetIndex) else {
             return false
         }
 
