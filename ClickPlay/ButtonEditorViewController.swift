@@ -137,6 +137,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private var isInspectorCollapsed = false
     private var lastExpandedInspectorWidth = SplitMetrics.defaultInspectorWidth
     private var hasRestoredInspectorLayout = false
+    private var isInspectorLayoutRestoreScheduled = false
     private var isApplyingInspectorLayout = false
     private var lastObservedEditorSplitWidth: CGFloat = 0
     private var savedProfileFingerprint: Data?
@@ -547,17 +548,31 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     private func restoreInspectorLayoutIfNeeded() {
-        guard !hasRestoredInspectorLayout, editorSplitView.bounds.width > 0 else {
+        guard !hasRestoredInspectorLayout,
+              !isInspectorLayoutRestoreScheduled,
+              editorSplitView.bounds.width > 0 else {
             return
         }
 
-        hasRestoredInspectorLayout = true
-        detailPanel.isHidden = isInspectorCollapsed
-        editorSplitView.adjustSubviews()
-        lastObservedEditorSplitWidth = editorSplitView.bounds.width
+        isInspectorLayoutRestoreScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.hasRestoredInspectorLayout else {
+                return
+            }
 
-        if !isInspectorCollapsed {
-            setInspectorWidth(lastExpandedInspectorWidth)
+            self.isInspectorLayoutRestoreScheduled = false
+            guard self.editorSplitView.bounds.width > 0 else {
+                return
+            }
+
+            self.hasRestoredInspectorLayout = true
+            self.detailPanel.isHidden = self.isInspectorCollapsed
+            self.editorSplitView.adjustSubviews()
+            self.lastObservedEditorSplitWidth = self.editorSplitView.bounds.width
+
+            if !self.isInspectorCollapsed {
+                self.setInspectorWidth(self.lastExpandedInspectorWidth)
+            }
         }
     }
 
