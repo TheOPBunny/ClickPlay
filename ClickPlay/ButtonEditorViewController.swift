@@ -1070,8 +1070,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             return
         }
 
-        var beforeStates: [GamepadButton: ButtonConfig?] = [:]
-        var afterStates: [GamepadButton: ButtonConfig?] = [:]
+        var deletedButtonStates: [GamepadButton: ButtonConfig] = [:]
         let beforeGroups = profile.buttonGroups
 
         for buttonID in group.memberButtonIDs {
@@ -1080,8 +1079,9 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 continue
             }
 
-            beforeStates[button] = profile.buttons[buttonID]
-            afterStates[button] = Optional<ButtonConfig?>.some(nil)
+            if let config = profile.buttons[buttonID] {
+                deletedButtonStates[button] = config
+            }
             profile.buttons.removeValue(forKey: buttonID)
         }
 
@@ -1089,12 +1089,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         profile.buttonGroups = sanitizedEditorGroups(profile.buttonGroups)
         selectedGroupID = nil
         refreshEditorAfterButtonSetChange(selection: [])
-        registerEditorStateUndo(
-            beforeButtons: beforeStates,
-            afterButtons: afterStates,
+        registerGroupDeleteUndo(
+            deletedButtons: deletedButtonStates,
             beforeGroups: beforeGroups,
-            afterGroups: profile.buttonGroups,
-            actionName: "Delete Group"
+            afterGroups: profile.buttonGroups
         )
     }
 
@@ -1599,6 +1597,26 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         editorUndoManager.setActionName(actionName)
     }
 
+    private func registerGroupDeleteUndo(
+        deletedButtons: [GamepadButton: ButtonConfig],
+        beforeGroups: [ButtonGroup],
+        afterGroups: [ButtonGroup]
+    ) {
+        guard !deletedButtons.isEmpty || beforeGroups != afterGroups else {
+            return
+        }
+
+        editorUndoManager.registerUndo(withTarget: self) { target in
+            target.applyGroupDeleteState(
+                deletedButtons: deletedButtons,
+                groups: beforeGroups,
+                oppositeGroups: afterGroups,
+                restoresButtons: true
+            )
+        }
+        editorUndoManager.setActionName("Delete Group")
+    }
+
     private func applyGroupState(_ groups: [ButtonGroup], oppositeGroups: [ButtonGroup], actionName: String) {
         profile.buttonGroups = sanitizedEditorGroups(groups)
         let restoredGroupID = profile.buttonGroups.first { group in
@@ -1663,6 +1681,51 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             )
         }
         editorUndoManager.setActionName(actionName)
+    }
+
+    private func applyGroupDeleteState(
+        deletedButtons: [GamepadButton: ButtonConfig],
+        groups: [ButtonGroup],
+        oppositeGroups: [ButtonGroup],
+        restoresButtons: Bool
+    ) {
+        if restoresButtons {
+            for (button, config) in deletedButtons {
+                profile.buttons[button.rawValue] = configByApplyingGeometryClamp(config)
+            }
+        } else {
+            for button in deletedButtons.keys {
+                guard !isProtectedSwitchButton(button) else {
+                    continue
+                }
+
+                profile.buttons.removeValue(forKey: button.rawValue)
+            }
+        }
+
+        profile.buttonGroups = sanitizedEditorGroups(groups)
+        let restoredGroupID = restoresButtons ? profile.buttonGroups.first { group in
+            !oppositeGroups.contains(group)
+        }?.id : nil
+        refreshEditorAfterButtonSetChange(selection: [])
+        if let restoredGroupID {
+            selectedGroupID = restoredGroupID
+            previewView.select(group: restoredGroupID)
+            if let group = buttonGroup(for: restoredGroupID) {
+                detailPanel.loadGroup(group, colorHex: commonColorHex(for: group))
+            }
+        }
+        updateGroupToolbarState()
+
+        editorUndoManager.registerUndo(withTarget: self) { target in
+            target.applyGroupDeleteState(
+                deletedButtons: deletedButtons,
+                groups: oppositeGroups,
+                oppositeGroups: groups,
+                restoresButtons: !restoresButtons
+            )
+        }
+        editorUndoManager.setActionName("Delete Group")
     }
 
     private func applyButtonState(
