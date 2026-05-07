@@ -38,6 +38,8 @@ final class ButtonDetailPanel: NSView {
     private var button: GamepadButton?
     private var groupID: UUID?
 
+    private let emptyStateLabel = NSTextField(labelWithString: "Select an element to edit")
+    private let header = NSStackView()
     private let titleLabel = NSTextField(labelWithString: "Select a button")
     private let scrollView = NSScrollView()
     private let contentContainer = FlippedDocumentView()
@@ -124,10 +126,10 @@ final class ButtonDetailPanel: NSView {
     }
 
     func clear() {
-        titleLabel.stringValue = "Select a button to edit"
         config = nil
         button = nil
         groupID = nil
+        setShowsEmptyState(true)
         [labelField, labelSizeField, xField, yField, widthField, heightField].forEach { $0.stringValue = "" }
         buttonTypePopup.selectItem(withTag: ButtonType.keyboard.tag)
         keyRecorder.setKeyBindings([ButtonKeyBinding(keyCode: 49, keyModifiers: 0)])
@@ -159,6 +161,7 @@ final class ButtonDetailPanel: NSView {
         config = nil
         button = nil
         groupID = group.id
+        setShowsEmptyState(false)
         titleLabel.stringValue = "Editing group: \(group.name)"
         colorWell.color = NSColor(hex: colorHex ?? "#888888")
         deleteButton.title = "Delete Group"
@@ -170,6 +173,7 @@ final class ButtonDetailPanel: NSView {
         self.button = button
         self.config = config
         groupID = nil
+        setShowsEmptyState(false)
         deleteButton.title = "Delete Button"
         deleteButton.isEnabled = true
         let isProtectedSwitch = config.action.isProtectedSwitch
@@ -349,15 +353,18 @@ final class ButtonDetailPanel: NSView {
         rightClickClearButton.target = self
         rightClickClearButton.action = #selector(clearRightClickKey)
 
-        let header = NSStackView(views: [
-            titleLabel,
-            NSView(),
-        ])
+        header.addArrangedSubview(titleLabel)
+        header.addArrangedSubview(NSView())
         header.orientation = .horizontal
         header.alignment = .centerY
         header.spacing = 6
         header.edgeInsets = NSEdgeInsets(top: 4, left: 6, bottom: 4, right: 6)
         header.translatesAutoresizingMaskIntoConstraints = false
+
+        emptyStateLabel.font = .systemFont(ofSize: 13)
+        emptyStateLabel.textColor = .secondaryLabelColor
+        emptyStateLabel.alignment = .center
+        emptyStateLabel.translatesAutoresizingMaskIntoConstraints = false
 
         contentStack.orientation = .vertical
         contentStack.alignment = .leading
@@ -443,6 +450,7 @@ final class ButtonDetailPanel: NSView {
         scrollView.documentView = contentContainer
         addSubview(header)
         addSubview(scrollView)
+        addSubview(emptyStateLabel)
 
         let headerHeightConstraint = header.heightAnchor.constraint(equalToConstant: 32)
         headerHeightConstraint.priority = .defaultHigh
@@ -458,6 +466,10 @@ final class ButtonDetailPanel: NSView {
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            emptyStateLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
+            emptyStateLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            emptyStateLabel.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 16),
+            emptyStateLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -16),
             contentContainer.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
             contentContainerMinHeightConstraint,
             contentStack.topAnchor.constraint(equalTo: contentContainer.topAnchor, constant: 8),
@@ -488,6 +500,12 @@ final class ButtonDetailPanel: NSView {
         enabledCheckbox.action = #selector(applyPressed)
 
         clear()
+    }
+
+    private func setShowsEmptyState(_ showsEmptyState: Bool) {
+        emptyStateLabel.isHidden = !showsEmptyState
+        header.isHidden = showsEmptyState
+        scrollView.isHidden = showsEmptyState
     }
 
     private func makeRow(label: String, control: NSView) -> NSStackView {
