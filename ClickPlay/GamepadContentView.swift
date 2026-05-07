@@ -288,8 +288,8 @@ final class GamepadContentView: NSView {
 
     private func updateBackgroundColor() {
         let color = NSColor(hex: currentProfile.backgroundColorHex)
-        layer?.backgroundColor = color.withAlphaComponent(0.55).cgColor
-        backgroundTintView.layer?.backgroundColor = color.withAlphaComponent(0.28).cgColor
+        layer?.backgroundColor = color.cgColor
+        backgroundTintView.layer?.backgroundColor = color.cgColor
     }
 
     private func updateLayout() {

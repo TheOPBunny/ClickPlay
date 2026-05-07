@@ -163,8 +163,6 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private var editorMouseDownMonitor: Any?
 
     private let compatibilityModeCheckbox = NSButton(checkboxWithTitle: "Compatibility Mode", target: nil, action: nil)
-    private let backgroundColorLabel = NSTextField(labelWithString: "Pad Color")
-    private let backgroundColorWell = NSColorWell()
     private let showGridCheckbox = NSButton(checkboxWithTitle: "Show Grid", target: nil, action: nil)
     private let snappingCheckbox = NSButton(checkboxWithTitle: "Snapping", target: nil, action: nil)
     private let groupButton = NSButton(title: "Group", target: nil, action: nil)
@@ -291,11 +289,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         self.profile.buttonGroups = sanitizedEditorGroups(self.profile.buttonGroups)
         canvasObjects = makeCanvasObjects(from: self.profile)
         compatibilityModeCheckbox.state = self.profile.compatibilityMode ? .on : .off
-        backgroundColorWell.color = NSColor(hex: self.profile.backgroundColorHex)
         refreshFittedPadSizeFields()
         updatePreviewCanvasLayout()
         previewView.reload(objects: canvasObjects, groups: makeCanvasGroups(from: self.profile), keepSelection: false)
-        detailPanel.clear()
+        showProfileSettings()
         updateGroupToolbarState()
         savedProfileFingerprint = currentSavedProfileFingerprint()
         prepareProfileContentScroll()
@@ -349,7 +346,6 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     @discardableResult
     func saveChanges() -> Bool {
         profile.compatibilityMode = compatibilityModeCheckbox.state == .on
-        profile.backgroundColorHex = backgroundColorWell.color.hexString
         clampEditableProfileToWorkspace()
         profile.buttonGroups = sanitizedEditorGroups(profile.buttonGroups)
         let savedProfile = currentSavedProfile()
@@ -368,14 +364,6 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         previewView.maximumWorkspaceSize = Self.maximumWorkspaceSize
         compatibilityModeCheckbox.target = self
         compatibilityModeCheckbox.action = #selector(compatibilityModeChanged)
-        backgroundColorLabel.font = .systemFont(ofSize: 13)
-        backgroundColorWell.color = NSColor(hex: profile.backgroundColorHex)
-        backgroundColorWell.toolTip = "Gamepad background color"
-        backgroundColorWell.target = self
-        backgroundColorWell.action = #selector(backgroundColorChanged)
-        backgroundColorWell.isContinuous = true
-        backgroundColorWell.widthAnchor.constraint(equalToConstant: 32).isActive = true
-        backgroundColorWell.heightAnchor.constraint(equalToConstant: 22).isActive = true
         showGridCheckbox.state = .on
         showGridCheckbox.target = self
         showGridCheckbox.action = #selector(showGridChanged)
@@ -408,8 +396,6 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         let topBar = NSStackView(views: [
             leftSidebarToggleButton,
             compatibilityModeCheckbox,
-            backgroundColorLabel,
-            backgroundColorWell,
             showGridCheckbox,
             snappingCheckbox,
             groupButton,
@@ -445,7 +431,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             }
 
             guard selectedIDs.count == 1, let button = selectedIDs.first, let config = self.profile.buttons[button.rawValue] else {
-                self.detailPanel.clear()
+                self.showProfileSettings()
                 return
             }
 
@@ -488,6 +474,9 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         }
         detailPanel.onGroupColorChanged = { [weak self] groupID, colorHex in
             self?.applyColor(colorHex, toGroup: groupID)
+        }
+        detailPanel.onProfileBackgroundColorChanged = { [weak self] colorHex in
+            self?.applyProfileBackgroundColor(colorHex)
         }
 
         templatesDidChangeObserver = NotificationCenter.default.addObserver(
@@ -896,10 +885,6 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         reloadPreview(keepSelection: true)
     }
 
-    @objc private func backgroundColorChanged() {
-        profile.backgroundColorHex = backgroundColorWell.color.hexString
-    }
-
     @objc private func showGridChanged() {
         previewCanvasView.showsGrid = showGridCheckbox.state == .on
     }
@@ -1011,7 +996,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         self.selectedGroupID = nil
         reloadPreview(keepSelection: false)
         previewView.select(buttons: [])
-        detailPanel.clear()
+        showProfileSettings()
         updateGroupToolbarState()
         registerGroupStateUndo(before: beforeGroups, after: profile.buttonGroups, actionName: "Ungroup Buttons")
     }
@@ -1153,7 +1138,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         updatePreviewCanvasLayout()
         canvasObjects = makeCanvasObjects(from: profile)
         reloadPreview(keepSelection: false)
-        detailPanel.clear()
+        showProfileSettings()
     }
 
     private func deleteGroup(_ groupID: UUID) {
@@ -1280,7 +1265,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         if selection.count == 1, let button = selection.first, let config = profile.buttons[button.rawValue] {
             detailPanel.load(button: button, config: config)
         } else {
-            detailPanel.clear()
+            showProfileSettings()
         }
     }
 
@@ -1313,6 +1298,14 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             groups: makeCanvasGroups(from: profile),
             keepSelection: keepSelection
         )
+    }
+
+    private func showProfileSettings() {
+        detailPanel.loadProfileSettings(backgroundColorHex: profile.backgroundColorHex)
+    }
+
+    private func applyProfileBackgroundColor(_ colorHex: String) {
+        profile.backgroundColorHex = colorHex
     }
 
     private func focusPreviewForEditorCommands() {
@@ -1940,7 +1933,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             previewView.select(button: button)
             detailPanel.load(button: button, config: config)
         } else {
-            detailPanel.clear()
+            showProfileSettings()
         }
 
         editorUndoManager.registerUndo(withTarget: self) { target in
@@ -2180,7 +2173,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 height: config.editorHeight > 0 ? config.editorHeight : config.height
             )
         } else {
-            detailPanel.clear()
+            showProfileSettings()
         }
     }
 

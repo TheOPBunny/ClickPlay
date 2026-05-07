@@ -33,12 +33,16 @@ final class ButtonDetailPanel: NSView {
     var onDelete: ((GamepadButton) -> Void)?
     var onDeleteGroup: ((UUID) -> Void)?
     var onGroupColorChanged: ((UUID, String) -> Void)?
+    var onProfileBackgroundColorChanged: ((String) -> Void)?
 
     private var config: ButtonConfig?
     private var button: GamepadButton?
     private var groupID: UUID?
 
-    private let emptyStateLabel = NSTextField(labelWithString: "Select an element to edit")
+    private let profileSettingsStack = NSStackView()
+    private let profileSettingsTitleLabel = NSTextField(labelWithString: "Profile")
+    private let profileBackgroundColorWell = NSColorWell()
+    private let profileBackgroundResetButton = NSButton(title: "Reset", target: nil, action: nil)
     private let header = NSStackView()
     private let titleLabel = NSTextField(labelWithString: "Select a button")
     private let scrollView = NSScrollView()
@@ -126,10 +130,15 @@ final class ButtonDetailPanel: NSView {
     }
 
     func clear() {
+        loadProfileSettings(backgroundColorHex: Profile.defaultBackgroundColorHex)
+    }
+
+    func loadProfileSettings(backgroundColorHex: String) {
         config = nil
         button = nil
         groupID = nil
-        setShowsEmptyState(true)
+        setShowsProfileSettings(true)
+        profileBackgroundColorWell.color = NSColor(hex: backgroundColorHex)
         [labelField, labelSizeField, xField, yField, widthField, heightField].forEach { $0.stringValue = "" }
         buttonTypePopup.selectItem(withTag: ButtonType.keyboard.tag)
         keyRecorder.setKeyBindings([ButtonKeyBinding(keyCode: 49, keyModifiers: 0)])
@@ -161,7 +170,7 @@ final class ButtonDetailPanel: NSView {
         config = nil
         button = nil
         groupID = group.id
-        setShowsEmptyState(false)
+        setShowsProfileSettings(false)
         titleLabel.stringValue = "Editing group: \(group.name)"
         colorWell.color = NSColor(hex: colorHex ?? "#888888")
         deleteButton.title = "Delete Group"
@@ -173,7 +182,7 @@ final class ButtonDetailPanel: NSView {
         self.button = button
         self.config = config
         groupID = nil
-        setShowsEmptyState(false)
+        setShowsProfileSettings(false)
         deleteButton.title = "Delete Button"
         deleteButton.isEnabled = true
         let isProtectedSwitch = config.action.isProtectedSwitch
@@ -288,6 +297,15 @@ final class ButtonDetailPanel: NSView {
         deleteButton.target = self
         deleteButton.action = #selector(deletePressed)
         deleteButton.isEnabled = false
+        profileBackgroundColorWell.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        profileBackgroundColorWell.heightAnchor.constraint(equalToConstant: 22).isActive = true
+        profileBackgroundColorWell.isContinuous = true
+        profileBackgroundColorWell.target = self
+        profileBackgroundColorWell.action = #selector(profileBackgroundColorChanged)
+        profileBackgroundColorWell.toolTip = "Gamepad background color"
+        profileBackgroundResetButton.bezelStyle = .rounded
+        profileBackgroundResetButton.target = self
+        profileBackgroundResetButton.action = #selector(resetProfileBackgroundColor)
 
         widthField.bezelStyle = .roundedBezel
         widthField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
@@ -361,10 +379,20 @@ final class ButtonDetailPanel: NSView {
         header.edgeInsets = NSEdgeInsets(top: 4, left: 6, bottom: 4, right: 6)
         header.translatesAutoresizingMaskIntoConstraints = false
 
-        emptyStateLabel.font = .systemFont(ofSize: 13)
-        emptyStateLabel.textColor = .secondaryLabelColor
-        emptyStateLabel.alignment = .center
-        emptyStateLabel.translatesAutoresizingMaskIntoConstraints = false
+        profileSettingsTitleLabel.font = .boldSystemFont(ofSize: 14)
+        let profileBackgroundLabel = NSTextField(labelWithString: "Gamepad Color")
+        profileBackgroundLabel.font = .systemFont(ofSize: 12)
+        let profileBackgroundRow = NSStackView(views: [profileBackgroundLabel, profileBackgroundColorWell, profileBackgroundResetButton])
+        profileBackgroundRow.orientation = .horizontal
+        profileBackgroundRow.alignment = .centerY
+        profileBackgroundRow.spacing = 8
+
+        profileSettingsStack.orientation = .vertical
+        profileSettingsStack.alignment = .leading
+        profileSettingsStack.spacing = 12
+        profileSettingsStack.translatesAutoresizingMaskIntoConstraints = false
+        profileSettingsStack.addArrangedSubview(profileSettingsTitleLabel)
+        profileSettingsStack.addArrangedSubview(profileBackgroundRow)
 
         contentStack.orientation = .vertical
         contentStack.alignment = .leading
@@ -450,7 +478,7 @@ final class ButtonDetailPanel: NSView {
         scrollView.documentView = contentContainer
         addSubview(header)
         addSubview(scrollView)
-        addSubview(emptyStateLabel)
+        addSubview(profileSettingsStack)
 
         let headerHeightConstraint = header.heightAnchor.constraint(equalToConstant: 32)
         headerHeightConstraint.priority = .defaultHigh
@@ -466,10 +494,9 @@ final class ButtonDetailPanel: NSView {
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            emptyStateLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
-            emptyStateLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            emptyStateLabel.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 16),
-            emptyStateLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -16),
+            profileSettingsStack.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            profileSettingsStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            profileSettingsStack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -14),
             contentContainer.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
             contentContainerMinHeightConstraint,
             contentStack.topAnchor.constraint(equalTo: contentContainer.topAnchor, constant: 8),
@@ -502,10 +529,10 @@ final class ButtonDetailPanel: NSView {
         clear()
     }
 
-    private func setShowsEmptyState(_ showsEmptyState: Bool) {
-        emptyStateLabel.isHidden = !showsEmptyState
-        header.isHidden = showsEmptyState
-        scrollView.isHidden = showsEmptyState
+    private func setShowsProfileSettings(_ showsProfileSettings: Bool) {
+        profileSettingsStack.isHidden = !showsProfileSettings
+        header.isHidden = showsProfileSettings
+        scrollView.isHidden = showsProfileSettings
     }
 
     private func makeRow(label: String, control: NSView) -> NSStackView {
@@ -623,6 +650,15 @@ final class ButtonDetailPanel: NSView {
 
     @objc private func applyPressed() {
         emitChange()
+    }
+
+    @objc private func profileBackgroundColorChanged() {
+        onProfileBackgroundColorChanged?(profileBackgroundColorWell.color.hexString)
+    }
+
+    @objc private func resetProfileBackgroundColor() {
+        profileBackgroundColorWell.color = NSColor(hex: Profile.defaultBackgroundColorHex)
+        onProfileBackgroundColorChanged?(Profile.defaultBackgroundColorHex)
     }
 
     @objc private func labelSizeStepperChanged() {
