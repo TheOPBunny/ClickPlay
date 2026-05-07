@@ -412,11 +412,13 @@ struct ButtonGroup: Codable, Identifiable, Equatable {
 
 struct Profile: Codable, Identifiable {
     static let defaultBackgroundColorHex = "#000000"
+    static let defaultBackgroundSmokeIntensity = 0
 
     var id: UUID
     var name: String
     var opacity: Double                              // 0.25–1.0
     var backgroundColorHex: String                   // "#RRGGBB"
+    var backgroundSmokeIntensity: Int                // 0–100
     var compatibilityMode: Bool
     var editorCoordinateMode: EditorCoordinateMode
     var padWidth: Double                             // absolute pts
@@ -433,6 +435,7 @@ struct Profile: Codable, Identifiable {
         case name
         case opacity
         case backgroundColorHex
+        case backgroundSmokeIntensity
         case compatibilityMode
         case editorCoordinateMode
         case padWidth
@@ -450,6 +453,7 @@ struct Profile: Codable, Identifiable {
         name: String,
         opacity: Double,
         backgroundColorHex: String = Profile.defaultBackgroundColorHex,
+        backgroundSmokeIntensity: Int = Profile.defaultBackgroundSmokeIntensity,
         compatibilityMode: Bool = false,
         editorCoordinateMode: EditorCoordinateMode = .legacyTopLeft,
         padWidth: Double,
@@ -465,6 +469,7 @@ struct Profile: Codable, Identifiable {
         self.name = name
         self.opacity = opacity
         self.backgroundColorHex = backgroundColorHex
+        self.backgroundSmokeIntensity = backgroundSmokeIntensity
         self.compatibilityMode = compatibilityMode
         self.editorCoordinateMode = editorCoordinateMode
         self.padWidth = padWidth
@@ -483,6 +488,7 @@ struct Profile: Codable, Identifiable {
         name = try container.decode(String.self, forKey: .name)
         opacity = try container.decode(Double.self, forKey: .opacity)
         backgroundColorHex = try container.decodeIfPresent(String.self, forKey: .backgroundColorHex) ?? Self.defaultBackgroundColorHex
+        backgroundSmokeIntensity = try container.decodeIfPresent(Int.self, forKey: .backgroundSmokeIntensity) ?? Self.defaultBackgroundSmokeIntensity
         compatibilityMode = try container.decodeIfPresent(Bool.self, forKey: .compatibilityMode) ?? false
         editorCoordinateMode = try container.decodeIfPresent(EditorCoordinateMode.self, forKey: .editorCoordinateMode) ?? .legacyTopLeft
         padWidth = try container.decode(Double.self, forKey: .padWidth)
@@ -715,6 +721,7 @@ struct Profile: Codable, Identifiable {
             name: name,
             opacity: 0.90,
             backgroundColorHex: Self.defaultBackgroundColorHex,
+            backgroundSmokeIntensity: Self.defaultBackgroundSmokeIntensity,
             compatibilityMode: false,
             editorCoordinateMode: .centered,
             padWidth: 420,
@@ -787,6 +794,7 @@ struct Profile: Codable, Identifiable {
             name: name,
             opacity: 0.90,
             backgroundColorHex: Self.defaultBackgroundColorHex,
+            backgroundSmokeIntensity: Self.defaultBackgroundSmokeIntensity,
             compatibilityMode: false,
             editorCoordinateMode: .centered,
             padWidth: W,

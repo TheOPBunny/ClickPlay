@@ -478,6 +478,9 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         detailPanel.onProfileBackgroundColorChanged = { [weak self] colorHex in
             self?.applyProfileBackgroundColor(colorHex)
         }
+        detailPanel.onProfileBackgroundSmokeIntensityChanged = { [weak self] intensity in
+            self?.applyProfileBackgroundSmokeIntensity(intensity)
+        }
 
         templatesDidChangeObserver = NotificationCenter.default.addObserver(
             forName: ProfileTemplateStore.templatesDidChange,
@@ -1301,11 +1304,18 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     private func showProfileSettings() {
-        detailPanel.loadProfileSettings(backgroundColorHex: profile.backgroundColorHex)
+        detailPanel.loadProfileSettings(
+            backgroundColorHex: profile.backgroundColorHex,
+            smokeIntensity: profile.backgroundSmokeIntensity
+        )
     }
 
     private func applyProfileBackgroundColor(_ colorHex: String) {
         profile.backgroundColorHex = colorHex
+    }
+
+    private func applyProfileBackgroundSmokeIntensity(_ intensity: Int) {
+        profile.backgroundSmokeIntensity = intensity
     }
 
     private func focusPreviewForEditorCommands() {
