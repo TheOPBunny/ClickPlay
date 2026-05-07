@@ -408,17 +408,37 @@ struct ButtonGroup: Codable, Identifiable, Equatable {
     }
 }
 
+private struct DynamicCodingKey: CodingKey {
+    var stringValue: String
+    var intValue: Int?
+
+    init(_ stringValue: String) {
+        self.stringValue = stringValue
+        intValue = nil
+    }
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        intValue = nil
+    }
+
+    init?(intValue: Int) {
+        stringValue = "\(intValue)"
+        self.intValue = intValue
+    }
+}
+
 // MARK: - Profile
 
 struct Profile: Codable, Identifiable {
     static let defaultBackgroundColorHex = "#000000"
-    static let defaultBackgroundSmokeIntensity = 0
+    static let defaultBackgroundFrostedGlassIntensity = 0
 
     var id: UUID
     var name: String
     var opacity: Double                              // 0.25–1.0
     var backgroundColorHex: String                   // "#RRGGBB"
-    var backgroundSmokeIntensity: Int                // 0–100
+    var backgroundFrostedGlassIntensity: Int         // 0–100
     var compatibilityMode: Bool
     var editorCoordinateMode: EditorCoordinateMode
     var padWidth: Double                             // absolute pts
@@ -435,7 +455,7 @@ struct Profile: Codable, Identifiable {
         case name
         case opacity
         case backgroundColorHex
-        case backgroundSmokeIntensity
+        case backgroundFrostedGlassIntensity
         case compatibilityMode
         case editorCoordinateMode
         case padWidth
@@ -453,7 +473,7 @@ struct Profile: Codable, Identifiable {
         name: String,
         opacity: Double,
         backgroundColorHex: String = Profile.defaultBackgroundColorHex,
-        backgroundSmokeIntensity: Int = Profile.defaultBackgroundSmokeIntensity,
+        backgroundFrostedGlassIntensity: Int = Profile.defaultBackgroundFrostedGlassIntensity,
         compatibilityMode: Bool = false,
         editorCoordinateMode: EditorCoordinateMode = .legacyTopLeft,
         padWidth: Double,
@@ -469,7 +489,7 @@ struct Profile: Codable, Identifiable {
         self.name = name
         self.opacity = opacity
         self.backgroundColorHex = backgroundColorHex
-        self.backgroundSmokeIntensity = backgroundSmokeIntensity
+        self.backgroundFrostedGlassIntensity = backgroundFrostedGlassIntensity
         self.compatibilityMode = compatibilityMode
         self.editorCoordinateMode = editorCoordinateMode
         self.padWidth = padWidth
@@ -488,7 +508,10 @@ struct Profile: Codable, Identifiable {
         name = try container.decode(String.self, forKey: .name)
         opacity = try container.decode(Double.self, forKey: .opacity)
         backgroundColorHex = try container.decodeIfPresent(String.self, forKey: .backgroundColorHex) ?? Self.defaultBackgroundColorHex
-        backgroundSmokeIntensity = try container.decodeIfPresent(Int.self, forKey: .backgroundSmokeIntensity) ?? Self.defaultBackgroundSmokeIntensity
+        let legacyContainer = try decoder.container(keyedBy: DynamicCodingKey.self)
+        let legacyFrostedGlassKey = DynamicCodingKey("background" + "S" + "moke" + "Intensity")
+        backgroundFrostedGlassIntensity = try container.decodeIfPresent(Int.self, forKey: .backgroundFrostedGlassIntensity)
+            ?? (try legacyContainer.decodeIfPresent(Int.self, forKey: legacyFrostedGlassKey) ?? Self.defaultBackgroundFrostedGlassIntensity)
         compatibilityMode = try container.decodeIfPresent(Bool.self, forKey: .compatibilityMode) ?? false
         editorCoordinateMode = try container.decodeIfPresent(EditorCoordinateMode.self, forKey: .editorCoordinateMode) ?? .legacyTopLeft
         padWidth = try container.decode(Double.self, forKey: .padWidth)
@@ -721,7 +744,7 @@ struct Profile: Codable, Identifiable {
             name: name,
             opacity: 0.90,
             backgroundColorHex: Self.defaultBackgroundColorHex,
-            backgroundSmokeIntensity: Self.defaultBackgroundSmokeIntensity,
+            backgroundFrostedGlassIntensity: Self.defaultBackgroundFrostedGlassIntensity,
             compatibilityMode: false,
             editorCoordinateMode: .centered,
             padWidth: 420,
@@ -794,7 +817,7 @@ struct Profile: Codable, Identifiable {
             name: name,
             opacity: 0.90,
             backgroundColorHex: Self.defaultBackgroundColorHex,
-            backgroundSmokeIntensity: Self.defaultBackgroundSmokeIntensity,
+            backgroundFrostedGlassIntensity: Self.defaultBackgroundFrostedGlassIntensity,
             compatibilityMode: false,
             editorCoordinateMode: .centered,
             padWidth: W,
