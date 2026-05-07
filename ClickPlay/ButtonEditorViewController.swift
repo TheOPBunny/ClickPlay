@@ -146,6 +146,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private var templatesDidChangeObserver: NSObjectProtocol?
 
     private let compatibilityModeCheckbox = NSButton(checkboxWithTitle: "Compatibility Mode", target: nil, action: nil)
+    private let backgroundColorLabel = NSTextField(labelWithString: "Background:")
+    private let backgroundColorWell = NSColorWell()
     private let showGridCheckbox = NSButton(checkboxWithTitle: "Show Grid", target: nil, action: nil)
     private let snappingCheckbox = NSButton(checkboxWithTitle: "Snapping", target: nil, action: nil)
     private let groupButton = NSButton(title: "Group", target: nil, action: nil)
@@ -211,6 +213,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         self.profile.buttonGroups = sanitizedEditorGroups(self.profile.buttonGroups)
         canvasObjects = makeCanvasObjects(from: self.profile)
         compatibilityModeCheckbox.state = self.profile.compatibilityMode ? .on : .off
+        backgroundColorWell.color = NSColor(hex: self.profile.backgroundColorHex)
         refreshFittedPadSizeFields()
         updatePreviewCanvasLayout()
         previewView.reload(objects: canvasObjects, groups: makeCanvasGroups(from: self.profile), keepSelection: false)
@@ -268,6 +271,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     @discardableResult
     func saveChanges() -> Bool {
         profile.compatibilityMode = compatibilityModeCheckbox.state == .on
+        profile.backgroundColorHex = backgroundColorWell.color.hexString
         clampEditableProfileToWorkspace()
         profile.buttonGroups = sanitizedEditorGroups(profile.buttonGroups)
         let savedProfile = currentSavedProfile()
@@ -286,6 +290,13 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         previewView.maximumWorkspaceSize = Self.maximumWorkspaceSize
         compatibilityModeCheckbox.target = self
         compatibilityModeCheckbox.action = #selector(compatibilityModeChanged)
+        backgroundColorLabel.font = .systemFont(ofSize: 12)
+        backgroundColorWell.color = NSColor(hex: profile.backgroundColorHex)
+        backgroundColorWell.toolTip = "Gamepad background color"
+        backgroundColorWell.target = self
+        backgroundColorWell.action = #selector(backgroundColorChanged)
+        backgroundColorWell.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        backgroundColorWell.heightAnchor.constraint(equalToConstant: 24).isActive = true
         showGridCheckbox.state = .on
         showGridCheckbox.target = self
         showGridCheckbox.action = #selector(showGridChanged)
@@ -318,6 +329,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         let topBar = NSStackView(views: [
             leftSidebarToggleButton,
             compatibilityModeCheckbox,
+            backgroundColorLabel,
+            backgroundColorWell,
             showGridCheckbox,
             snappingCheckbox,
             groupButton,
@@ -802,6 +815,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     @objc private func compatibilityModeChanged() {
         profile.compatibilityMode = compatibilityModeCheckbox.state == .on
         reloadPreview(keepSelection: true)
+    }
+
+    @objc private func backgroundColorChanged() {
+        profile.backgroundColorHex = backgroundColorWell.color.hexString
     }
 
     @objc private func showGridChanged() {

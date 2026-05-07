@@ -205,6 +205,7 @@ final class GamepadContentView: NSView {
     func reload(profile: Profile, minimized: Bool) {
         currentProfile = profile
         isMinimized = minimized
+        updateBackgroundColor()
         updateHeader()
         updateLayout()
         buildButtons(profile: profile)
@@ -229,7 +230,7 @@ final class GamepadContentView: NSView {
 
     private func setup() {
         wantsLayer = true
-        layer?.backgroundColor = NSColor.black.withAlphaComponent(0.55).cgColor
+        updateBackgroundColor()
         layer?.cornerRadius = 20
         layer?.masksToBounds = true
 
@@ -274,6 +275,10 @@ final class GamepadContentView: NSView {
     private func updateHeader() {
         headerBar.updateTitle(currentProfile.name)
         headerBar.setMinimized(isMinimized)
+    }
+
+    private func updateBackgroundColor() {
+        layer?.backgroundColor = NSColor(hex: currentProfile.backgroundColorHex).withAlphaComponent(0.55).cgColor
     }
 
     private func updateLayout() {
