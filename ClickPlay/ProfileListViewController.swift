@@ -1,6 +1,6 @@
 import Cocoa
 
-final class ProfileListViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate, NSMenuItemValidation {
+final class ProfileListViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate, NSMenuItemValidation, NSTextFieldDelegate {
 
     var onProfileSelected: ((Profile) -> Void)?
     var onProfileSelectionRequested: (() -> Bool)?
@@ -197,6 +197,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         textField.font = item.isSubProfile ? .systemFont(ofSize: 13) : .boldSystemFont(ofSize: 13)
         textField.lineBreakMode = .byTruncatingTail
         textField.isEditable = true
+        textField.delegate = self
         return cell
     }
 
@@ -206,12 +207,15 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
             return
         }
 
-        if let parentID = item.parentID {
-            ProfileStore.shared.renameSubProfile(item.profileID, in: parentID, to: name)
+        rename(item, to: name)
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        guard let textField = obj.object as? NSTextField else {
             return
         }
 
-        ProfileStore.shared.rename(item.profileID, to: name)
+        commitRename(from: textField)
     }
 
     func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
@@ -688,6 +692,25 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         }
 
         outlineView.editColumn(0, row: selectedRow, with: nil, select: true)
+    }
+
+    private func commitRename(from textField: NSTextField) {
+        let row = outlineView.row(for: textField)
+        guard row >= 0,
+              let item = outlineView.item(atRow: row) as? SidebarItem else {
+            return
+        }
+
+        rename(item, to: textField.stringValue)
+    }
+
+    private func rename(_ item: SidebarItem, to name: String) {
+        if let parentID = item.parentID {
+            ProfileStore.shared.renameSubProfile(item.profileID, in: parentID, to: name)
+            return
+        }
+
+        ProfileStore.shared.rename(item.profileID, to: name)
     }
 
     @objc private func outlineClicked(_ sender: NSOutlineView) {
