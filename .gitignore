@@ -1,2 +1,25 @@
+# macOS
+.DS_Store
+
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+*.moved-aside
+*.xccheckout
+*.xcscmblueprint
+
+# Swift Package Manager
+.swiftpm/
+.build/
+
+# Archives / exports
+*.xcarchive
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Miscellaneous
 Archive.zip
-ClickPlay/TODO.md
+TODO.md
