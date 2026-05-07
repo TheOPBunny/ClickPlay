@@ -34,6 +34,7 @@ final class ButtonDetailPanel: NSView {
     var onDeleteGroup: ((UUID) -> Void)?
     var onGroupColorChanged: ((UUID, String) -> Void)?
     var onProfileBackgroundColorChanged: ((String) -> Void)?
+    var onProfileBackgroundSmokeIntensityChanged: ((Int) -> Void)?
 
     private var config: ButtonConfig?
     private var button: GamepadButton?
@@ -43,6 +44,7 @@ final class ButtonDetailPanel: NSView {
     private let profileSettingsTitleLabel = NSTextField(labelWithString: "Profile")
     private let profileBackgroundColorWell = NSColorWell()
     private let profileBackgroundResetButton = NSButton(title: "Reset", target: nil, action: nil)
+    private let profileBackgroundSmokePopup = NSPopUpButton()
     private let header = NSStackView()
     private let titleLabel = NSTextField(labelWithString: "Select a button")
     private let scrollView = NSScrollView()
@@ -130,15 +132,22 @@ final class ButtonDetailPanel: NSView {
     }
 
     func clear() {
-        loadProfileSettings(backgroundColorHex: Profile.defaultBackgroundColorHex)
+        loadProfileSettings(
+            backgroundColorHex: Profile.defaultBackgroundColorHex,
+            smokeIntensity: Profile.defaultBackgroundSmokeIntensity
+        )
     }
 
-    func loadProfileSettings(backgroundColorHex: String) {
+    func loadProfileSettings(backgroundColorHex: String, smokeIntensity: Int) {
         config = nil
         button = nil
         groupID = nil
         setShowsProfileSettings(true)
         profileBackgroundColorWell.color = NSColor(hex: backgroundColorHex)
+        profileBackgroundSmokePopup.selectItem(withTag: smokeIntensity)
+        if profileBackgroundSmokePopup.selectedItem == nil {
+            profileBackgroundSmokePopup.selectItem(withTag: Profile.defaultBackgroundSmokeIntensity)
+        }
         [labelField, labelSizeField, xField, yField, widthField, heightField].forEach { $0.stringValue = "" }
         buttonTypePopup.selectItem(withTag: ButtonType.keyboard.tag)
         keyRecorder.setKeyBindings([ButtonKeyBinding(keyCode: 49, keyModifiers: 0)])
@@ -306,6 +315,9 @@ final class ButtonDetailPanel: NSView {
         profileBackgroundResetButton.bezelStyle = .rounded
         profileBackgroundResetButton.target = self
         profileBackgroundResetButton.action = #selector(resetProfileBackgroundColor)
+        profileBackgroundSmokePopup.target = self
+        profileBackgroundSmokePopup.action = #selector(profileBackgroundSmokeChanged)
+        populateProfileBackgroundSmokeIntensities()
 
         widthField.bezelStyle = .roundedBezel
         widthField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
@@ -386,6 +398,12 @@ final class ButtonDetailPanel: NSView {
         profileBackgroundRow.orientation = .horizontal
         profileBackgroundRow.alignment = .centerY
         profileBackgroundRow.spacing = 8
+        let profileSmokeLabel = NSTextField(labelWithString: "Smoke")
+        profileSmokeLabel.font = .systemFont(ofSize: 12)
+        let profileSmokeRow = NSStackView(views: [profileSmokeLabel, profileBackgroundSmokePopup])
+        profileSmokeRow.orientation = .horizontal
+        profileSmokeRow.alignment = .centerY
+        profileSmokeRow.spacing = 8
 
         profileSettingsStack.orientation = .vertical
         profileSettingsStack.alignment = .leading
@@ -393,6 +411,7 @@ final class ButtonDetailPanel: NSView {
         profileSettingsStack.translatesAutoresizingMaskIntoConstraints = false
         profileSettingsStack.addArrangedSubview(profileSettingsTitleLabel)
         profileSettingsStack.addArrangedSubview(profileBackgroundRow)
+        profileSettingsStack.addArrangedSubview(profileSmokeRow)
 
         contentStack.orientation = .vertical
         contentStack.alignment = .leading
@@ -661,6 +680,10 @@ final class ButtonDetailPanel: NSView {
         onProfileBackgroundColorChanged?(Profile.defaultBackgroundColorHex)
     }
 
+    @objc private func profileBackgroundSmokeChanged() {
+        onProfileBackgroundSmokeIntensityChanged?(profileBackgroundSmokePopup.selectedTag())
+    }
+
     @objc private func labelSizeStepperChanged() {
         labelSizeField.stringValue = "\(Int(labelSizeStepper.doubleValue))"
         emitChange()
@@ -726,6 +749,17 @@ final class ButtonDetailPanel: NSView {
 
     private func populateInteractionModes() {
         populateInteractionModes(interactionModePopup)
+    }
+
+    private func populateProfileBackgroundSmokeIntensities() {
+        profileBackgroundSmokePopup.removeAllItems()
+        profileBackgroundSmokePopup.addItem(withTitle: "Off")
+        profileBackgroundSmokePopup.lastItem?.tag = Profile.defaultBackgroundSmokeIntensity
+
+        for intensity in stride(from: 10, through: 100, by: 10) {
+            profileBackgroundSmokePopup.addItem(withTitle: "\(intensity)%")
+            profileBackgroundSmokePopup.lastItem?.tag = intensity
+        }
     }
 
     private func populateInteractionModes(_ popup: NSPopUpButton) {

@@ -288,8 +288,10 @@ final class GamepadContentView: NSView {
 
     private func updateBackgroundColor() {
         let color = NSColor(hex: currentProfile.backgroundColorHex)
+        let smokeIntensity = CGFloat(min(max(currentProfile.backgroundSmokeIntensity, 0), 100)) / 100
         layer?.backgroundColor = color.cgColor
-        backgroundTintView.layer?.backgroundColor = color.cgColor
+        blurView.isHidden = smokeIntensity <= 0
+        backgroundTintView.layer?.backgroundColor = color.withAlphaComponent(1 - smokeIntensity).cgColor
     }
 
     private func updateLayout() {
