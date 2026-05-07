@@ -22,13 +22,13 @@
 		10D000012FA9000000000001 /* DebugLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D000002FA9000000000001 /* DebugLog.swift */; };
 		A000 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = B000 /* main.swift */; };
 		A001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B001 /* AppDelegate.swift */; };
-		A002 /* ../GamepadShared/KeyMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = B002 /* ../GamepadShared/KeyMapping.swift */; };
+		A002 /* ../ClickPlayShared/KeyMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = B002 /* ../ClickPlayShared/KeyMapping.swift */; };
 		A003 /* KeyInjector.swift in Sources */ = {isa = PBXBuildFile; fileRef = B003 /* KeyInjector.swift */; };
 		A004 /* GamepadButtonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B004 /* GamepadButtonView.swift */; };
 		A005 /* GamepadContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B005 /* GamepadContentView.swift */; };
 		A006 /* GamepadWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B006 /* GamepadWindow.swift */; };
-		A007 /* ../GamepadShared/Profile.swift in Sources */ = {isa = PBXBuildFile; fileRef = B009 /* ../GamepadShared/Profile.swift */; };
-		A008 /* ../GamepadShared/ProfileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B010 /* ../GamepadShared/ProfileStore.swift */; };
+		A007 /* ../ClickPlayShared/Profile.swift in Sources */ = {isa = PBXBuildFile; fileRef = B009 /* ../ClickPlayShared/Profile.swift */; };
+		A008 /* ../ClickPlayShared/ProfileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B010 /* ../ClickPlayShared/ProfileStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -47,15 +47,15 @@
 		10D000002FA9000000000001 /* DebugLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLog.swift; sourceTree = "<group>"; };
 		B000 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		B001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		B002 /* ../GamepadShared/KeyMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../GamepadShared/KeyMapping.swift; sourceTree = "<group>"; };
+		B002 /* ../ClickPlayShared/KeyMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../ClickPlayShared/KeyMapping.swift; sourceTree = "<group>"; };
 		B003 /* KeyInjector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyInjector.swift; sourceTree = "<group>"; };
 		B004 /* GamepadButtonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamepadButtonView.swift; sourceTree = "<group>"; };
 		B005 /* GamepadContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamepadContentView.swift; sourceTree = "<group>"; };
 		B006 /* GamepadWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamepadWindow.swift; sourceTree = "<group>"; };
 		B007 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B008 /* ClickPlay.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ClickPlay.entitlements; sourceTree = "<group>"; };
-		B009 /* ../GamepadShared/Profile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../GamepadShared/Profile.swift; sourceTree = "<group>"; };
-		B010 /* ../GamepadShared/ProfileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../GamepadShared/ProfileStore.swift; sourceTree = "<group>"; };
+		B009 /* ../ClickPlayShared/Profile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../ClickPlayShared/Profile.swift; sourceTree = "<group>"; };
+		B010 /* ../ClickPlayShared/ProfileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../ClickPlayShared/ProfileStore.swift; sourceTree = "<group>"; };
 		PROD /* Click Play.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Click Play.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -75,14 +75,14 @@
 			children = (
 				B000 /* main.swift */,
 				B001 /* AppDelegate.swift */,
-				B002 /* ../GamepadShared/KeyMapping.swift */,
+				B002 /* ../ClickPlayShared/KeyMapping.swift */,
 				B003 /* KeyInjector.swift */,
 				B004 /* GamepadButtonView.swift */,
 				B005 /* GamepadContentView.swift */,
 				B006 /* GamepadWindow.swift */,
 				10D000002FA9000000000001 /* DebugLog.swift */,
-				B009 /* ../GamepadShared/Profile.swift */,
-				B010 /* ../GamepadShared/ProfileStore.swift */,
+				B009 /* ../ClickPlayShared/Profile.swift */,
+				B010 /* ../ClickPlayShared/ProfileStore.swift */,
 				B007 /* Info.plist */,
 				B008 /* ClickPlay.entitlements */,
 				102FB38E2F9827A8003D8FDF /* EditorWindowController.swift */,
@@ -195,7 +195,7 @@
 				108EF0DE2F9846A8009EFAAA /* ButtonDetailPanel.swift in Sources */,
 				108EF0E22F9848B2009EFAAA /* ProfileListViewController.swift in Sources */,
 				A001 /* AppDelegate.swift in Sources */,
-				A002 /* ../GamepadShared/KeyMapping.swift in Sources */,
+				A002 /* ../ClickPlayShared/KeyMapping.swift in Sources */,
 				A003 /* KeyInjector.swift in Sources */,
 				10D000012FA9000000000001 /* DebugLog.swift in Sources */,
 				108EF0DC2F984329009EFAAA /* KeyRecorderButton.swift in Sources */,
@@ -204,8 +204,8 @@
 				10A1B0002F9D000000000001 /* SidebarToggleButton.swift in Sources */,
 				A005 /* GamepadContentView.swift in Sources */,
 				A006 /* GamepadWindow.swift in Sources */,
-				A007 /* ../GamepadShared/Profile.swift in Sources */,
-				A008 /* ../GamepadShared/ProfileStore.swift in Sources */,
+				A007 /* ../ClickPlayShared/Profile.swift in Sources */,
+				A008 /* ../ClickPlayShared/ProfileStore.swift in Sources */,
 				102FB3912F9827A8003D8FDF /* EditorViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

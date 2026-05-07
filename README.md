@@ -77,9 +77,9 @@ GamepadButtonView.swift              Per-button mouse handling and key lifecycle
 KeyInjector.swift                    Low-level CGEvent posting and held-key tracking
 EditorWindowController.swift         Standard editor window owner
 EditorViewController.swift           Profile sidebar and editor split view
-GamepadShared/Profile.swift          Profile and button config models
-GamepadShared/ProfileStore.swift     Shared persistence and active profile state
-GamepadShared/KeyMapping.swift       Stable gamepad button identities
+ClickPlayShared/Profile.swift        Profile and button config models
+ClickPlayShared/ProfileStore.swift   Shared persistence and active profile state
+ClickPlayShared/KeyMapping.swift     Stable gamepad button identities
 ```
 
 ## How Key Injection Works

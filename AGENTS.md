@@ -12,9 +12,9 @@ This is currently a functional prototype. Prefer improving the existing architec
 - `GamepadContentView.swift`: translucent HUD container, drag-to-move behavior, button layout from active profile.
 - `GamepadButtonView.swift`: per-button mouse handling, pressed state, visual updates, key injection trigger.
 - `KeyInjector.swift`: low-level keyboard event posting and held-key tracking.
-- `../GamepadShared/KeyMapping.swift`: logical button identities.
-- `../GamepadShared/Profile.swift`: profile and button config models, default layout, color helpers.
-- `../GamepadShared/ProfileStore.swift`: profile persistence and active profile management.
+- `../ClickPlayShared/KeyMapping.swift`: logical button identities.
+- `../ClickPlayShared/Profile.swift`: profile and button config models, default layout, color helpers.
+- `../ClickPlayShared/ProfileStore.swift`: profile persistence and active profile management.
 
 ## Non-Negotiable Constraints
 - The app must remain usable while another app or game stays focused.
