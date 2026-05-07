@@ -1,5 +1,21 @@
 import Cocoa
 
+private extension NSView {
+    func closestAncestor<T: NSView>(ofType type: T.Type) -> T? {
+        var current: NSView? = self
+
+        while let view = current {
+            if let matchingView = view as? T {
+                return matchingView
+            }
+
+            current = view.superview
+        }
+
+        return nil
+    }
+}
+
 final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, NSSplitViewDelegate {
 
     private struct ClipboardButton: Codable {
@@ -144,9 +160,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private var shouldScrollToProfileContent = false
     private var pendingProfileContentScrollRetries = 0
     private var templatesDidChangeObserver: NSObjectProtocol?
+    private var editorMouseDownMonitor: Any?
 
     private let compatibilityModeCheckbox = NSButton(checkboxWithTitle: "Compatibility Mode", target: nil, action: nil)
-    private let backgroundColorLabel = NSTextField(labelWithString: "Background:")
+    private let backgroundColorLabel = NSTextField(labelWithString: "Pad Color")
     private let backgroundColorWell = NSColorWell()
     private let showGridCheckbox = NSButton(checkboxWithTitle: "Show Grid", target: nil, action: nil)
     private let snappingCheckbox = NSButton(checkboxWithTitle: "Snapping", target: nil, action: nil)
@@ -187,6 +204,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         super.viewDidLoad()
         loadInspectorDefaults()
         buildLayout()
+        installEditorFocusMonitor()
         load(profile: ProfileStore.shared.activeResolvedProfile)
     }
 
@@ -194,6 +212,66 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         if let templatesDidChangeObserver {
             NotificationCenter.default.removeObserver(templatesDidChangeObserver)
         }
+        if let editorMouseDownMonitor {
+            NSEvent.removeMonitor(editorMouseDownMonitor)
+        }
+    }
+
+    private func installEditorFocusMonitor() {
+        editorMouseDownMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            self?.clearEditorFocusIfNeeded(for: event)
+            return event
+        }
+    }
+
+    private func clearEditorFocusIfNeeded(for event: NSEvent) {
+        guard let window = view.window, event.window === window else {
+            return
+        }
+
+        let point = view.convert(event.locationInWindow, from: nil)
+        guard view.bounds.contains(point), let hitView = view.hitTest(point) else {
+            return
+        }
+
+        let hitColorWell = hitView.closestAncestor(ofType: NSColorWell.self)
+        deactivateColorWells(except: hitColorWell)
+
+        guard hitView.closestAncestor(ofType: NSTextView.self) == nil else {
+            return
+        }
+
+        if let textField = hitView.closestAncestor(ofType: NSTextField.self),
+           textField.isEditable || textField.currentEditor() != nil {
+            return
+        }
+
+        window.makeFirstResponder(nil)
+    }
+
+    private func deactivateColorWells(except activeColorWell: NSColorWell?) {
+        allColorWells(in: view).forEach { colorWell in
+            guard colorWell !== activeColorWell else {
+                return
+            }
+
+            colorWell.deactivate()
+        }
+    }
+
+    private func allColorWells(in rootView: NSView) -> [NSColorWell] {
+        var colorWells: [NSColorWell] = []
+
+        func collect(from view: NSView) {
+            if let colorWell = view as? NSColorWell {
+                colorWells.append(colorWell)
+            }
+
+            view.subviews.forEach(collect)
+        }
+
+        collect(from: rootView)
+        return colorWells
     }
 
     override func viewDidLayout() {
@@ -290,13 +368,14 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         previewView.maximumWorkspaceSize = Self.maximumWorkspaceSize
         compatibilityModeCheckbox.target = self
         compatibilityModeCheckbox.action = #selector(compatibilityModeChanged)
-        backgroundColorLabel.font = .systemFont(ofSize: 12)
+        backgroundColorLabel.font = .systemFont(ofSize: 13)
         backgroundColorWell.color = NSColor(hex: profile.backgroundColorHex)
         backgroundColorWell.toolTip = "Gamepad background color"
         backgroundColorWell.target = self
         backgroundColorWell.action = #selector(backgroundColorChanged)
-        backgroundColorWell.widthAnchor.constraint(equalToConstant: 44).isActive = true
-        backgroundColorWell.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        backgroundColorWell.isContinuous = true
+        backgroundColorWell.widthAnchor.constraint(equalToConstant: 32).isActive = true
+        backgroundColorWell.heightAnchor.constraint(equalToConstant: 22).isActive = true
         showGridCheckbox.state = .on
         showGridCheckbox.target = self
         showGridCheckbox.action = #selector(showGridChanged)

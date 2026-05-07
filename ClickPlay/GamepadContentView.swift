@@ -6,6 +6,10 @@ final class GamepadContentView: NSView {
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
 
+    private final class PassthroughView: NSView {
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+
     private final class HeaderBarView: NSView {
         var onToggleMinimize: (() -> Void)?
         var onHideOverlay: (() -> Void)?
@@ -181,6 +185,7 @@ final class GamepadContentView: NSView {
     private let headerBar = HeaderBarView(frame: .zero)
     private let padSurface = PadSurfaceView(frame: .zero)
     private let blurView = PassthroughVisualEffectView(frame: .zero)
+    private let backgroundTintView = PassthroughView(frame: .zero)
 
     private var currentProfile: Profile
     private var isMinimized = false
@@ -240,6 +245,10 @@ final class GamepadContentView: NSView {
         blurView.state = .active
         addSubview(blurView, positioned: .below, relativeTo: nil)
 
+        backgroundTintView.autoresizingMask = [.width, .height]
+        backgroundTintView.wantsLayer = true
+        addSubview(backgroundTintView, positioned: .above, relativeTo: blurView)
+
         headerBar.onToggleMinimize = { [weak self] in
             self?.onToggleMinimize?()
         }
@@ -278,11 +287,14 @@ final class GamepadContentView: NSView {
     }
 
     private func updateBackgroundColor() {
-        layer?.backgroundColor = NSColor(hex: currentProfile.backgroundColorHex).withAlphaComponent(0.55).cgColor
+        let color = NSColor(hex: currentProfile.backgroundColorHex)
+        layer?.backgroundColor = color.withAlphaComponent(0.55).cgColor
+        backgroundTintView.layer?.backgroundColor = color.withAlphaComponent(0.28).cgColor
     }
 
     private func updateLayout() {
         blurView.frame = bounds
+        backgroundTintView.frame = bounds
 
         headerBar.frame = NSRect(
             x: 0,
