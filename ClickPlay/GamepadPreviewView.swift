@@ -12,6 +12,7 @@ struct CanvasButtonObject {
     var shape: ButtonShape
     var type: ButtonType
     var systemEvent: SystemEvent?
+    var systemEventIconSize: SystemEventIconSize
     var isEnabled: Bool
     var isSelected: Bool
 }
@@ -863,19 +864,20 @@ final class GamepadPreviewView: NSView {
 
     private func drawSystemEventSymbol(_ event: SystemEvent, for object: CanvasButtonObject, in frame: CGRect) {
         let tint = ButtonConfig.systemEventSymbolColor(for: object.colorHex)
-        let symbolSize = max(10, min(frame.width, frame.height) * 0.58)
+        let symbolSize = max(10, min(frame.width, frame.height) * object.systemEventIconSize.symbolScale)
         let fallbackObject = CanvasButtonObject(
             id: object.id,
             frame: object.frame,
             label: event.fallbackSymbol,
             colorHex: object.colorHex,
-            labelFontSize: min(max(Double(symbolSize), 10), 32),
+            labelFontSize: Double(symbolSize),
             labelBold: true,
             labelItalic: false,
             labelColorHex: tint.hexString,
             shape: object.shape,
             type: object.type,
             systemEvent: nil,
+            systemEventIconSize: object.systemEventIconSize,
             isEnabled: object.isEnabled,
             isSelected: object.isSelected
         )

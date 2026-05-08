@@ -410,7 +410,7 @@ final class GamepadButtonView: NSView {
             return config.resolvedLabelFont
         }
 
-        let symbolSize = max(10, min(bounds.width, bounds.height) * 0.58)
+        let symbolSize = max(10, min(bounds.width, bounds.height) * config.systemEventIconSize.symbolScale)
         return NSFont.systemFont(ofSize: symbolSize, weight: .bold)
     }
 
