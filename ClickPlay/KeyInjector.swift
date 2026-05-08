@@ -12,7 +12,13 @@ final class KeyInjector {
         let modifiersRawValue: UInt
     }
 
+    private struct PhysicalChord {
+        let modifierKeyCodes: [CGKeyCode]
+        let primaryKeyCode: CGKeyCode?
+    }
+
     private var heldKeyCounts: [KeyBinding: Int] = [:]
+    private var physicalKeyCounts: [CGKeyCode: Int] = [:]
     private let queue = DispatchQueue(label: "com.gamepad.keyinjector", qos: .userInteractive)
     private let queueSpecificKey = DispatchSpecificKey<Void>()
 
@@ -25,7 +31,28 @@ final class KeyInjector {
                 debugLog("[KeyInjector] pressRaw \(keyCode) modifiers=\(binding.modifiersRawValue) - already held, owners=\(heldCount + 1), skipping")
                 return
             }
-            let ok = postEvent(keyCode: keyCode, modifiers: supportedModifiers, keyDown: true)
+
+            let chord = physicalChord(keyCode: keyCode, modifiers: supportedModifiers)
+            var acquiredKeys: [CGKeyCode] = []
+            var ok = true
+
+            for modifierKeyCode in chord.modifierKeyCodes {
+                guard pressPhysicalKey(modifierKeyCode, modifiers: [], acquiredKeys: &acquiredKeys) else {
+                    ok = false
+                    break
+                }
+            }
+
+            if ok, let primaryKeyCode = chord.primaryKeyCode {
+                ok = pressPhysicalKey(primaryKeyCode, modifiers: supportedModifiers, acquiredKeys: &acquiredKeys)
+            }
+
+            if !ok {
+                for acquiredKey in acquiredKeys.reversed() {
+                    releasePhysicalKey(acquiredKey, modifiers: [])
+                }
+            }
+
             if ok {
                 heldKeyCounts[binding] = 1
             }
@@ -49,7 +76,17 @@ final class KeyInjector {
             }
 
             heldKeyCounts.removeValue(forKey: binding)
-            let ok = postEvent(keyCode: keyCode, modifiers: supportedModifiers, keyDown: false)
+            let chord = physicalChord(keyCode: keyCode, modifiers: supportedModifiers)
+            var ok = true
+
+            if let primaryKeyCode = chord.primaryKeyCode {
+                ok = releasePhysicalKey(primaryKeyCode, modifiers: supportedModifiers) && ok
+            }
+
+            for modifierKeyCode in chord.modifierKeyCodes.reversed() {
+                ok = releasePhysicalKey(modifierKeyCode, modifiers: []) && ok
+            }
+
             debugLog("[KeyInjector] releaseRaw \(keyCode) modifiers=\(binding.modifiersRawValue) posted=\(ok)")
         }
     }
@@ -66,20 +103,64 @@ final class KeyInjector {
     }
 
     private func releaseAllHeldKeysOnQueue() {
-        let bindingsToRelease = heldKeyCounts.keys.sorted { lhs, rhs in
-            if lhs.modifiersRawValue != rhs.modifiersRawValue {
-                return lhs.modifiersRawValue < rhs.modifiersRawValue
+        let keysToRelease = physicalKeyCounts.keys.sorted { lhs, rhs in
+            let lhsIsModifier = cgEventFlag(forModifierKeyCode: lhs) != nil
+            let rhsIsModifier = cgEventFlag(forModifierKeyCode: rhs) != nil
+
+            if lhsIsModifier != rhsIsModifier {
+                return !lhsIsModifier
             }
 
-            return lhs.keyCode < rhs.keyCode
+            return lhs < rhs
         }
         heldKeyCounts.removeAll()
 
-        for binding in bindingsToRelease {
-            let modifiers = NSEvent.ModifierFlags(rawValue: binding.modifiersRawValue)
-            let ok = postEvent(keyCode: binding.keyCode, modifiers: modifiers, keyDown: false)
-            debugLog("[KeyInjector] releaseAllHeldKeys \(binding.keyCode) modifiers=\(binding.modifiersRawValue) posted=\(ok)")
+        for keyCode in keysToRelease {
+            physicalKeyCounts.removeValue(forKey: keyCode)
+            let ok = postEvent(keyCode: keyCode, modifiers: [], keyDown: false)
+            debugLog("[KeyInjector] releaseAllHeldKeys \(keyCode) posted=\(ok)")
         }
+    }
+
+    @discardableResult
+    private func pressPhysicalKey(
+        _ keyCode: CGKeyCode,
+        modifiers: NSEvent.ModifierFlags,
+        acquiredKeys: inout [CGKeyCode]
+    ) -> Bool {
+        if let heldCount = physicalKeyCounts[keyCode], heldCount > 0 {
+            physicalKeyCounts[keyCode] = heldCount + 1
+            acquiredKeys.append(keyCode)
+            debugLog("[KeyInjector] pressPhysicalKey \(keyCode) already held, owners=\(heldCount + 1), skipping")
+            return true
+        }
+
+        let ok = postEvent(keyCode: keyCode, modifiers: modifiers, keyDown: true)
+        if ok {
+            physicalKeyCounts[keyCode] = 1
+            acquiredKeys.append(keyCode)
+        }
+        debugLog("[KeyInjector] pressPhysicalKey \(keyCode) posted=\(ok)")
+        return ok
+    }
+
+    @discardableResult
+    private func releasePhysicalKey(_ keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags) -> Bool {
+        guard let heldCount = physicalKeyCounts[keyCode], heldCount > 0 else {
+            debugLog("[KeyInjector] releasePhysicalKey \(keyCode) - not held, skipping")
+            return true
+        }
+
+        if heldCount > 1 {
+            physicalKeyCounts[keyCode] = heldCount - 1
+            debugLog("[KeyInjector] releasePhysicalKey \(keyCode) owners=\(heldCount - 1), keeping held")
+            return true
+        }
+
+        physicalKeyCounts.removeValue(forKey: keyCode)
+        let ok = postEvent(keyCode: keyCode, modifiers: modifiers, keyDown: false)
+        debugLog("[KeyInjector] releasePhysicalKey \(keyCode) posted=\(ok)")
+        return ok
     }
 
     @discardableResult
@@ -93,7 +174,7 @@ final class KeyInjector {
             return false
         }
         evt.flags = cgEventFlags(from: modifiers, keyCode: keyCode, keyDown: keyDown)
-        evt.post(tap: .cgAnnotatedSessionEventTap)
+        evt.post(tap: .cghidEventTap)
         return true
     }
 
@@ -116,10 +197,54 @@ final class KeyInjector {
     }
 
     private func heldModifierFlags() -> CGEventFlags {
-        heldKeyCounts.keys.reduce(into: CGEventFlags()) { flags, binding in
-            if let modifierFlag = cgEventFlag(forModifierKeyCode: binding.keyCode) {
+        physicalKeyCounts.keys.reduce(into: CGEventFlags()) { flags, keyCode in
+            if let modifierFlag = cgEventFlag(forModifierKeyCode: keyCode) {
                 flags.insert(modifierFlag)
             }
+        }
+    }
+
+    private func physicalChord(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags) -> PhysicalChord {
+        var modifierKeyCodes: [CGKeyCode] = []
+        var genericModifiers = modifiers
+
+        if let ownModifier = nsEventModifierFlag(forModifierKeyCode: keyCode) {
+            genericModifiers.remove(ownModifier)
+        }
+
+        if genericModifiers.contains(.command) { appendUnique(55, to: &modifierKeyCodes) }
+        if genericModifiers.contains(.option) { appendUnique(58, to: &modifierKeyCodes) }
+        if genericModifiers.contains(.control) { appendUnique(59, to: &modifierKeyCodes) }
+        if genericModifiers.contains(.shift) { appendUnique(56, to: &modifierKeyCodes) }
+
+        if cgEventFlag(forModifierKeyCode: keyCode) != nil {
+            appendUnique(keyCode, to: &modifierKeyCodes)
+            return PhysicalChord(modifierKeyCodes: modifierKeyCodes, primaryKeyCode: nil)
+        }
+
+        return PhysicalChord(modifierKeyCodes: modifierKeyCodes, primaryKeyCode: keyCode)
+    }
+
+    private func appendUnique(_ keyCode: CGKeyCode, to keyCodes: inout [CGKeyCode]) {
+        guard !keyCodes.contains(keyCode) else {
+            return
+        }
+
+        keyCodes.append(keyCode)
+    }
+
+    private func nsEventModifierFlag(forModifierKeyCode keyCode: CGKeyCode) -> NSEvent.ModifierFlags? {
+        switch keyCode {
+        case 54, 55:
+            return .command
+        case 56, 60:
+            return .shift
+        case 58, 61:
+            return .option
+        case 59, 62:
+            return .control
+        default:
+            return nil
         }
     }
 
@@ -179,7 +304,7 @@ final class SystemEventInjector {
             return
         }
 
-        postShortcutTap(keyCode: 126, modifierKeyCodes: [59], modifiers: .control)
+        postShortcutTap(keyCode: 126, modifiers: .control)
     }
 
     private func openSystemApplication(named appName: String) -> Bool {
@@ -195,19 +320,10 @@ final class SystemEventInjector {
 
     private func postShortcutTap(
         keyCode: CGKeyCode,
-        modifierKeyCodes: [CGKeyCode],
         modifiers: NSEvent.ModifierFlags
     ) {
-        for modifierKeyCode in modifierKeyCodes {
-            KeyInjector.shared.pressRaw(modifierKeyCode)
-        }
-
         KeyInjector.shared.pressRaw(keyCode, modifiers: modifiers)
         KeyInjector.shared.releaseRaw(keyCode, modifiers: modifiers)
-
-        for modifierKeyCode in modifierKeyCodes.reversed() {
-            KeyInjector.shared.releaseRaw(modifierKeyCode)
-        }
     }
 
     private func postSystemKeyTap(type: Int) {
