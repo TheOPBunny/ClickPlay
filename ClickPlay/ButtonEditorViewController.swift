@@ -1443,6 +1443,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 shape: config.shape,
                 type: config.type,
                 systemEvent: config.action.systemEvent,
+                systemEventIconSize: config.systemEventIconSize,
                 isEnabled: config.enabled,
                 isSelected: false
             )
@@ -1661,6 +1662,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             shape: config.shape,
             type: config.type,
             systemEvent: config.action.systemEvent,
+            systemEventIconSize: config.systemEventIconSize,
             isEnabled: config.enabled,
             isSelected: false
         )
@@ -2035,6 +2037,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 || lhs.labelBold != rhs.labelBold
                 || lhs.labelItalic != rhs.labelItalic
                 || lhs.labelColorHex != rhs.labelColorHex
+                || lhs.systemEventIconSize != rhs.systemEventIconSize
                 || lhs.shape != rhs.shape
                 || lhs.enabled != rhs.enabled
                 || lhs.interactionMode != rhs.interactionMode

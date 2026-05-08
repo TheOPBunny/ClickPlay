@@ -119,6 +119,8 @@ final class ButtonDetailPanel: NSView {
     private let shapePopup = NSPopUpButton()
     private let systemEventPopup = NSPopUpButton()
     private var systemEventRow: NSStackView?
+    private let systemEventIconSizePopup = NSPopUpButton()
+    private var systemEventIconSizeRow: NSStackView?
     private let interactionModePopup = NSPopUpButton()
     private var interactionModeRow: NSStackView?
     private let multiKeyActivationModePopup = NSPopUpButton()
@@ -155,6 +157,7 @@ final class ButtonDetailPanel: NSView {
         [labelField, labelSizeField, xField, yField, widthField, heightField].forEach { $0.stringValue = "" }
         buttonTypePopup.selectItem(withTag: ButtonType.keyboard.tag)
         systemEventPopup.selectItem(withTag: SystemEvent.brightnessDown.tag)
+        systemEventIconSizePopup.selectItem(withTag: SystemEventIconSize.large.tag)
         keyRecorder.setKeyBindings([ButtonKeyBinding(keyCode: 49, keyModifiers: 0)])
         joystickUpRecorder.setKeyBindings([JoystickConfig.defaultBindings.up])
         joystickDownRecorder.setKeyBindings([JoystickConfig.defaultBindings.down])
@@ -217,6 +220,7 @@ final class ButtonDetailPanel: NSView {
         interactionModePopup.selectItem(withTag: config.interactionMode.tag)
         multiKeyActivationModePopup.selectItem(withTag: config.multiKeyActivationMode.tag)
         systemEventPopup.selectItem(withTag: (config.action.systemEvent ?? .brightnessDown).tag)
+        systemEventIconSizePopup.selectItem(withTag: config.systemEventIconSize.tag)
         rightClickRecorder.setOptionalKeyBindings(config.rightClickKeyBindings)
         rightClickFallbackCheckbox.state = config.rightClickFallsBackToPrimary ? .on : .off
         rightClickModePopup.selectItem(withTag: config.rightClickInteractionMode?.tag ?? Self.sameAsLeftModeTag)
@@ -359,6 +363,9 @@ final class ButtonDetailPanel: NSView {
         systemEventPopup.target = self
         systemEventPopup.action = #selector(applyPressed)
         populateSystemEvents()
+        systemEventIconSizePopup.target = self
+        systemEventIconSizePopup.action = #selector(applyPressed)
+        populateSystemEventIconSizes()
         buttonTypePopup.target = self
         buttonTypePopup.action = #selector(applyPressed)
         populateButtonTypes()
@@ -449,6 +456,9 @@ final class ButtonDetailPanel: NSView {
         let systemEventRow = makeRow(label: "Event:", control: systemEventPopup)
         self.systemEventRow = systemEventRow
         contentStack.addArrangedSubview(systemEventRow)
+        let systemEventIconSizeRow = makeRow(label: "Icon Size:", control: systemEventIconSizePopup)
+        self.systemEventIconSizeRow = systemEventIconSizeRow
+        contentStack.addArrangedSubview(systemEventIconSizeRow)
         let joystickSectionLabel = makeSectionLabel("Joystick")
         self.joystickSectionLabel = joystickSectionLabel
         contentStack.addArrangedSubview(joystickSectionLabel)
@@ -811,6 +821,17 @@ final class ButtonDetailPanel: NSView {
         systemEventPopup.selectItem(withTag: SystemEvent.brightnessDown.tag)
     }
 
+    private func populateSystemEventIconSizes() {
+        systemEventIconSizePopup.removeAllItems()
+
+        for size in SystemEventIconSize.allCases {
+            systemEventIconSizePopup.addItem(withTitle: size.displayName)
+            systemEventIconSizePopup.lastItem?.tag = size.tag
+        }
+
+        systemEventIconSizePopup.selectItem(withTag: SystemEventIconSize.large.tag)
+    }
+
     private func populateMultiKeyActivationModes() {
         populateMultiKeyActivationModes(multiKeyActivationModePopup)
     }
@@ -901,7 +922,9 @@ final class ButtonDetailPanel: NSView {
             buttonTypePopup.selectItem(withTag: ButtonType.keyboard.tag)
         } else if config.type == .systemEvent {
             let systemEvent = SystemEvent(tag: systemEventPopup.selectedTag()) ?? config.action.systemEvent ?? .brightnessDown
+            let iconSize = SystemEventIconSize(tag: systemEventIconSizePopup.selectedTag()) ?? config.systemEventIconSize
             config.action = .systemEvent(systemEvent)
+            config.systemEventIconSize = iconSize
             config.enabled = true
             config.keyBindings = [Self.defaultKeyBinding]
             config.keyCode = Self.defaultKeyBinding.keyCode
@@ -923,6 +946,7 @@ final class ButtonDetailPanel: NSView {
             rightClickFallbackCheckbox.state = .off
             rightClickModePopup.selectItem(withTag: Self.sameAsLeftModeTag)
             systemEventPopup.selectItem(withTag: systemEvent.tag)
+            systemEventIconSizePopup.selectItem(withTag: iconSize.tag)
         } else if config.type == .joystick {
             config.action = .keyboard
             config.enabled = enabledCheckbox.state == .on
@@ -1235,6 +1259,7 @@ final class ButtonDetailPanel: NSView {
         labelStyleRow?.isHidden = isSystemEvent
         buttonTypeRow?.isHidden = isProtectedSwitch || isSystemEvent
         systemEventRow?.isHidden = !isSystemEvent || isProtectedSwitch
+        systemEventIconSizeRow?.isHidden = !isSystemEvent || isProtectedSwitch
         keyRow?.isHidden = hidesKeyboardControls
         interactionModeRow?.isHidden = hidesKeyboardControls
         rightClickSectionLabel?.isHidden = hidesKeyboardControls

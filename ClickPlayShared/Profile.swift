@@ -69,6 +69,14 @@ enum SystemEvent: String, Codable, Equatable {
     case missionControl
 }
 
+enum SystemEventIconSize: String, Codable, Equatable {
+    case extraSmall
+    case small
+    case medium
+    case large
+    case extraLarge
+}
+
 struct JoystickInputConfig: Codable, Equatable {
     var keyBindings: [ButtonKeyBinding]
     var interactionMode: ButtonInteractionMode
@@ -254,6 +262,7 @@ struct ButtonConfig: Codable {
     var rightClickInteractionMode: ButtonInteractionMode?
     var action: ButtonAction
     var joystick: JoystickConfig
+    var systemEventIconSize: SystemEventIconSize
 
     private enum CodingKeys: String, CodingKey {
         case type
@@ -281,6 +290,7 @@ struct ButtonConfig: Codable {
         case rightClickInteractionMode
         case action
         case joystick
+        case systemEventIconSize
     }
 
     init(
@@ -308,7 +318,8 @@ struct ButtonConfig: Codable {
         rightClickFallsBackToPrimary: Bool = true,
         rightClickInteractionMode: ButtonInteractionMode? = nil,
         action: ButtonAction = .keyboard,
-        joystick: JoystickConfig = .defaultBindings
+        joystick: JoystickConfig = .defaultBindings,
+        systemEventIconSize: SystemEventIconSize = .large
     ) {
         self.type = type
         self.x = x
@@ -341,6 +352,7 @@ struct ButtonConfig: Codable {
         self.rightClickInteractionMode = rightClickInteractionMode
         self.action = action
         self.joystick = joystick
+        self.systemEventIconSize = systemEventIconSize
     }
 
     init(from decoder: Decoder) throws {
@@ -380,6 +392,7 @@ struct ButtonConfig: Codable {
             action = .systemEvent(.brightnessDown)
         }
         joystick = try container.decodeIfPresent(JoystickConfig.self, forKey: .joystick) ?? .defaultBindings
+        systemEventIconSize = try container.decodeIfPresent(SystemEventIconSize.self, forKey: .systemEventIconSize) ?? .large
     }
 
     func encode(to encoder: Encoder) throws {
@@ -416,6 +429,7 @@ struct ButtonConfig: Codable {
         try container.encodeIfPresent(rightClickInteractionMode, forKey: .rightClickInteractionMode)
         try container.encode(action, forKey: .action)
         try container.encode(joystick, forKey: .joystick)
+        try container.encode(systemEventIconSize, forKey: .systemEventIconSize)
     }
 
     private static func normalizedKeyBindings(
@@ -1112,6 +1126,54 @@ extension ButtonConfig {
         ]
 
         return keyNames[code] ?? "key(\(code))"
+    }
+}
+
+extension SystemEventIconSize {
+    static var allCases: [SystemEventIconSize] {
+        [.extraSmall, .small, .medium, .large, .extraLarge]
+    }
+
+    var displayName: String {
+        switch self {
+        case .extraSmall:
+            return "Extra Small"
+        case .small:
+            return "Small"
+        case .medium:
+            return "Medium"
+        case .large:
+            return "Large"
+        case .extraLarge:
+            return "Extra Large"
+        }
+    }
+
+    var symbolScale: CGFloat {
+        switch self {
+        case .extraSmall:
+            return 0.36
+        case .small:
+            return 0.44
+        case .medium:
+            return 0.50
+        case .large:
+            return 0.58
+        case .extraLarge:
+            return 0.70
+        }
+    }
+
+    var tag: Int {
+        SystemEventIconSize.allCases.firstIndex(of: self) ?? 3
+    }
+
+    init?(tag: Int) {
+        guard SystemEventIconSize.allCases.indices.contains(tag) else {
+            return nil
+        }
+
+        self = SystemEventIconSize.allCases[tag]
     }
 }
 
