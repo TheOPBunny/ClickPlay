@@ -92,7 +92,7 @@ final class KeyInjector {
             errorLog("[KeyInjector] ERROR: CGEvent creation failed for keyCode \(keyCode)")
             return false
         }
-        evt.flags = cgEventFlags(from: modifiers)
+        evt.flags = cgEventFlags(from: modifiers, keyCode: keyCode, keyDown: keyDown)
         evt.post(tap: .cgAnnotatedSessionEventTap)
         return true
     }
@@ -101,14 +101,34 @@ final class KeyInjector {
         modifiers.intersection([.command, .option, .control, .shift])
     }
 
-    private func cgEventFlags(from modifiers: NSEvent.ModifierFlags) -> CGEventFlags {
+    private func cgEventFlags(from modifiers: NSEvent.ModifierFlags, keyCode: CGKeyCode, keyDown: Bool) -> CGEventFlags {
         var flags: CGEventFlags = []
 
         if modifiers.contains(.command) { flags.insert(.maskCommand) }
         if modifiers.contains(.option) { flags.insert(.maskAlternate) }
         if modifiers.contains(.control) { flags.insert(.maskControl) }
         if modifiers.contains(.shift) { flags.insert(.maskShift) }
+        if keyDown, let modifierFlag = cgEventFlag(forModifierKeyCode: keyCode) {
+            flags.insert(modifierFlag)
+        }
 
         return flags
+    }
+
+    private func cgEventFlag(forModifierKeyCode keyCode: CGKeyCode) -> CGEventFlags? {
+        switch keyCode {
+        case 54, 55:
+            return .maskCommand
+        case 56, 60:
+            return .maskShift
+        case 57:
+            return .maskAlphaShift
+        case 58, 61:
+            return .maskAlternate
+        case 59, 62:
+            return .maskControl
+        default:
+            return nil
+        }
     }
 }
