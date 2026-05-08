@@ -163,12 +163,12 @@ final class GamepadButtonView: NSView {
         layer?.addSublayer(joystickKnobLayer)
 
         symbolImageView.imageScaling = .scaleProportionallyDown
-        symbolImageView.contentTintColor = NSColor(hex: config.labelColorHex)
+        symbolImageView.contentTintColor = displayTextColor
         symbolImageView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(symbolImageView)
         label.stringValue = config.resolvedDisplayLabel
-        label.font = config.resolvedLabelFont
-        label.textColor = NSColor(hex: config.labelColorHex)
+        label.font = displayTextFont
+        label.textColor = displayTextColor
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
         NSLayoutConstraint.activate([
@@ -190,6 +190,7 @@ final class GamepadButtonView: NSView {
     override func layout() {
         super.layout()
         updateShapePath()
+        updateSystemEventSymbol()
         updateJoystickLayers(baseColor: NSColor(hex: config.colorHex))
     }
 
@@ -203,9 +204,9 @@ final class GamepadButtonView: NSView {
             resetJoystickRuntimeState()
         }
         label.stringValue = config.resolvedDisplayLabel
-        label.font = config.resolvedLabelFont
-        label.textColor = NSColor(hex: config.labelColorHex)
-        symbolImageView.contentTintColor = NSColor(hex: config.labelColorHex)
+        label.font = displayTextFont
+        label.textColor = displayTextColor
+        symbolImageView.contentTintColor = displayTextColor
         updateSystemEventSymbol()
         updateAppearance(animated: false)
     }
@@ -398,6 +399,19 @@ final class GamepadButtonView: NSView {
 
     private var isSystemEvent: Bool {
         config.type == .systemEvent
+    }
+
+    private var displayTextColor: NSColor {
+        isSystemEvent ? ButtonConfig.systemEventSymbolColor(for: config.colorHex) : NSColor(hex: config.labelColorHex)
+    }
+
+    private var displayTextFont: NSFont {
+        guard isSystemEvent else {
+            return config.resolvedLabelFont
+        }
+
+        let symbolSize = max(10, min(bounds.width, bounds.height) * 0.58)
+        return NSFont.systemFont(ofSize: symbolSize, weight: .bold)
     }
 
     private var isCurrentSubProfileSwitch: Bool {
@@ -1613,21 +1627,22 @@ final class GamepadButtonView: NSView {
             symbolImageView.image = nil
             symbolImageView.isHidden = true
             label.stringValue = config.resolvedDisplayLabel
+            label.font = config.resolvedLabelFont
+            label.textColor = NSColor(hex: config.labelColorHex)
             return
         }
 
-        let image = NSImage(systemSymbolName: systemEvent.symbolName, accessibilityDescription: systemEvent.displayName)
-        image?.isTemplate = true
-        symbolImageView.image = image
-        symbolImageView.isHidden = image == nil
-        label.stringValue = image == nil ? systemEvent.fallbackSymbol : ""
+        symbolImageView.image = nil
+        symbolImageView.isHidden = true
+        label.stringValue = systemEvent.fallbackSymbol
+        label.font = displayTextFont
+        label.textColor = displayTextColor
     }
 
     private func updateJoystickLayers(baseColor: NSColor) {
         let showsJoystick = isJoystick
-        let showsSystemSymbol = isSystemEvent && symbolImageView.image != nil
-        label.isHidden = showsJoystick || showsSystemSymbol
-        symbolImageView.isHidden = showsJoystick || !showsSystemSymbol
+        label.isHidden = showsJoystick
+        symbolImageView.isHidden = true
         joystickOuterLayer.isHidden = !showsJoystick
         joystickKnobLayer.isHidden = !showsJoystick
         shapeLayer.isHidden = showsJoystick
