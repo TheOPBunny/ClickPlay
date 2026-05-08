@@ -862,32 +862,17 @@ final class GamepadPreviewView: NSView {
     }
 
     private func drawSystemEventSymbol(_ event: SystemEvent, for object: CanvasButtonObject, in frame: CGRect) {
-        let tint = NSColor(hex: object.labelColorHex)
+        let tint = ButtonConfig.systemEventSymbolColor(for: object.colorHex)
         let symbolSize = max(10, min(frame.width, frame.height) * 0.58)
-        if let image = NSImage(systemSymbolName: event.symbolName, accessibilityDescription: event.displayName) {
-            image.isTemplate = true
-            let drawRect = CGRect(
-                x: frame.midX - symbolSize / 2,
-                y: frame.midY - symbolSize / 2,
-                width: symbolSize,
-                height: symbolSize
-            )
-            NSGraphicsContext.saveGraphicsState()
-            tint.set()
-            image.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: 1)
-            NSGraphicsContext.restoreGraphicsState()
-            return
-        }
-
         let fallbackObject = CanvasButtonObject(
             id: object.id,
             frame: object.frame,
             label: event.fallbackSymbol,
             colorHex: object.colorHex,
-            labelFontSize: min(max(Double(symbolSize) * 0.58, 10), 24),
+            labelFontSize: min(max(Double(symbolSize), 10), 32),
             labelBold: true,
             labelItalic: false,
-            labelColorHex: object.labelColorHex,
+            labelColorHex: tint.hexString,
             shape: object.shape,
             type: object.type,
             systemEvent: nil,

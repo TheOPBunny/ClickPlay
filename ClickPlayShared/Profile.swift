@@ -898,6 +898,16 @@ extension NSColor {
 }
 
 extension ButtonConfig {
+    static func systemEventSymbolColor(for backgroundColorHex: String) -> NSColor {
+        let backgroundColor = NSColor(hex: backgroundColorHex)
+        guard let color = backgroundColor.usingColorSpace(.sRGB) else {
+            return .white
+        }
+
+        let luminance = (0.2126 * color.redComponent) + (0.7152 * color.greenComponent) + (0.0722 * color.blueComponent)
+        return luminance >= 0.82 ? .black : .white
+    }
+
     var resolvedSortLabel: String {
         let displayLabel = resolvedDisplayLabel
         return displayLabel.isEmpty ? keyBindingsDisplayName : displayLabel
