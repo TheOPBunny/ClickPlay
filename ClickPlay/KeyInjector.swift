@@ -140,3 +140,61 @@ final class KeyInjector {
         }
     }
 }
+
+final class SystemEventInjector {
+
+    static let shared = SystemEventInjector()
+    private init() {}
+
+    func trigger(_ event: SystemEvent) {
+        switch event {
+        case .missionControl:
+            KeyInjector.shared.pressRaw(126, modifiers: .control)
+            KeyInjector.shared.releaseRaw(126, modifiers: .control)
+        case .brightnessDown:
+            postSystemKeyTap(type: 3)
+        case .brightnessUp:
+            postSystemKeyTap(type: 2)
+        case .volumeDown:
+            postSystemKeyTap(type: 1)
+        case .volumeUp:
+            postSystemKeyTap(type: 0)
+        case .mute:
+            postSystemKeyTap(type: 7)
+        case .playPause:
+            postSystemKeyTap(type: 16)
+        case .nextTrack:
+            postSystemKeyTap(type: 17)
+        case .previousTrack:
+            postSystemKeyTap(type: 18)
+        case .launchpad:
+            postSystemKeyTap(type: 13)
+        }
+    }
+
+    private func postSystemKeyTap(type: Int) {
+        postSystemKey(type: type, isDown: true)
+        postSystemKey(type: type, isDown: false)
+    }
+
+    private func postSystemKey(type: Int, isDown: Bool) {
+        let keyState = isDown ? 0xA : 0xB
+        let data1 = (type << 16) | (keyState << 8)
+        guard let event = NSEvent.otherEvent(
+            with: .systemDefined,
+            location: .zero,
+            modifierFlags: NSEvent.ModifierFlags(rawValue: UInt(keyState << 8)),
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            subtype: 8,
+            data1: data1,
+            data2: -1
+        )?.cgEvent else {
+            errorLog("[SystemEventInjector] ERROR: system event creation failed for type \(type)")
+            return
+        }
+
+        event.post(tap: .cghidEventTap)
+    }
+}

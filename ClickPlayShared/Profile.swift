@@ -15,6 +15,7 @@ enum ButtonShape: String, Codable {
 enum ButtonType: String, Codable {
     case keyboard
     case joystick
+    case systemEvent
 }
 
 enum ButtonSizing {
@@ -34,6 +35,8 @@ enum ButtonSizing {
             return (minimumButtonWidth, minimumButtonHeight)
         case .joystick:
             return (minimumJoystickWidth, minimumJoystickHeight)
+        case .systemEvent:
+            return (minimumButtonWidth, minimumButtonHeight)
         }
     }
 }
@@ -51,6 +54,19 @@ enum MultiKeyActivationMode: String, Codable, Equatable {
 struct ButtonKeyBinding: Codable, Hashable {
     var keyCode: Int
     var keyModifiers: Int
+}
+
+enum SystemEvent: String, Codable, Equatable {
+    case brightnessDown
+    case brightnessUp
+    case volumeDown
+    case volumeUp
+    case mute
+    case playPause
+    case nextTrack
+    case previousTrack
+    case launchpad
+    case missionControl
 }
 
 struct JoystickInputConfig: Codable, Equatable {
@@ -140,15 +156,18 @@ struct JoystickConfig: Codable, Equatable {
 
 enum ButtonAction: Codable, Equatable {
     case keyboard
+    case systemEvent(SystemEvent)
     case subProfileSwitch(UUID)
 
     private enum CodingKeys: String, CodingKey {
         case type
+        case systemEvent
         case targetSubProfileID
     }
 
     private enum ActionType: String, Codable {
         case keyboard
+        case systemEvent
         case subProfileSwitch
     }
 
@@ -159,6 +178,8 @@ enum ButtonAction: Codable, Equatable {
         switch type {
         case .keyboard:
             self = .keyboard
+        case .systemEvent:
+            self = .systemEvent(try container.decodeIfPresent(SystemEvent.self, forKey: .systemEvent) ?? .brightnessDown)
         case .subProfileSwitch:
             if let targetID = try container.decodeIfPresent(UUID.self, forKey: .targetSubProfileID) {
                 self = .subProfileSwitch(targetID)
@@ -174,6 +195,9 @@ enum ButtonAction: Codable, Equatable {
         switch self {
         case .keyboard:
             try container.encode(ActionType.keyboard, forKey: .type)
+        case .systemEvent(let systemEvent):
+            try container.encode(ActionType.systemEvent, forKey: .type)
+            try container.encode(systemEvent, forKey: .systemEvent)
         case .subProfileSwitch(let targetID):
             try container.encode(ActionType.subProfileSwitch, forKey: .type)
             try container.encode(targetID, forKey: .targetSubProfileID)
@@ -183,6 +207,14 @@ enum ButtonAction: Codable, Equatable {
     var targetSubProfileID: UUID? {
         if case .subProfileSwitch(let targetID) = self {
             return targetID
+        }
+
+        return nil
+    }
+
+    var systemEvent: SystemEvent? {
+        if case .systemEvent(let systemEvent) = self {
+            return systemEvent
         }
 
         return nil
@@ -344,6 +376,9 @@ struct ButtonConfig: Codable {
         rightClickFallsBackToPrimary = try container.decodeIfPresent(Bool.self, forKey: .rightClickFallsBackToPrimary) ?? true
         rightClickInteractionMode = try container.decodeIfPresent(ButtonInteractionMode.self, forKey: .rightClickInteractionMode)
         action = try container.decodeIfPresent(ButtonAction.self, forKey: .action) ?? .keyboard
+        if type == .systemEvent, action.systemEvent == nil {
+            action = .systemEvent(.brightnessDown)
+        }
         joystick = try container.decodeIfPresent(JoystickConfig.self, forKey: .joystick) ?? .defaultBindings
     }
 
@@ -893,6 +928,10 @@ extension ButtonConfig {
             return label
         }
 
+        if let systemEvent = action.systemEvent {
+            return systemEvent.fallbackSymbol
+        }
+
         return keyBindingsDisplayName
     }
 
@@ -1063,5 +1102,109 @@ extension ButtonConfig {
         ]
 
         return keyNames[code] ?? "key(\(code))"
+    }
+}
+
+extension SystemEvent {
+    static var allCases: [SystemEvent] {
+        [
+            .brightnessDown,
+            .brightnessUp,
+            .volumeDown,
+            .volumeUp,
+            .mute,
+            .playPause,
+            .nextTrack,
+            .previousTrack,
+            .launchpad,
+            .missionControl,
+        ]
+    }
+
+    var displayName: String {
+        switch self {
+        case .brightnessDown:
+            return "Brightness Down"
+        case .brightnessUp:
+            return "Brightness Up"
+        case .volumeDown:
+            return "Volume Down"
+        case .volumeUp:
+            return "Volume Up"
+        case .mute:
+            return "Mute"
+        case .playPause:
+            return "Play/Pause"
+        case .nextTrack:
+            return "Next"
+        case .previousTrack:
+            return "Previous"
+        case .launchpad:
+            return "Launchpad"
+        case .missionControl:
+            return "Mission Control"
+        }
+    }
+
+    var fallbackSymbol: String {
+        switch self {
+        case .brightnessDown:
+            return "􀆫"
+        case .brightnessUp:
+            return "􀆭"
+        case .volumeDown:
+            return "􀊥"
+        case .volumeUp:
+            return "􀊧"
+        case .mute:
+            return "􀊣"
+        case .playPause:
+            return "􀊈"
+        case .nextTrack:
+            return "􀊐"
+        case .previousTrack:
+            return "􀊎"
+        case .launchpad:
+            return "􀚇"
+        case .missionControl:
+            return "􀐅"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .brightnessDown:
+            return "sun.min.fill"
+        case .brightnessUp:
+            return "sun.max.fill"
+        case .volumeDown:
+            return "speaker.wave.1.fill"
+        case .volumeUp:
+            return "speaker.wave.3.fill"
+        case .mute:
+            return "speaker.slash.fill"
+        case .playPause:
+            return "playpause.fill"
+        case .nextTrack:
+            return "forward.end.fill"
+        case .previousTrack:
+            return "backward.end.fill"
+        case .launchpad:
+            return "square.grid.3x3.fill"
+        case .missionControl:
+            return "rectangle.3.group.fill"
+        }
+    }
+
+    var tag: Int {
+        SystemEvent.allCases.firstIndex(of: self) ?? 0
+    }
+
+    init?(tag: Int) {
+        guard SystemEvent.allCases.indices.contains(tag) else {
+            return nil
+        }
+
+        self = SystemEvent.allCases[tag]
     }
 }

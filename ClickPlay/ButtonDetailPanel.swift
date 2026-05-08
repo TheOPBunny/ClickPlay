@@ -110,11 +110,15 @@ final class ButtonDetailPanel: NSView {
     private let labelBoldCheckbox = NSButton(checkboxWithTitle: "Bold", target: nil, action: nil)
     private let labelItalicCheckbox = NSButton(checkboxWithTitle: "Italic", target: nil, action: nil)
     private let labelColorWell = NSColorWell()
+    private var labelRow: NSStackView?
+    private var labelStyleRow: NSStackView?
     private let xField = NSTextField()
     private let yField = NSTextField()
     private let widthField = NSTextField()
     private let heightField = NSTextField()
     private let shapePopup = NSPopUpButton()
+    private let systemEventPopup = NSPopUpButton()
+    private var systemEventRow: NSStackView?
     private let interactionModePopup = NSPopUpButton()
     private var interactionModeRow: NSStackView?
     private let multiKeyActivationModePopup = NSPopUpButton()
@@ -150,6 +154,7 @@ final class ButtonDetailPanel: NSView {
         }
         [labelField, labelSizeField, xField, yField, widthField, heightField].forEach { $0.stringValue = "" }
         buttonTypePopup.selectItem(withTag: ButtonType.keyboard.tag)
+        systemEventPopup.selectItem(withTag: SystemEvent.brightnessDown.tag)
         keyRecorder.setKeyBindings([ButtonKeyBinding(keyCode: 49, keyModifiers: 0)])
         joystickUpRecorder.setKeyBindings([JoystickConfig.defaultBindings.up])
         joystickDownRecorder.setKeyBindings([JoystickConfig.defaultBindings.down])
@@ -211,6 +216,7 @@ final class ButtonDetailPanel: NSView {
         enabledCheckbox.state = config.enabled ? .on : .off
         interactionModePopup.selectItem(withTag: config.interactionMode.tag)
         multiKeyActivationModePopup.selectItem(withTag: config.multiKeyActivationMode.tag)
+        systemEventPopup.selectItem(withTag: (config.action.systemEvent ?? .brightnessDown).tag)
         rightClickRecorder.setOptionalKeyBindings(config.rightClickKeyBindings)
         rightClickFallbackCheckbox.state = config.rightClickFallsBackToPrimary ? .on : .off
         rightClickModePopup.selectItem(withTag: config.rightClickInteractionMode?.tag ?? Self.sameAsLeftModeTag)
@@ -350,6 +356,9 @@ final class ButtonDetailPanel: NSView {
         shapePopup.target = self
         shapePopup.action = #selector(applyPressed)
         populateShapes()
+        systemEventPopup.target = self
+        systemEventPopup.action = #selector(applyPressed)
+        populateSystemEvents()
         buttonTypePopup.target = self
         buttonTypePopup.action = #selector(applyPressed)
         populateButtonTypes()
@@ -425,14 +434,21 @@ final class ButtonDetailPanel: NSView {
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         contentContainer.translatesAutoresizingMaskIntoConstraints = false
 
-        contentStack.addArrangedSubview(makeRow(label: "Label:", control: labelField))
+        let labelRow = makeRow(label: "Label:", control: labelField)
+        self.labelRow = labelRow
+        contentStack.addArrangedSubview(labelRow)
         let buttonTypeRow = makeRow(label: "Type:", control: buttonTypePopup)
         self.buttonTypeRow = buttonTypeRow
         contentStack.addArrangedSubview(buttonTypeRow)
-        contentStack.addArrangedSubview(makeLabelStyleRow())
+        let labelStyleRow = makeLabelStyleRow()
+        self.labelStyleRow = labelStyleRow
+        contentStack.addArrangedSubview(labelStyleRow)
         let keyRow = makeKeyRow()
         self.keyRow = keyRow
         contentStack.addArrangedSubview(keyRow)
+        let systemEventRow = makeRow(label: "Event:", control: systemEventPopup)
+        self.systemEventRow = systemEventRow
+        contentStack.addArrangedSubview(systemEventRow)
         let joystickSectionLabel = makeSectionLabel("Joystick")
         self.joystickSectionLabel = joystickSectionLabel
         contentStack.addArrangedSubview(joystickSectionLabel)
@@ -784,6 +800,17 @@ final class ButtonDetailPanel: NSView {
         buttonTypePopup.selectItem(withTag: ButtonType.keyboard.tag)
     }
 
+    private func populateSystemEvents() {
+        systemEventPopup.removeAllItems()
+
+        for event in SystemEvent.allCases {
+            systemEventPopup.addItem(withTitle: "\(event.fallbackSymbol) \(event.displayName)")
+            systemEventPopup.lastItem?.tag = event.tag
+        }
+
+        systemEventPopup.selectItem(withTag: SystemEvent.brightnessDown.tag)
+    }
+
     private func populateMultiKeyActivationModes() {
         populateMultiKeyActivationModes(multiKeyActivationModePopup)
     }
@@ -872,7 +899,32 @@ final class ButtonDetailPanel: NSView {
             rightClickFallbackCheckbox.state = .on
             rightClickModePopup.selectItem(withTag: Self.sameAsLeftModeTag)
             buttonTypePopup.selectItem(withTag: ButtonType.keyboard.tag)
+        } else if config.type == .systemEvent {
+            let systemEvent = SystemEvent(tag: systemEventPopup.selectedTag()) ?? config.action.systemEvent ?? .brightnessDown
+            config.action = .systemEvent(systemEvent)
+            config.enabled = true
+            config.keyBindings = [Self.defaultKeyBinding]
+            config.keyCode = Self.defaultKeyBinding.keyCode
+            config.keyModifiers = Self.defaultKeyBinding.keyModifiers
+            config.multiKeyActivationMode = .sequential
+            config.interactionMode = .momentary
+            config.rightClickKeyBindings = nil
+            config.rightClickFallsBackToPrimary = false
+            config.rightClickInteractionMode = nil
+            config.label = ""
+            config.labelBold = true
+            config.labelItalic = false
+            config.labelColorHex = "#FFFFFF"
+            enabledCheckbox.state = .on
+            keyRecorder.setKeyBindings([Self.defaultKeyBinding])
+            interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
+            multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
+            rightClickRecorder.setOptionalKeyBindings(nil)
+            rightClickFallbackCheckbox.state = .off
+            rightClickModePopup.selectItem(withTag: Self.sameAsLeftModeTag)
+            systemEventPopup.selectItem(withTag: systemEvent.tag)
         } else if config.type == .joystick {
+            config.action = .keyboard
             config.enabled = enabledCheckbox.state == .on
             config.shape = .oval
             config.interactionMode = .momentary
@@ -894,6 +946,7 @@ final class ButtonDetailPanel: NSView {
             rightClickModePopup.selectItem(withTag: Self.sameAsLeftModeTag)
             shapePopup.selectItem(withTag: ButtonShape.oval.tag)
         } else {
+            config.action = .keyboard
             config.enabled = enabledCheckbox.state == .on
             config.interactionMode = ButtonInteractionMode(tag: interactionModePopup.selectedTag()) ?? .momentary
             if config.interactionMode == .toggleHold {
@@ -922,6 +975,9 @@ final class ButtonDetailPanel: NSView {
         guard config?.action.isProtectedSwitch != true else {
             return
         }
+        guard config?.type != .systemEvent else {
+            return
+        }
 
         guard !bindings.isEmpty else {
             return
@@ -937,6 +993,9 @@ final class ButtonDetailPanel: NSView {
 
     private func applyRightClickKeyBindings(_ bindings: [ButtonKeyBinding]?) {
         guard config?.action.isProtectedSwitch != true else {
+            return
+        }
+        guard config?.type != .systemEvent else {
             return
         }
 
@@ -1169,9 +1228,13 @@ final class ButtonDetailPanel: NSView {
 
         let isProtectedSwitch = config?.action.isProtectedSwitch == true
         let isJoystick = config?.type == .joystick
-        let hidesKeyboardControls = isProtectedSwitch || isJoystick
+        let isSystemEvent = config?.type == .systemEvent
+        let hidesKeyboardControls = isProtectedSwitch || isJoystick || isSystemEvent
 
-        buttonTypeRow?.isHidden = isProtectedSwitch
+        labelRow?.isHidden = isSystemEvent
+        labelStyleRow?.isHidden = isSystemEvent
+        buttonTypeRow?.isHidden = isProtectedSwitch || isSystemEvent
+        systemEventRow?.isHidden = !isSystemEvent || isProtectedSwitch
         keyRow?.isHidden = hidesKeyboardControls
         interactionModeRow?.isHidden = hidesKeyboardControls
         rightClickSectionLabel?.isHidden = hidesKeyboardControls
@@ -1195,7 +1258,7 @@ final class ButtonDetailPanel: NSView {
             updateMultiKeyActivationModeVisibility()
         }
         updateJoystickInputVisibility()
-        enabledCheckbox.isHidden = isProtectedSwitch
+        enabledCheckbox.isHidden = isProtectedSwitch || isSystemEvent
         deleteButton.isHidden = isProtectedSwitch
         deleteButton.isEnabled = !isProtectedSwitch && button != nil
     }
@@ -1230,7 +1293,7 @@ private extension ButtonDetailPanel {
 
 private extension ButtonType {
     static var allCases: [ButtonType] {
-        [.keyboard, .joystick]
+        [.keyboard, .joystick, .systemEvent]
     }
 
     var displayName: String {
@@ -1239,6 +1302,8 @@ private extension ButtonType {
             return "Keyboard"
         case .joystick:
             return "Joystick"
+        case .systemEvent:
+            return "System Event"
         }
     }
 
@@ -1248,6 +1313,8 @@ private extension ButtonType {
             return 0
         case .joystick:
             return 1
+        case .systemEvent:
+            return 2
         }
     }
 
@@ -1257,6 +1324,8 @@ private extension ButtonType {
             self = .keyboard
         case 1:
             self = .joystick
+        case 2:
+            self = .systemEvent
         default:
             return nil
         }

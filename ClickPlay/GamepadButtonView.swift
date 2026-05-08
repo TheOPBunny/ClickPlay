@@ -119,8 +119,10 @@ final class GamepadButtonView: NSView {
     private let joystickOuterLayer = CAShapeLayer()
     private let joystickKnobLayer = CAShapeLayer()
     private let label = CenteredLabelView(frame: .zero)
+    private let symbolImageView = NSImageView(frame: .zero)
     private var isHovered = false
     private var isSwitchPressed = false
+    private var isSystemEventPressed = false
     private var isJoystickCaptured = false
     private var joystickOffset = CGPoint.zero
     private var activeJoystickDirection: JoystickDirection?
@@ -160,6 +162,10 @@ final class GamepadButtonView: NSView {
         layer?.addSublayer(joystickOuterLayer)
         layer?.addSublayer(joystickKnobLayer)
 
+        symbolImageView.imageScaling = .scaleProportionallyDown
+        symbolImageView.contentTintColor = NSColor(hex: config.labelColorHex)
+        symbolImageView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(symbolImageView)
         label.stringValue = config.resolvedDisplayLabel
         label.font = config.resolvedLabelFont
         label.textColor = NSColor(hex: config.labelColorHex)
@@ -170,7 +176,12 @@ final class GamepadButtonView: NSView {
             label.leadingAnchor.constraint(equalTo: leadingAnchor),
             label.trailingAnchor.constraint(equalTo: trailingAnchor),
             label.bottomAnchor.constraint(equalTo: bottomAnchor),
+            symbolImageView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            symbolImageView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            symbolImageView.widthAnchor.constraint(equalTo: widthAnchor, multiplier: 0.58),
+            symbolImageView.heightAnchor.constraint(equalTo: heightAnchor, multiplier: 0.58),
         ])
+        updateSystemEventSymbol()
 
         updateAppearance(animated: false)
         debugLog("[Button \(button.rawValue)] Created frame will be set by parent, keyBindings=\(config.keyBindings.map(\.keyCode))")
@@ -194,12 +205,15 @@ final class GamepadButtonView: NSView {
         label.stringValue = config.resolvedDisplayLabel
         label.font = config.resolvedLabelFont
         label.textColor = NSColor(hex: config.labelColorHex)
+        symbolImageView.contentTintColor = NSColor(hex: config.labelColorHex)
+        updateSystemEventSymbol()
         updateAppearance(animated: false)
     }
 
     func releaseIfNeeded() {
         releaseJoystickCapture(warpCursorToCenter: false)
         isHovered = false
+        isSystemEventPressed = false
 
         if isSubProfileSwitch {
             isSwitchPressed = false
@@ -255,6 +269,11 @@ final class GamepadButtonView: NSView {
             return
         }
 
+        if isSystemEvent {
+            handleSystemEventPressStarted()
+            return
+        }
+
         handlePressStarted(source: .primary)
     }
 
@@ -266,6 +285,10 @@ final class GamepadButtonView: NSView {
 
         if isSubProfileSwitch {
             handleSubProfileSwitchPressEnded(inside: containsInteractivePoint(convert(event.locationInWindow, from: nil)))
+            return
+        }
+
+        if isSystemEvent {
             return
         }
 
@@ -281,7 +304,7 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        guard containsInteractivePoint(convert(event.locationInWindow, from: nil)), !isSubProfileSwitch else {
+        guard containsInteractivePoint(convert(event.locationInWindow, from: nil)), !isSubProfileSwitch, !isSystemEvent else {
             return
         }
 
@@ -294,7 +317,7 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        guard !isSubProfileSwitch else {
+        guard !isSubProfileSwitch, !isSystemEvent else {
             return
         }
 
@@ -317,6 +340,10 @@ final class GamepadButtonView: NSView {
             return
         }
 
+        if isSystemEvent {
+            return
+        }
+
         handleDrag(source: .primary, event: event)
     }
 
@@ -327,7 +354,7 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        guard !isSubProfileSwitch else {
+        guard !isSubProfileSwitch, !isSystemEvent else {
             return
         }
 
@@ -353,6 +380,10 @@ final class GamepadButtonView: NSView {
             return
         }
 
+        if isSystemEvent {
+            return
+        }
+
         releaseMomentaryOnExit(source: .primary)
         releaseMomentaryOnExit(source: .secondary)
     }
@@ -365,6 +396,10 @@ final class GamepadButtonView: NSView {
         config.action.targetSubProfileID != nil
     }
 
+    private var isSystemEvent: Bool {
+        config.type == .systemEvent
+    }
+
     private var isCurrentSubProfileSwitch: Bool {
         guard let targetID = config.action.targetSubProfileID else {
             return false
@@ -374,7 +409,7 @@ final class GamepadButtonView: NSView {
     }
 
     private var isVisuallyPressed: Bool {
-        isSwitchPressed || primaryState.isPressed || secondaryState.isPressed || isJoystickCaptured
+        isSwitchPressed || isSystemEventPressed || primaryState.isPressed || secondaryState.isPressed || isJoystickCaptured
     }
 
     private var isJoystick: Bool {
@@ -382,7 +417,7 @@ final class GamepadButtonView: NSView {
     }
 
     private var activeModeOutline: ActiveModeOutline? {
-        guard !isJoystick, !isSubProfileSwitch else {
+        guard !isJoystick, !isSubProfileSwitch, !isSystemEvent else {
             return nil
         }
 
@@ -489,6 +524,25 @@ final class GamepadButtonView: NSView {
             appDelegate.activateSubProfileIfAllowed(targetID)
         } else {
             ProfileStore.shared.setActiveSubProfile(targetID)
+        }
+    }
+
+    private func handleSystemEventPressStarted() {
+        guard let systemEvent = config.action.systemEvent else {
+            return
+        }
+
+        isSystemEventPressed = true
+        updateAppearance(animated: true)
+        SystemEventInjector.shared.trigger(systemEvent)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration) { [weak self] in
+            guard let self else {
+                return
+            }
+
+            self.isSystemEventPressed = false
+            self.updateAppearance(animated: true)
         }
     }
 
@@ -1554,9 +1608,26 @@ final class GamepadButtonView: NSView {
         shapeLayer.path = buttonPath(in: bounds)
     }
 
+    private func updateSystemEventSymbol() {
+        guard isSystemEvent, let systemEvent = config.action.systemEvent else {
+            symbolImageView.image = nil
+            symbolImageView.isHidden = true
+            label.stringValue = config.resolvedDisplayLabel
+            return
+        }
+
+        let image = NSImage(systemSymbolName: systemEvent.symbolName, accessibilityDescription: systemEvent.displayName)
+        image?.isTemplate = true
+        symbolImageView.image = image
+        symbolImageView.isHidden = image == nil
+        label.stringValue = image == nil ? systemEvent.fallbackSymbol : ""
+    }
+
     private func updateJoystickLayers(baseColor: NSColor) {
         let showsJoystick = isJoystick
-        label.isHidden = showsJoystick
+        let showsSystemSymbol = isSystemEvent && symbolImageView.image != nil
+        label.isHidden = showsJoystick || showsSystemSymbol
+        symbolImageView.isHidden = showsJoystick || !showsSystemSymbol
         joystickOuterLayer.isHidden = !showsJoystick
         joystickKnobLayer.isHidden = !showsJoystick
         shapeLayer.isHidden = showsJoystick

@@ -11,6 +11,7 @@ struct CanvasButtonObject {
     var labelColorHex: String
     var shape: ButtonShape
     var type: ButtonType
+    var systemEvent: SystemEvent?
     var isEnabled: Bool
     var isSelected: Bool
 }
@@ -765,7 +766,11 @@ final class GamepadPreviewView: NSView {
         NSColor(hex: object.colorHex).withAlphaComponent(0.85).setFill()
         path.fill()
 
-        drawLabel(for: object, in: canvasFrame)
+        if let systemEvent = object.systemEvent {
+            drawSystemEventSymbol(systemEvent, for: object, in: canvasFrame)
+        } else {
+            drawLabel(for: object, in: canvasFrame)
+        }
 
         guard object.isSelected else {
             return
@@ -854,6 +859,42 @@ final class GamepadPreviewView: NSView {
             height: ceil(measuredSize.height)
         )
         attributedLabel.draw(in: drawRect)
+    }
+
+    private func drawSystemEventSymbol(_ event: SystemEvent, for object: CanvasButtonObject, in frame: CGRect) {
+        let tint = NSColor(hex: object.labelColorHex)
+        let symbolSize = max(10, min(frame.width, frame.height) * 0.58)
+        if let image = NSImage(systemSymbolName: event.symbolName, accessibilityDescription: event.displayName) {
+            image.isTemplate = true
+            let drawRect = CGRect(
+                x: frame.midX - symbolSize / 2,
+                y: frame.midY - symbolSize / 2,
+                width: symbolSize,
+                height: symbolSize
+            )
+            NSGraphicsContext.saveGraphicsState()
+            tint.set()
+            image.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: 1)
+            NSGraphicsContext.restoreGraphicsState()
+            return
+        }
+
+        let fallbackObject = CanvasButtonObject(
+            id: object.id,
+            frame: object.frame,
+            label: event.fallbackSymbol,
+            colorHex: object.colorHex,
+            labelFontSize: min(max(Double(symbolSize) * 0.58, 10), 24),
+            labelBold: true,
+            labelItalic: false,
+            labelColorHex: object.labelColorHex,
+            shape: object.shape,
+            type: object.type,
+            systemEvent: nil,
+            isEnabled: object.isEnabled,
+            isSelected: object.isSelected
+        )
+        drawLabel(for: fallbackObject, in: frame)
     }
 
     private func drawSelectionGlow(for shape: ButtonShape, in frame: CGRect) {
