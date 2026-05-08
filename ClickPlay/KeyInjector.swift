@@ -149,8 +149,7 @@ final class SystemEventInjector {
     func trigger(_ event: SystemEvent) {
         switch event {
         case .missionControl:
-            KeyInjector.shared.pressRaw(126, modifiers: .control)
-            KeyInjector.shared.releaseRaw(126, modifiers: .control)
+            triggerMissionControl()
         case .brightnessDown:
             postSystemKeyTap(type: 3)
         case .brightnessUp:
@@ -168,7 +167,46 @@ final class SystemEventInjector {
         case .previousTrack:
             postSystemKeyTap(type: 18)
         case .launchpad:
+            guard !openSystemApplication(named: "Apps.app") else {
+                return
+            }
             postSystemKeyTap(type: 13)
+        }
+    }
+
+    private func triggerMissionControl() {
+        guard !openSystemApplication(named: "Mission Control.app") else {
+            return
+        }
+
+        postShortcutTap(keyCode: 126, modifierKeyCodes: [59], modifiers: .control)
+    }
+
+    private func openSystemApplication(named appName: String) -> Bool {
+        let appURL = URL(fileURLWithPath: "/System/Applications").appendingPathComponent(appName)
+        guard FileManager.default.fileExists(atPath: appURL.path) else {
+            return false
+        }
+
+        let ok = NSWorkspace.shared.open(appURL)
+        debugLog("[SystemEventInjector] open \(appName) posted=\(ok)")
+        return ok
+    }
+
+    private func postShortcutTap(
+        keyCode: CGKeyCode,
+        modifierKeyCodes: [CGKeyCode],
+        modifiers: NSEvent.ModifierFlags
+    ) {
+        for modifierKeyCode in modifierKeyCodes {
+            KeyInjector.shared.pressRaw(modifierKeyCode)
+        }
+
+        KeyInjector.shared.pressRaw(keyCode, modifiers: modifiers)
+        KeyInjector.shared.releaseRaw(keyCode, modifiers: modifiers)
+
+        for modifierKeyCode in modifierKeyCodes.reversed() {
+            KeyInjector.shared.releaseRaw(modifierKeyCode)
         }
     }
 

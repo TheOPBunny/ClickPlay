@@ -1140,7 +1140,7 @@ extension SystemEvent {
         case .previousTrack:
             return "Previous"
         case .launchpad:
-            return "Launchpad"
+            return Self.prefersAppsDisplayName ? "Apps" : "Launchpad"
         case .missionControl:
             return "Mission Control"
         }
@@ -1206,5 +1206,9 @@ extension SystemEvent {
         }
 
         self = SystemEvent.allCases[tag]
+    }
+
+    private static var prefersAppsDisplayName: Bool {
+        FileManager.default.fileExists(atPath: "/System/Applications/Apps.app")
     }
 }
