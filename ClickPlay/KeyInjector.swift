@@ -102,7 +102,7 @@ final class KeyInjector {
     }
 
     private func cgEventFlags(from modifiers: NSEvent.ModifierFlags, keyCode: CGKeyCode, keyDown: Bool) -> CGEventFlags {
-        var flags: CGEventFlags = []
+        var flags = heldModifierFlags()
 
         if modifiers.contains(.command) { flags.insert(.maskCommand) }
         if modifiers.contains(.option) { flags.insert(.maskAlternate) }
@@ -113,6 +113,14 @@ final class KeyInjector {
         }
 
         return flags
+    }
+
+    private func heldModifierFlags() -> CGEventFlags {
+        heldKeyCounts.keys.reduce(into: CGEventFlags()) { flags, binding in
+            if let modifierFlag = cgEventFlag(forModifierKeyCode: binding.keyCode) {
+                flags.insert(modifierFlag)
+            }
+        }
     }
 
     private func cgEventFlag(forModifierKeyCode keyCode: CGKeyCode) -> CGEventFlags? {
