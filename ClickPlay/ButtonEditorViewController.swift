@@ -730,6 +730,33 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         )
     }
 
+    private func makeNewSystemEventConfig() -> ButtonConfig {
+        let width = 40.0
+        let height = 40.0
+        let origin = nearestEmptySpawnOrigin(for: CGSize(width: width, height: height))
+
+        return ButtonConfig(
+            type: .systemEvent,
+            x: Double(origin.x) + (width / 2),
+            y: Double(origin.y) + (height / 2),
+            width: width,
+            height: height,
+            editorWidth: width,
+            editorHeight: height,
+            colorHex: "#000000",
+            keyCode: 49,
+            keyModifiers: 0,
+            label: "",
+            shape: .square,
+            enabled: true,
+            interactionMode: .momentary,
+            rightClickKeyBindings: nil,
+            rightClickFallsBackToPrimary: false,
+            rightClickInteractionMode: nil,
+            action: .systemEvent(.brightnessDown)
+        )
+    }
+
     private func nextCustomButtonLabel() -> String {
         let nextNumber = profile.buttons.values.reduce(0) { currentMax, config in
             let label = config.label.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -815,7 +842,9 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             config.x += offset
             config.y -= offset
             config.enabled = true
-            config.action = .keyboard
+            if config.action.isProtectedSwitch {
+                config.action = .keyboard
+            }
             config = configByApplyingGeometryClamp(config)
             profile.buttons[button.rawValue] = config
             insertedStates[button] = config
@@ -903,6 +932,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         addPopupButton.lastItem?.tag = 1
         addPopupButton.addItem(withTitle: "Joystick")
         addPopupButton.lastItem?.tag = 2
+        addPopupButton.addItem(withTitle: "System Event")
+        addPopupButton.lastItem?.tag = 3
 
         let groupItem = NSMenuItem(title: "Group", action: nil, keyEquivalent: "")
         let groupMenu = NSMenu(title: "Group")
@@ -932,6 +963,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             addButtonPressed()
         case 2:
             addJoystickPressed()
+        case 3:
+            addSystemEventPressed()
         default:
             break
         }
@@ -960,6 +993,20 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         let config = makeNewJoystickConfig()
         profile.buttons[button.rawValue] = config
         registerButtonStateUndo(button: button, before: nil, after: config, actionName: "Add Joystick")
+        syncWorkspaceAfterGeometryChange(selectedButton: button)
+        reloadPreview(keepSelection: false)
+        previewView.select(button: button)
+    }
+
+    @objc private func addSystemEventPressed() {
+        guard confirmAddingButtonIfNeeded() else {
+            return
+        }
+
+        let button = GamepadButton.generated()
+        let config = makeNewSystemEventConfig()
+        profile.buttons[button.rawValue] = config
+        registerButtonStateUndo(button: button, before: nil, after: config, actionName: "Add System Event")
         syncWorkspaceAfterGeometryChange(selectedButton: button)
         reloadPreview(keepSelection: false)
         previewView.select(button: button)
@@ -1395,6 +1442,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 labelColorHex: config.labelColorHex,
                 shape: config.shape,
                 type: config.type,
+                systemEvent: config.action.systemEvent,
                 isEnabled: config.enabled,
                 isSelected: false
             )
@@ -1612,6 +1660,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             labelColorHex: config.labelColorHex,
             shape: config.shape,
             type: config.type,
+            systemEvent: config.action.systemEvent,
             isEnabled: config.enabled,
             isSelected: false
         )
