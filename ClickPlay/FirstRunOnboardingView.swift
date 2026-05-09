@@ -41,18 +41,12 @@ struct FirstRunOnboardingView: View {
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 18)
-            .background {
-                ZStack {
-                    Rectangle().fill(.ultraThinMaterial)
-                    Color(nsColor: .controlBackgroundColor).opacity(0.14)
-                }
-            }
         }
         .frame(width: 560, height: 620)
         .background {
             ZStack {
                 Rectangle().fill(.ultraThinMaterial)
-                Color(nsColor: .windowBackgroundColor).opacity(0.36)
+                Color(nsColor: .windowBackgroundColor).opacity(0.55)
             }
             .ignoresSafeArea()
         }
