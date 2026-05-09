@@ -93,10 +93,6 @@ struct FirstRunOnboardingView: View {
                 .aspectRatio(16.0 / 9.0, contentMode: .fit)
                 .padding(.top, videoTopPadding)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-                }
 
             Spacer(minLength: 0)
         }
