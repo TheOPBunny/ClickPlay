@@ -344,6 +344,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
 
     private func showFirstRunOnboarding(startingAt initialStep: FirstRunOnboardingStep) {
         if let onboardingWindow = onboardingWindowController?.window {
+            centerOnboardingWindow(onboardingWindow)
             onboardingWindow.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
@@ -371,13 +372,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         window.backgroundColor = .clear
         window.titlebarAppearsTransparent = true
         window.setContentSize(NSSize(width: 720, height: 620))
-        window.center()
+        centerOnboardingWindow(window)
         window.delegate = self
 
         let windowController = NSWindowController(window: window)
         onboardingWindowController = windowController
         windowController.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func centerOnboardingWindow(_ window: NSWindow) {
+        let screen = NSScreen.main ?? window.screen ?? NSScreen.screens.first
+        guard let visibleFrame = screen?.visibleFrame else {
+            window.center()
+            return
+        }
+
+        let size = window.frame.size
+        let origin = NSPoint(
+            x: visibleFrame.midX - size.width / 2,
+            y: visibleFrame.midY - size.height / 2
+        )
+        window.setFrameOrigin(origin)
     }
 
     private func markFirstRunIntroCompleted() {
