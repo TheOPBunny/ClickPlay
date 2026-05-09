@@ -1002,11 +1002,17 @@ final class ButtonDetailPanel: NSView {
             return
         }
 
+        let previousBindings = config?.keyBindings ?? []
         config?.keyBindings = bindings
         config?.keyCode = bindings[0].keyCode
         config?.keyModifiers = bindings[0].keyModifiers
-        config?.multiKeyActivationMode = .sequential
-        multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
+        let mode = preferredMultiKeyActivationMode(
+            for: bindings,
+            previousBindings: previousBindings,
+            existingMode: config?.multiKeyActivationMode ?? .sequential
+        )
+        config?.multiKeyActivationMode = mode
+        multiKeyActivationModePopup.selectItem(withTag: mode.tag)
         updateMultiKeyActivationModeVisibility(for: bindings)
     }
 
@@ -1018,8 +1024,18 @@ final class ButtonDetailPanel: NSView {
             return
         }
 
-        config?.rightClickKeyBindings = bindings?.isEmpty == true ? nil : bindings
+        let normalizedBindings = bindings?.isEmpty == true ? nil : bindings
+        let previousBindings = config?.rightClickKeyBindings ?? []
+        config?.rightClickKeyBindings = normalizedBindings
+        let mode = preferredMultiKeyActivationMode(
+            for: normalizedBindings ?? [],
+            previousBindings: previousBindings,
+            existingMode: config?.multiKeyActivationMode ?? .sequential
+        )
+        config?.multiKeyActivationMode = mode
+        multiKeyActivationModePopup.selectItem(withTag: mode.tag)
         rightClickRecorder.setOptionalKeyBindings(config?.rightClickKeyBindings)
+        updateMultiKeyActivationModeVisibility()
     }
 
     private func configureOptionalJoystickRecorder(_ recorder: KeyRecorderButton) {
@@ -1074,21 +1090,66 @@ final class ButtonDetailPanel: NSView {
         let normalizedBindings = bindings?.isEmpty == true ? nil : bindings
         switch target {
         case .leftClick:
+            let previousBindings = config?.joystick.leftClickInput.keyBindings ?? []
             config?.joystick.leftClickInput.keyBindings = normalizedBindings ?? []
-            config?.joystick.leftClickInput.multiKeyActivationMode = .sequential
+            let mode = preferredMultiKeyActivationMode(
+                for: normalizedBindings ?? [],
+                previousBindings: previousBindings,
+                existingMode: config?.joystick.leftClickInput.multiKeyActivationMode ?? .sequential
+            )
+            config?.joystick.leftClickInput.multiKeyActivationMode = mode
             joystickLeftClickRecorder.setOptionalKeyBindings(normalizedBindings)
-            joystickLeftClickMultiKeyPopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
+            joystickLeftClickMultiKeyPopup.selectItem(withTag: mode.tag)
         case .scrollUp:
+            let previousBindings = config?.joystick.scrollUpAction.input.keyBindings ?? []
             config?.joystick.scrollUpAction.input.keyBindings = normalizedBindings ?? []
-            config?.joystick.scrollUpAction.input.multiKeyActivationMode = .sequential
+            let mode = preferredMultiKeyActivationMode(
+                for: normalizedBindings ?? [],
+                previousBindings: previousBindings,
+                existingMode: config?.joystick.scrollUpAction.input.multiKeyActivationMode ?? .sequential
+            )
+            config?.joystick.scrollUpAction.input.multiKeyActivationMode = mode
             joystickScrollUpRecorder.setOptionalKeyBindings(normalizedBindings)
-            joystickScrollUpMultiKeyPopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
+            joystickScrollUpMultiKeyPopup.selectItem(withTag: mode.tag)
         case .scrollDown:
+            let previousBindings = config?.joystick.scrollDownAction.input.keyBindings ?? []
             config?.joystick.scrollDownAction.input.keyBindings = normalizedBindings ?? []
-            config?.joystick.scrollDownAction.input.multiKeyActivationMode = .sequential
+            let mode = preferredMultiKeyActivationMode(
+                for: normalizedBindings ?? [],
+                previousBindings: previousBindings,
+                existingMode: config?.joystick.scrollDownAction.input.multiKeyActivationMode ?? .sequential
+            )
+            config?.joystick.scrollDownAction.input.multiKeyActivationMode = mode
             joystickScrollDownRecorder.setOptionalKeyBindings(normalizedBindings)
-            joystickScrollDownMultiKeyPopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
+            joystickScrollDownMultiKeyPopup.selectItem(withTag: mode.tag)
         }
+    }
+
+    private func preferredMultiKeyActivationMode(
+        for bindings: [ButtonKeyBinding],
+        previousBindings: [ButtonKeyBinding],
+        existingMode: MultiKeyActivationMode
+    ) -> MultiKeyActivationMode {
+        guard bindings.count > 1 else {
+            return .sequential
+        }
+
+        guard previousBindings.count <= 1 else {
+            return existingMode
+        }
+
+        return bindings.contains { binding in
+            Self.bindingContainsModifier(binding)
+        } ? .simultaneous : existingMode
+    }
+
+    private static func bindingContainsModifier(_ binding: ButtonKeyBinding) -> Bool {
+        if ButtonConfig.isModifierKey(code: binding.keyCode) {
+            return true
+        }
+
+        let modifiers = NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
+        return modifiers.intersection([.command, .option, .control, .shift]).isEmpty == false
     }
 
     private func joystickInput(
