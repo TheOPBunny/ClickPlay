@@ -43,10 +43,10 @@ struct FirstRunOnboardingView: View {
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 18)
-            .background(Color(nsColor: .controlBackgroundColor))
+            .background(.regularMaterial)
         }
         .frame(width: 560, height: 620)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(.ultraThinMaterial)
     }
 
     @ViewBuilder
