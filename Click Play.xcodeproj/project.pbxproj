@@ -20,6 +20,9 @@
 		10B000032FA9000000000001 /* Click-Play-nobg-white.svg in Resources */ = {isa = PBXBuildFile; fileRef = 10B000022FA9000000000001 /* Click-Play-nobg-white.svg */; };
 		10B000052FA9000000000001 /* Click-Play-menubar-template.png in Resources */ = {isa = PBXBuildFile; fileRef = 10B000042FA9000000000001 /* Click-Play-menubar-template.png */; };
 		10D000012FA9000000000001 /* DebugLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D000002FA9000000000001 /* DebugLog.swift */; };
+		10F100012FAF000000000001 /* FirstRunOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10F100002FAF000000000001 /* FirstRunOnboardingView.swift */; };
+		10F100032FAF000000000001 /* FirstRunIntro1.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 10F100022FAF000000000001 /* FirstRunIntro1.mp4 */; };
+		10F100052FAF000000000001 /* FirstRunIntro2.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 10F100042FAF000000000001 /* FirstRunIntro2.mp4 */; };
 		A000 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = B000 /* main.swift */; };
 		A001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B001 /* AppDelegate.swift */; };
 		A002 /* ../ClickPlayShared/KeyMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = B002 /* ../ClickPlayShared/KeyMapping.swift */; };
@@ -45,6 +48,9 @@
 		10B000022FA9000000000001 /* Click-Play-nobg-white.svg */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = "Click-Play-nobg-white.svg"; sourceTree = "<group>"; };
 		10B000042FA9000000000001 /* Click-Play-menubar-template.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Click-Play-menubar-template.png"; sourceTree = "<group>"; };
 		10D000002FA9000000000001 /* DebugLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLog.swift; sourceTree = "<group>"; };
+		10F100002FAF000000000001 /* FirstRunOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRunOnboardingView.swift; sourceTree = "<group>"; };
+		10F100022FAF000000000001 /* FirstRunIntro1.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = FirstRunIntro1.mp4; sourceTree = "<group>"; };
+		10F100042FAF000000000001 /* FirstRunIntro2.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = FirstRunIntro2.mp4; sourceTree = "<group>"; };
 		B000 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		B001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		B002 /* ../ClickPlayShared/KeyMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../ClickPlayShared/KeyMapping.swift; sourceTree = "<group>"; };
@@ -75,6 +81,7 @@
 			children = (
 				B000 /* main.swift */,
 				B001 /* AppDelegate.swift */,
+				10F100002FAF000000000001 /* FirstRunOnboardingView.swift */,
 				B002 /* ../ClickPlayShared/KeyMapping.swift */,
 				B003 /* KeyInjector.swift */,
 				B004 /* GamepadButtonView.swift */,
@@ -97,6 +104,8 @@
 				10B000002FA9000000000001 /* Click-Play-nobg-black.svg */,
 				10B000022FA9000000000001 /* Click-Play-nobg-white.svg */,
 				10B000042FA9000000000001 /* Click-Play-menubar-template.png */,
+				10F100022FAF000000000001 /* FirstRunIntro1.mp4 */,
+				10F100042FAF000000000001 /* FirstRunIntro2.mp4 */,
 			);
 			path = ClickPlay;
 			sourceTree = "<group>";
@@ -177,8 +186,10 @@
 			files = (
 				10B000012FA9000000000001 /* Click-Play-nobg-black.svg in Resources */,
 				10AE615B2FA816700071028C /* ClickPlay.icon in Resources */,
+				10F100032FAF000000000001 /* FirstRunIntro1.mp4 in Resources */,
 				10B000032FA9000000000001 /* Click-Play-nobg-white.svg in Resources */,
 				10B000052FA9000000000001 /* Click-Play-menubar-template.png in Resources */,
+				10F100052FAF000000000001 /* FirstRunIntro2.mp4 in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -195,6 +206,7 @@
 				108EF0DE2F9846A8009EFAAA /* ButtonDetailPanel.swift in Sources */,
 				108EF0E22F9848B2009EFAAA /* ProfileListViewController.swift in Sources */,
 				A001 /* AppDelegate.swift in Sources */,
+				10F100012FAF000000000001 /* FirstRunOnboardingView.swift in Sources */,
 				A002 /* ../ClickPlayShared/KeyMapping.swift in Sources */,
 				A003 /* KeyInjector.swift in Sources */,
 				10D000012FA9000000000001 /* DebugLog.swift in Sources */,

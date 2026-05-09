@@ -1,15 +1,19 @@
 import Cocoa
+import SwiftUI
 
-class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate {
 
     var gamepadWindow: GamepadWindow?
     var statusItem: NSStatusItem?
+    private var onboardingWindowController: NSWindowController?
     private var editorWindowController: EditorWindowController?
     private let supportedOpacityValues: [Double] = [0.25, 0.4, 0.55, 0.7, 0.85, 1.0]
     private var lastActiveNonSelfApplication: NSRunningApplication?
     private var workspaceActivationObserver: NSObjectProtocol?
     private var addProfileFromTemplateItem: NSMenuItem?
     private var addLayerFromTemplateItem: NSMenuItem?
+    private var isPollingForPermission = false
+    private let firstRunIntroCompletedKey = "firstRunIntroCompleted"
 
     deinit {
         if let workspaceActivationObserver {
@@ -35,11 +39,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if trusted {
             launchGamepad()
         } else {
-            // Show the system prompt exactly once
-            AXIsProcessTrustedWithOptions(
-                [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-            )
-            pollForPermission()
+            showFirstRunOnboarding()
         }
     }
 
@@ -337,10 +337,72 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    private func showFirstRunOnboarding() {
+        let introCompleted = UserDefaults.standard.bool(forKey: firstRunIntroCompletedKey)
+        showFirstRunOnboarding(startingAt: introCompleted ? .accessibility : .welcome)
+    }
+
+    private func showFirstRunOnboarding(startingAt initialStep: FirstRunOnboardingStep) {
+        if let onboardingWindow = onboardingWindowController?.window {
+            onboardingWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let onboardingView = FirstRunOnboardingView(
+            initialStep: initialStep,
+            onFinishedIntro: { [weak self] in
+                self?.markFirstRunIntroCompleted()
+            },
+            onGrantPermission: { [weak self] in
+                self?.requestAccessibilityPermission()
+            },
+            onLearnMore: {
+                NSWorkspace.shared.open(URL(string: "https://github.com/TheOPBunny/ClickPlay")!)
+            }
+        )
+
+        let hostingController = NSHostingController(rootView: onboardingView)
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "Click Play"
+        window.styleMask = [.titled, .closable, .miniaturizable]
+        window.isReleasedWhenClosed = false
+        window.setContentSize(NSSize(width: 720, height: 620))
+        window.center()
+        window.delegate = self
+
+        let windowController = NSWindowController(window: window)
+        onboardingWindowController = windowController
+        windowController.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func markFirstRunIntroCompleted() {
+        UserDefaults.standard.set(true, forKey: firstRunIntroCompletedKey)
+    }
+
+    private func requestAccessibilityPermission() {
+        markFirstRunIntroCompleted()
+        AXIsProcessTrustedWithOptions(
+            [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        )
+        startPollingForPermission()
+    }
+
+    private func startPollingForPermission() {
+        guard !isPollingForPermission else { return }
+
+        isPollingForPermission = true
+        pollForPermission()
+    }
+
     func pollForPermission() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             if AXIsProcessTrusted() {
                 debugLog("Accessibility permission granted — launching gamepad.")
+                self?.isPollingForPermission = false
+                self?.onboardingWindowController?.close()
+                self?.onboardingWindowController = nil
                 self?.launchGamepad()
             } else {
                 self?.pollForPermission()
@@ -399,6 +461,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc func showGamepad() {
+        guard AXIsProcessTrusted() else {
+            showFirstRunOnboarding(startingAt: .accessibility)
+            return
+        }
+
         if gamepadWindow == nil {
             launchGamepad()
         } else {
@@ -480,6 +547,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard notification.object as? NSWindow === onboardingWindowController?.window else {
+            return
+        }
+
+        onboardingWindowController = nil
     }
 
     private func fadeTimeoutsMatch(_ lhs: TimeInterval?, _ rhs: TimeInterval?) -> Bool {
