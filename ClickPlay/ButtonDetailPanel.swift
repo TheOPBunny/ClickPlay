@@ -973,12 +973,7 @@ final class ButtonDetailPanel: NSView {
             config.action = .keyboard
             config.enabled = enabledCheckbox.state == .on
             config.interactionMode = ButtonInteractionMode(tag: interactionModePopup.selectedTag()) ?? .momentary
-            if config.interactionMode == .toggleHold {
-                config.multiKeyActivationMode = MultiKeyActivationMode(tag: multiKeyActivationModePopup.selectedTag()) ?? .sequential
-            } else {
-                config.multiKeyActivationMode = .sequential
-                multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
-            }
+            config.multiKeyActivationMode = MultiKeyActivationMode(tag: multiKeyActivationModePopup.selectedTag()) ?? .sequential
             config.rightClickFallsBackToPrimary = rightClickFallbackCheckbox.state == .on
             config.rightClickInteractionMode = ButtonInteractionMode(tag: rightClickModePopup.selectedTag())
         }
@@ -1102,13 +1097,7 @@ final class ButtonDetailPanel: NSView {
         multiKeyPopup: NSPopUpButton
     ) -> JoystickInputConfig {
         let interactionMode = ButtonInteractionMode(tag: modePopup.selectedTag()) ?? .momentary
-        let multiKeyActivationMode: MultiKeyActivationMode
-        if interactionMode == .toggleHold {
-            multiKeyActivationMode = MultiKeyActivationMode(tag: multiKeyPopup.selectedTag()) ?? .sequential
-        } else {
-            multiKeyActivationMode = .sequential
-            multiKeyPopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
-        }
+        let multiKeyActivationMode = MultiKeyActivationMode(tag: multiKeyPopup.selectedTag()) ?? .sequential
 
         return JoystickInputConfig(
             keyBindings: recorder.recordedBindings,
@@ -1184,8 +1173,8 @@ final class ButtonDetailPanel: NSView {
 
     private func updateMultiKeyActivationModeVisibility(for bindings: [ButtonKeyBinding]? = nil) {
         let currentBindings = bindings ?? config?.keyBindings ?? []
-        let interactionMode = ButtonInteractionMode(tag: interactionModePopup.selectedTag()) ?? config?.interactionMode ?? .momentary
-        multiKeyActivationModeRow?.isHidden = currentBindings.count <= 1 || interactionMode != .toggleHold
+        let rightClickBindings = config?.rightClickKeyBindings ?? []
+        multiKeyActivationModeRow?.isHidden = currentBindings.count <= 1 && rightClickBindings.count <= 1
         updateJoystickInputVisibility()
     }
 
@@ -1194,7 +1183,6 @@ final class ButtonDetailPanel: NSView {
 
         joystickLeftClickMultiKeyRow?.isHidden = !isJoystick
             || joystickLeftClickRecorder.recordedBindings.count <= 1
-            || ButtonInteractionMode(tag: joystickLeftClickModePopup.selectedTag()) != .toggleHold
 
         updateJoystickScrollInputVisibility(
             actionPopup: joystickScrollUpActionPopup,
@@ -1229,7 +1217,6 @@ final class ButtonDetailPanel: NSView {
         multiKeyRow?.isHidden = !isJoystick
             || !isKeyCombo
             || recorder.recordedBindings.count <= 1
-            || ButtonInteractionMode(tag: modePopup.selectedTag()) != .toggleHold
     }
 
     private func updateControlVisibility() {
