@@ -64,7 +64,8 @@ struct FirstRunOnboardingView: View {
                 title: "Endless Customization",
                 message: "Customize everything. Exactly to your preference.",
                 videoName: "FirstRunIntro2",
-                icon: nil
+                icon: nil,
+                videoTopPadding: 56
             )
         case .accessibility:
             accessibilityScreen
@@ -75,7 +76,8 @@ struct FirstRunOnboardingView: View {
         title: String,
         message: String,
         videoName: String,
-        icon: HeaderIcon?
+        icon: HeaderIcon?,
+        videoTopPadding: CGFloat = 0
     ) -> some View {
         VStack(spacing: 20) {
             header(title: title, icon: icon)
@@ -89,6 +91,7 @@ struct FirstRunOnboardingView: View {
             LoopingVideoView(resourceName: videoName)
                 .frame(maxWidth: .infinity)
                 .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                .padding(.top, videoTopPadding)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
