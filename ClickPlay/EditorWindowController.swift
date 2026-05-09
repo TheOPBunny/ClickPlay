@@ -1,11 +1,14 @@
 import Cocoa
 
+/// Owns the editor NSWindow and forwards menu/status-bar commands into the editor view controller.
 final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
     private static let editorFrameAutosaveName = NSWindow.FrameAutosaveName("EditorWindow")
 
     var onClose: (() -> Void)?
     private var editorViewController: EditorViewController?
+
+    // MARK: - Window Setup
 
     convenience init() {
         let viewController = EditorViewController()
@@ -45,6 +48,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         editorViewController?.centerCanvasOnProfileContentWhenReady()
     }
 
+    // MARK: - NSWindowDelegate
+
     func windowWillClose(_ notification: Notification) {
         flushPanelLayoutDefaults()
         onClose?()
@@ -66,6 +71,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         persistEditorWindowFrame()
         editorViewController?.flushPanelLayoutDefaults()
     }
+
+    // MARK: - Forwarded Editor Commands
 
     @discardableResult
     func saveChanges() -> Bool {

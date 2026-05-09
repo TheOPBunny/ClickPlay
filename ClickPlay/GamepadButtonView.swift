@@ -1,7 +1,9 @@
 import Cocoa
 
+/// Draws a single on-screen gamepad control and maps mouse gestures into keyboard, system, or joystick actions.
 final class GamepadButtonView: NSView {
 
+    /// Lightweight centered text view that lets the outer button layer keep ownership of shape and hit testing.
     private final class CenteredLabelView: NSView {
         var stringValue = "" {
             didSet { needsDisplay = true }
@@ -43,6 +45,7 @@ final class GamepadButtonView: NSView {
         }
     }
 
+    // Press sources are tracked independently so a held main key, joystick click, and scroll action do not collide.
     private enum PressSource {
         case primary
         case secondary
@@ -56,6 +59,7 @@ final class GamepadButtonView: NSView {
         case turbo
     }
 
+    // Each source carries its own pressed bindings and timers for toggle/turbo/sequence behavior.
     private final class PressState {
         var pressedBinding: (keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)?
         var pressedBindings: [(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)] = []
@@ -64,6 +68,7 @@ final class GamepadButtonView: NSView {
         var sequenceRepeatWorkItem: DispatchWorkItem?
     }
 
+    // Resolved input normalizes button config plus sub-profile context into the bindings used by press handlers.
     private struct ResolvedInput {
         let bindings: [ButtonKeyBinding]
         let mode: ButtonInteractionMode
@@ -96,6 +101,7 @@ final class GamepadButtonView: NSView {
         case down
     }
 
+    // Timing and movement constants tune joystick feel without changing the key-injection contract.
     private static let compatibilityTapDuration: TimeInterval = 0.033
     private static let joystickDeadzoneRadius: CGFloat = 18
     private static let joystickIdleReturnDelay: TimeInterval = 0.075
@@ -106,6 +112,7 @@ final class GamepadButtonView: NSView {
     private static let joystickParkingMatchTolerance: CGFloat = 3
     private static let joystickScrollActivationInterval: TimeInterval = 0.18
 
+    // Persistent configuration comes from the active profile; runtime flags mirror current mouse/joystick state.
     let button: GamepadButton
     private var config: ButtonConfig
     private var compatibilityModeEnabled: Bool
@@ -151,6 +158,8 @@ final class GamepadButtonView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    // MARK: - Setup and Configuration
 
     private func setup() {
         wantsLayer = true
@@ -228,6 +237,9 @@ final class GamepadButtonView: NSView {
     }
 
     override var acceptsFirstResponder: Bool { true }
+
+    // MARK: - Mouse Handling
+
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
         debugLog("[Button \(button.rawValue)] acceptsFirstMouse called -> true")
         return true
@@ -393,6 +405,8 @@ final class GamepadButtonView: NSView {
         updateHoverState(with: event, animated: true)
     }
 
+    // MARK: - Visual State
+
     private var isSubProfileSwitch: Bool {
         config.action.targetSubProfileID != nil
     }
@@ -513,6 +527,8 @@ final class GamepadButtonView: NSView {
         updateAppearance(animated: animated)
     }
 
+    // MARK: - Special Button Actions
+
     private func handleSubProfileSwitchPressStarted() {
         guard !isCurrentSubProfileSwitch else {
             return
@@ -559,6 +575,8 @@ final class GamepadButtonView: NSView {
             self.updateAppearance(animated: true)
         }
     }
+
+    // MARK: - Joystick Capture
 
     private func beginJoystickCapture(with event: NSEvent) {
         guard !isJoystickCaptured else {
@@ -760,6 +778,8 @@ final class GamepadButtonView: NSView {
         updateAppearance(animated: true)
     }
 
+    // MARK: - Joystick Direction and Cursor Control
+
     private func joystickOffset(afterApplying movementDelta: CGPoint) -> CGPoint {
         var nextOffset = CGPoint(
             x: joystickOffset.x + movementDelta.x,
@@ -943,6 +963,8 @@ final class GamepadButtonView: NSView {
         joystickParkingWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.joystickParkingInterval, execute: workItem)
     }
+
+    // MARK: - Joystick Event Tap
 
     private static var joystickEventMask: CGEventMask {
         eventMask(for: .mouseMoved)
@@ -1134,6 +1156,8 @@ final class GamepadButtonView: NSView {
             y: screen.frame.maxY - screenPoint.y
         )
     }
+
+    // MARK: - Press State Machine
 
     private func handlePressStarted(source: PressSource) {
         guard let input = resolvedInput(for: source) else {
@@ -1589,6 +1613,8 @@ final class GamepadButtonView: NSView {
     deinit {
         releaseIfNeeded()
     }
+
+    // MARK: - Drawing
 
     private func updateAppearance(animated: Bool) {
         let base = NSColor(hex: config.colorHex)

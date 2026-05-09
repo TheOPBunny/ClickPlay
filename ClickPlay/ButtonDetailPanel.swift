@@ -1,6 +1,8 @@
 import Cocoa
 
+/// Inspector panel for editing profile-wide visuals, selected buttons, joystick bindings, and groups.
 final class ButtonDetailPanel: NSView {
+    // The scroll document is flipped so vertical stack coordinates match normal top-to-bottom form layout.
     private final class FlippedDocumentView: NSView {
         override var isFlipped: Bool { true }
     }
@@ -23,6 +25,7 @@ final class ButtonDetailPanel: NSView {
         case down
     }
 
+    // Fixed control sizing lives here so rows stay aligned as the inspector is resized.
     private enum Metrics {
         static let keyRecorderWidth: CGFloat = 150
         static let minimumKeyRecorderWidth: CGFloat = 60
@@ -36,6 +39,7 @@ final class ButtonDetailPanel: NSView {
     var onProfileBackgroundColorChanged: ((String) -> Void)?
     var onProfileBackgroundFrostedGlassIntensityChanged: ((Int) -> Void)?
 
+    // Current selection context. Exactly one of button/group/profile mode drives the visible form sections.
     private var config: ButtonConfig?
     private var button: GamepadButton?
     private var groupID: UUID?

@@ -1,5 +1,6 @@
 import Cocoa
 
+/// Stores overlay-wide display settings separately from profile data so every profile shares the same fade behavior.
 enum GamepadSettings {
     static let fadeTimeoutDidChange = Notification.Name("GamepadFadeTimeoutDidChange")
 
@@ -38,8 +39,10 @@ enum GamepadSettings {
     }
 }
 
+/// Borderless, non-activating overlay panel that stays above other apps while avoiding keyboard focus.
 final class GamepadWindow: NSPanel, NSWindowDelegate {
 
+    // Window state is intentionally small: content owns button input, while the panel owns visibility and fading.
     private var isMinimized = false
     private var inactivityTimer: Timer?
     private var isFadedForInactivity = false
@@ -99,6 +102,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         debugLog("[GamepadWindow] Created. level=\(level.rawValue) ignoresMouseEvents=\(ignoresMouseEvents) canBecomeKey=\(canBecomeKey)")
     }
 
+    // Keeping both false preserves the focused game/app while users interact with the overlay.
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
@@ -123,6 +127,8 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
 
         super.sendEvent(event)
     }
+
+    // MARK: - Visibility and Profile Reloading
 
     func showGamepad() {
         orderFrontRegardless()
@@ -164,6 +170,8 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         debugLog("[GamepadWindow] toggleMinimized minimized=\(isMinimized)")
     }
 
+    // MARK: - Resizing
+
     private func resizeForCurrentState(using profile: Profile) {
         updateResizeConstraints()
         let newSize = GamepadContentView.windowSize(for: profile, minimized: isMinimized)
@@ -198,6 +206,8 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         persistCurrentWindowSize()
         updateResizeConstraints()
     }
+
+    // MARK: - Inactivity Fade
 
     private func startInactivityMonitoring() {
         NotificationCenter.default.addObserver(

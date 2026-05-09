@@ -1,7 +1,9 @@
 import Cocoa
 
+/// Shell for the editor window: sidebar profile list on the left, button canvas/editor on the right.
 final class EditorViewController: NSViewController, NSSplitViewDelegate {
 
+    // Split metrics and defaults are kept local so sidebar persistence does not leak into the button editor.
     private enum Metrics {
         static let minimumSidebarWidth: CGFloat = 160
         static let defaultSidebarWidth: CGFloat = 280
@@ -24,6 +26,8 @@ final class EditorViewController: NSViewController, NSSplitViewDelegate {
     private var hasRestoredSidebarLayout = false
     private var isApplyingSidebarLayout = false
     private var lastObservedSplitViewWidth: CGFloat = 0
+
+    // MARK: - View Lifecycle
 
     override func loadView() {
         view = NSView(frame: NSRect(x: 0, y: 0, width: 980, height: 700))
@@ -113,6 +117,8 @@ final class EditorViewController: NSViewController, NSSplitViewDelegate {
             NotificationCenter.default.removeObserver(profilesDidChangeObserver)
         }
     }
+
+    // MARK: - Editor Commands
 
     func savePanelLayout() {
         if hasRestoredSidebarLayout {

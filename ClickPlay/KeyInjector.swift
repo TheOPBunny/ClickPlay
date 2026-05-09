@@ -1,5 +1,6 @@
 import Cocoa
 
+/// Serializes CGEvent keyboard injection and keeps reference counts so overlapping buttons cannot release each other early.
 final class KeyInjector {
 
     static let shared = KeyInjector()
@@ -7,20 +8,25 @@ final class KeyInjector {
         queue.setSpecific(key: queueSpecificKey, value: ())
     }
 
+    // Logical bindings include modifiers so "A" and "Shift+A" are tracked as different held inputs.
     private struct KeyBinding: Hashable {
         let keyCode: CGKeyCode
         let modifiersRawValue: UInt
     }
 
+    // Physical chords are posted as modifier key-downs followed by the primary key, then released in reverse order.
     private struct PhysicalChord {
         let modifierKeyCodes: [CGKeyCode]
         let primaryKeyCode: CGKeyCode?
     }
 
+    // Logical counts track callers; physical counts track the actual keys currently held in the OS event stream.
     private var heldKeyCounts: [KeyBinding: Int] = [:]
     private var physicalKeyCounts: [CGKeyCode: Int] = [:]
     private let queue = DispatchQueue(label: "com.gamepad.keyinjector", qos: .userInteractive)
     private let queueSpecificKey = DispatchSpecificKey<Void>()
+
+    // MARK: - Public Press/Release API
 
     func pressRaw(_ keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags = []) {
         queue.async { [self] in
@@ -91,6 +97,8 @@ final class KeyInjector {
         }
     }
 
+    // MARK: - Held-Key Cleanup
+
     func releaseAllHeldKeys() {
         if DispatchQueue.getSpecific(key: queueSpecificKey) != nil {
             releaseAllHeldKeysOnQueue()
@@ -121,6 +129,8 @@ final class KeyInjector {
             debugLog("[KeyInjector] releaseAllHeldKeys \(keyCode) posted=\(ok)")
         }
     }
+
+    // MARK: - Physical Event Posting
 
     @discardableResult
     private func pressPhysicalKey(
@@ -177,6 +187,8 @@ final class KeyInjector {
         evt.post(tap: .cghidEventTap)
         return true
     }
+
+    // MARK: - Modifier Translation
 
     private func supportedModifiers(from modifiers: NSEvent.ModifierFlags) -> NSEvent.ModifierFlags {
         modifiers.intersection([.command, .option, .control, .shift])
@@ -266,11 +278,13 @@ final class KeyInjector {
     }
 }
 
+/// Sends one-shot macOS media/brightness/system shortcuts from system-event buttons.
 final class SystemEventInjector {
 
     static let shared = SystemEventInjector()
     private init() {}
 
+    // Prefer opening first-party system apps for Mission Control/Launchpad, then fall back to key/system events.
     func trigger(_ event: SystemEvent) {
         switch event {
         case .missionControl:
