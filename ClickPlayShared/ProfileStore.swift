@@ -1,11 +1,13 @@
 import Foundation
 
+/// Template category determines whether saved content becomes a full profile, a nested layer, or a grouped selection.
 enum ProfileTemplateKind: String, Codable {
     case profile
     case layer
     case group
 }
 
+/// Template payload persisted outside the live profile list.
 struct ProfileTemplate: Codable, Identifiable {
     var id: UUID
     var name: String
@@ -17,6 +19,7 @@ private enum AppStorage {
     static let currentDirectoryName = "Click Play"
     static let legacyDirectoryName = "OnScreenGamepad"
 
+    // Storage lookup also performs the one-time copy from the prototype's old support directory.
     static func fileURL(named fileName: String) -> URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let currentDir = appSupport.appendingPathComponent(currentDirectoryName)
@@ -58,6 +61,8 @@ final class ProfileTemplateStore {
     private init() {
         load()
     }
+
+    // MARK: - Template CRUD
 
     func templates(kind: ProfileTemplateKind) -> [ProfileTemplate] {
         templates.filter { $0.kind == kind }
@@ -253,6 +258,8 @@ final class ProfileStore {
         NotificationCenter.default.post(name: ProfileStore.profilesDidChange, object: nil)
     }
 
+    // MARK: - Profile Resolution
+
     func resolvedProfile(for profile: Profile) -> Profile {
         guard !profile.subProfiles.isEmpty else {
             return profile
@@ -289,7 +296,7 @@ final class ProfileStore {
         activeResolvedProfile
     }
 
-    // MARK: - Mutations
+    // MARK: - Top-Level Profile Mutations
 
     func setActive(_ id: UUID) {
         guard profiles.contains(where: { $0.id == id }) else {
@@ -375,6 +382,8 @@ final class ProfileStore {
         profiles[idx].displayPadHeight = height
         save()
     }
+
+    // MARK: - Sub-Profile Mutations
 
     func setActiveSubProfile(_ subProfileID: UUID, in parentProfileID: UUID) {
         guard let parentIndex = profiles.firstIndex(where: { $0.id == parentProfileID }) else {

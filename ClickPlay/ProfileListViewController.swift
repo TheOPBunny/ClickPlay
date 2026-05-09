@@ -1,11 +1,13 @@
 import Cocoa
 
+/// Sidebar controller for top-level profiles and nested layers, including rename, drag/drop, templates, and undo.
 final class ProfileListViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate, NSMenuItemValidation, NSTextFieldDelegate {
 
     var onProfileSelected: ((Profile) -> Void)?
     var onProfileSelectionRequested: (() -> Bool)?
     private typealias SidebarClipboard = (profile: Profile, isLayer: Bool)
 
+    // NSOutlineView compares object identity, so SidebarItem supplies stable equality for profile/layer rows.
     private final class SidebarItem: NSObject {
         let profileID: UUID
         let parentID: UUID?
@@ -61,6 +63,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
     private let renameAfterSelectionDelay: TimeInterval = 0.65
     private let sidebarDragType = NSPasteboard.PasteboardType("com.clickplay.sidebar-profile-item")
 
+    // The sidebar always mirrors ProfileStore; mutations go through the store so the gamepad reloads consistently.
     private var profiles: [Profile] {
         ProfileStore.shared.profiles
     }
@@ -1096,6 +1099,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
     }
 }
 
+/// Modal controller for renaming and deleting saved profile/layer/group templates.
 private final class TemplateManagerViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
 
     private let segmentedControl = NSSegmentedControl(labels: ["Profiles", "Layers", "Groups"], trackingMode: .selectOne, target: nil, action: nil)

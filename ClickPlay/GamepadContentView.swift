@@ -1,7 +1,9 @@
 import Cocoa
 
+/// Hosts the translucent gamepad chrome, lays out profile buttons, and handles overlay dragging from empty space.
 final class GamepadContentView: NSView {
 
+    // These visual layers should never intercept clicks; real input belongs to buttons and drag surfaces.
     private final class PassthroughVisualEffectView: NSVisualEffectView {
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
@@ -10,6 +12,7 @@ final class GamepadContentView: NSView {
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
 
+    /// Header controls are separated from the pad surface so minimize/menu/hide interactions do not press buttons.
     private final class HeaderBarView: NSView {
         var onToggleMinimize: (() -> Void)?
         var onHideOverlay: (() -> Void)?
@@ -143,6 +146,7 @@ final class GamepadContentView: NSView {
         }
     }
 
+    /// Empty background region that starts window dragging without making individual gamepad buttons draggable.
     private final class PadSurfaceView: NSView {
         var onDragBegan: ((NSEvent) -> Void)?
         var onDragChanged: ((NSEvent) -> Void)?
@@ -168,6 +172,8 @@ final class GamepadContentView: NSView {
     static let minimizedTileSize = CGSize(width: 56, height: headerHeight)
     static let minimumPadSize = CGSize(width: 260, height: 180)
 
+    // MARK: - Sizing
+
     static func windowSize(for profile: Profile, minimized: Bool) -> CGSize {
         if minimized { return minimizedTileSize }
         return CGSize(
@@ -191,6 +197,7 @@ final class GamepadContentView: NSView {
     private var isMinimized = false
     private var capturedJoystickButton: GamepadButton?
 
+    // Drag state is stored in screen coordinates so moving the overlay works across Spaces and displays.
     private var dragStartWindowOrigin: NSPoint = .zero
     private var dragStartLocationInScreen: NSPoint = .zero
     private var isDraggingWindow = false
@@ -206,6 +213,8 @@ final class GamepadContentView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    // MARK: - Profile Reloading
 
     func reload(profile: Profile, minimized: Bool) {
         currentProfile = profile
@@ -232,6 +241,8 @@ final class GamepadContentView: NSView {
         updateLayout()
         buildButtons(profile: currentProfile, releasesExistingInputs: false)
     }
+
+    // MARK: - Setup and Layout
 
     private func setup() {
         wantsLayer = true
@@ -314,6 +325,8 @@ final class GamepadContentView: NSView {
         padSurface.isHidden = false
         padSurface.frame = NSRect(x: 0, y: 0, width: bounds.width, height: padHeight)
     }
+
+    // MARK: - Button Construction
 
     private func buildButtons(profile: Profile, releasesExistingInputs: Bool = true) {
         if releasesExistingInputs {
@@ -415,6 +428,8 @@ final class GamepadContentView: NSView {
             view.isHidden = capturedJoystickButton.map { $0 != button } ?? false
         }
     }
+
+    // MARK: - Window Dragging
 
     private func beginWindowDrag(with event: NSEvent) {
         guard let window else { return }

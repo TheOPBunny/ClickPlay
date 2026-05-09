@@ -1,5 +1,6 @@
 import Cocoa
 
+// Small NSView traversal helper used when deciding whether clicks belong to editor controls or the canvas.
 private extension NSView {
     func closestAncestor<T: NSView>(ofType type: T.Type) -> T? {
         var current: NSView? = self
@@ -16,8 +17,10 @@ private extension NSView {
     }
 }
 
+/// Full profile layout editor: preview canvas, inspector, selection, clipboard, grouping, snapping, and undo.
 final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, NSSplitViewDelegate {
 
+    // Editor-only helper types keep command logic readable without becoming persisted profile state.
     private struct ClipboardButton: Codable {
         var config: ButtonConfig
     }
@@ -50,6 +53,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         static let snappingEnabled = "Editor.snappingEnabled"
     }
 
+    /// Scroll document that draws the fixed editor workspace and positions the live preview inside it.
     private final class PreviewCanvasView: NSView {
         let previewView: GamepadPreviewView
         var showsGrid = true {

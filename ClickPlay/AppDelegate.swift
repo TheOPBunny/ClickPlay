@@ -1,12 +1,16 @@
 import Cocoa
 import SwiftUI
 
+/// Coordinates app lifetime, the menu bar entry point, onboarding, and the gamepad/editor windows.
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate {
 
+    // Long-lived UI controllers are owned here so the status-bar app can reopen them without recreating state.
     var gamepadWindow: GamepadWindow?
     var statusItem: NSStatusItem?
     private var onboardingWindowController: NSWindowController?
     private var editorWindowController: EditorWindowController?
+
+    // Runtime state used to rebuild menus, avoid duplicate permission polling, and restore focus after editing.
     private let supportedOpacityValues: [Double] = [0.25, 0.4, 0.55, 0.7, 0.85, 1.0]
     private var lastActiveNonSelfApplication: NSRunningApplication?
     private var workspaceActivationObserver: NSObjectProtocol?
@@ -20,6 +24,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
             NSWorkspace.shared.notificationCenter.removeObserver(workspaceActivationObserver)
         }
     }
+
+    // MARK: - Application Lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -60,6 +66,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
 
         return .terminateNow
     }
+
+    // MARK: - Menu Construction
 
     func setupMainMenu() {
         let mainMenu = NSMenu()
@@ -143,6 +151,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         addLayerFromTemplateItem?.submenu = makeTemplateCreationMenu(kind: .layer)
     }
 
+    // MARK: - Status Bar
+
     func setupStatusBar() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         guard let btn = statusItem?.button else {
@@ -222,6 +232,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
 
         statusItem?.menu = menu
     }
+
+    // MARK: - Gamepad Menus
 
     private func makeProfilesMenu() -> NSMenu {
         let profilesMenu = NSMenu(title: "Profiles")
@@ -323,6 +335,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         return menu
     }
 
+    // MARK: - Gamepad Launch and Onboarding
+
     func launchGamepad() {
         DispatchQueue.main.async {
             if let gamepadWindow = self.gamepadWindow {
@@ -415,6 +429,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         pollForPermission()
     }
 
+    // MARK: - Profile and Settings Actions
+
     func pollForPermission() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             if AXIsProcessTrusted() {
@@ -478,6 +494,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
 
         GamepadSettings.fadeTimeout = nil
     }
+
+    // MARK: - Window and Editor Actions
 
     @objc func showGamepad() {
         guard AXIsProcessTrusted() else {
@@ -563,6 +581,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
             URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
         )
     }
+
+    // MARK: - Helpers
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false

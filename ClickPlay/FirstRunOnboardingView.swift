@@ -2,12 +2,14 @@ import AppKit
 import AVKit
 import SwiftUI
 
+/// Ordered first-run screens shown before the app asks macOS for Accessibility permission.
 enum FirstRunOnboardingStep {
     case welcome
     case customization
     case accessibility
 }
 
+/// SwiftUI onboarding view used only for the first-run permission flow; the main app remains AppKit.
 struct FirstRunOnboardingView: View {
     let onFinishedIntro: () -> Void
     let onGrantPermission: () -> Void
@@ -192,6 +194,7 @@ private enum HeaderIcon {
     case system(String)
 }
 
+/// Bridges bundled MP4s into SwiftUI and loops them without exposing AVKit details to the screen layout.
 private struct LoopingVideoView: NSViewRepresentable {
     let resourceName: String
 
@@ -256,6 +259,7 @@ private struct LoopingVideoView: NSViewRepresentable {
     }
 }
 
+/// AppKit video host used by LoopingVideoView, with a fallback label when bundled media is missing.
 private final class PlayerContainerView: NSView {
     private let playerLayer = AVPlayerLayer()
     private let missingLabel = NSTextField(labelWithString: "Video unavailable")

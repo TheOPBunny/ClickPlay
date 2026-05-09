@@ -1,5 +1,6 @@
 import Cocoa
 
+/// Clickable recorder control that captures one or more keyboard bindings for editor fields.
 final class KeyRecorderButton: NSView {
 
     var onKeyRecorded: (([ButtonKeyBinding]) -> Void)?
@@ -14,6 +15,7 @@ final class KeyRecorderButton: NSView {
     private(set) var recordedModifiers: NSEvent.ModifierFlags = []
     private(set) var recordedBindings: [ButtonKeyBinding] = [ButtonKeyBinding(keyCode: 49, keyModifiers: 0)]
 
+    // Recording state tracks modifier-only keys separately so shortcuts like Shift and Shift+A both serialize correctly.
     private var isRecording = false {
         didSet {
             updateAppearance()
@@ -26,6 +28,8 @@ final class KeyRecorderButton: NSView {
     private var pendingModifierOnlyBindings: [Int: ButtonKeyBinding] = [:]
     private var pressedModifierKeyCodes = Set<Int>()
     private var modifierKeyCodesUsedInChord = Set<Int>()
+
+    // MARK: - View Setup
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -64,6 +68,8 @@ final class KeyRecorderButton: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    // MARK: - Public Value API
+
     func setKey(code: Int, modifiers: NSEvent.ModifierFlags = []) {
         setKeyBindings([ButtonKeyBinding(keyCode: code, keyModifiers: Int(modifiers.rawValue))])
     }
@@ -90,6 +96,8 @@ final class KeyRecorderButton: NSView {
     @objc private func toggleRecording() {
         isRecording ? stopRecording(commitPendingBindings: true) : startRecording()
     }
+
+    // MARK: - Recording
 
     private func startRecording() {
         stopRecording(commitPendingBindings: false)

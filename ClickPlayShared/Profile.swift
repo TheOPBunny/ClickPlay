@@ -1,5 +1,7 @@
 import Foundation
 
+// MARK: - Button Model Enums
+
 enum ButtonInteractionMode: String, Codable, Equatable {
     case momentary
     case toggleHold
@@ -17,6 +19,8 @@ enum ButtonType: String, Codable {
     case joystick
     case systemEvent
 }
+
+// MARK: - Sizing and Coordinates
 
 enum ButtonSizing {
     static let minimumButtonWidth = 20.0
@@ -40,6 +44,8 @@ enum ButtonSizing {
         }
     }
 }
+
+// MARK: - Input Bindings and System Events
 
 enum EditorCoordinateMode: String, Codable {
     case legacyTopLeft
@@ -103,6 +109,7 @@ struct JoystickScrollAction: Codable, Equatable {
     static let axisLock = JoystickScrollAction(kind: .axisLock, input: .empty)
 }
 
+/// Four directional bindings plus optional click/scroll behavior for joystick-style controls.
 struct JoystickConfig: Codable, Equatable {
     var up: ButtonKeyBinding
     var down: ButtonKeyBinding
@@ -162,6 +169,7 @@ struct JoystickConfig: Codable, Equatable {
     }
 }
 
+/// Codable button action payload that preserves old keyboard-only profiles by defaulting missing type to keyboard.
 enum ButtonAction: Codable, Equatable {
     case keyboard
     case systemEvent(SystemEvent)
@@ -445,6 +453,7 @@ struct ButtonConfig: Codable {
     }
 }
 
+/// Optional editor grouping metadata; runtime input still reads each button's own config.
 struct ButtonGroup: Codable, Identifiable, Equatable {
     var id: UUID
     var name: String
@@ -479,6 +488,7 @@ private struct DynamicCodingKey: CodingKey {
 
 // MARK: - Profile
 
+/// Persisted profile container for one visible layout plus any nested layers/sub-profiles.
 struct Profile: Codable, Identifiable {
     static let defaultBackgroundColorHex = "#000000"
     static let defaultBackgroundFrostedGlassIntensity = 0

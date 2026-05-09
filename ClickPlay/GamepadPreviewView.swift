@@ -1,5 +1,6 @@
 import Cocoa
 
+/// Drawable editor object derived from ButtonConfig, with selection state added for canvas rendering.
 struct CanvasButtonObject {
     let id: GamepadButton
     var frame: CGRect
@@ -17,12 +18,14 @@ struct CanvasButtonObject {
     var isSelected: Bool
 }
 
+/// Lightweight group projection used by the preview for group selection and drag/resize bounds.
 struct CanvasButtonGroupObject {
     let id: UUID
     var name: String
     var memberIDs: [GamepadButton]
 }
 
+/// Normalized geometry edits reported back to the editor so snapping and undo can stay model-based.
 struct ButtonEditorGeometry {
     var centerX: Double
     var centerY: Double
@@ -78,6 +81,7 @@ enum CanvasDragState {
     case marqueeSelect(start: CGPoint, current: CGPoint)
 }
 
+/// Live editor preview that supports selection, dragging, resizing, marquee selection, and alignment guides.
 final class GamepadPreviewView: NSView {
 
     var onSelectionChanged: ((Set<GamepadButton>, UUID?) -> Void)?
@@ -94,6 +98,7 @@ final class GamepadPreviewView: NSView {
         didSet { needsDisplay = true }
     }
 
+    // Rendered canvas objects are intentionally separate from Profile so in-progress geometry can be previewed safely.
     private var objects: [CanvasButtonObject] = []
     private var groups: [CanvasButtonGroupObject] = []
     private var selectedIDs = Set<GamepadButton>()
