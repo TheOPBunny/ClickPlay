@@ -365,10 +365,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         let hostingController = NSHostingController(rootView: onboardingView)
         let window = NSWindow(contentViewController: hostingController)
         window.title = "Click Play"
-        window.styleMask = [.titled, .closable, .miniaturizable]
+        window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
         window.isReleasedWhenClosed = false
         window.isOpaque = false
         window.backgroundColor = .clear
+        window.titlebarAppearsTransparent = true
         window.setContentSize(NSSize(width: 720, height: 620))
         window.center()
         window.delegate = self

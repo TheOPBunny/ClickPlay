@@ -35,18 +35,27 @@ struct FirstRunOnboardingView: View {
                 .padding(.top, 36)
                 .padding(.bottom, 24)
 
-            Divider()
-
             HStack {
                 Spacer()
                 footerButtons
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 18)
-            .background(.regularMaterial)
+            .background {
+                ZStack {
+                    Rectangle().fill(.ultraThinMaterial)
+                    Color(nsColor: .controlBackgroundColor).opacity(0.14)
+                }
+            }
         }
         .frame(width: 560, height: 620)
-        .background(.ultraThinMaterial)
+        .background {
+            ZStack {
+                Rectangle().fill(.ultraThinMaterial)
+                Color(nsColor: .windowBackgroundColor).opacity(0.36)
+            }
+            .ignoresSafeArea()
+        }
     }
 
     @ViewBuilder
