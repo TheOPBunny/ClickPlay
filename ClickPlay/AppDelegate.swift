@@ -369,7 +369,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         window.isReleasedWhenClosed = false
         window.isOpaque = false
         window.backgroundColor = .clear
-        window.titlebarAppearsTransparent = true
         window.setContentSize(NSSize(width: 720, height: 620))
         window.center()
         window.delegate = self
