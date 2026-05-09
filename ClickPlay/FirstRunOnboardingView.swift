@@ -42,7 +42,7 @@ struct FirstRunOnboardingView: View {
             .padding(.horizontal, 24)
             .padding(.vertical, 18)
         }
-        .frame(width: 560, height: 620)
+        .frame(width: 720, height: 620)
         .background {
             ZStack {
                 Rectangle().fill(.ultraThinMaterial)
@@ -236,6 +236,8 @@ private struct LoopingVideoView: NSViewRepresentable {
             player.removeAllItems()
             player.isMuted = true
             player.actionAtItemEnd = .none
+            player.allowsExternalPlayback = false
+            player.preventsDisplaySleepDuringVideoPlayback = false
 
             let item = AVPlayerItem(url: url)
             looper = AVPlayerLooper(player: player, templateItem: item)
