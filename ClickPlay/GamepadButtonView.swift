@@ -274,6 +274,7 @@ final class GamepadButtonView: NSView {
         }
 
         debugLog("[Button \(button.rawValue)] mouseDown")
+        debugLatencyLog("[Button \(button.rawValue)] mouseDown", eventTimestamp: event.timestamp)
         if config.type == .joystick {
             beginJoystickCapture(with: event)
             return
@@ -294,6 +295,7 @@ final class GamepadButtonView: NSView {
 
     override func mouseUp(with event: NSEvent) {
         debugLog("[Button \(button.rawValue)] mouseUp")
+        debugLatencyLog("[Button \(button.rawValue)] mouseUp", eventTimestamp: event.timestamp)
         if config.type == .joystick {
             return
         }
@@ -324,6 +326,7 @@ final class GamepadButtonView: NSView {
         }
 
         debugLog("[Button \(button.rawValue)] rightMouseDown")
+        debugLatencyLog("[Button \(button.rawValue)] rightMouseDown", eventTimestamp: event.timestamp)
         handlePressStarted(source: .secondary)
     }
 
@@ -337,6 +340,7 @@ final class GamepadButtonView: NSView {
         }
 
         debugLog("[Button \(button.rawValue)] rightMouseUp")
+        debugLatencyLog("[Button \(button.rawValue)] rightMouseUp", eventTimestamp: event.timestamp)
         handlePressEnded(source: .secondary)
     }
 
@@ -1560,6 +1564,7 @@ final class GamepadButtonView: NSView {
         let keyCode = CGKeyCode(binding.keyCode)
         let modifiers = NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
         debugLog("[Button \(button.rawValue)] setPressed=\(pressed) source=\(source) keyCode=\(keyCode) modifiers=\(binding.keyModifiers) mode=\(input.mode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
+        debugLatencyLog("[Button \(button.rawValue)] setPressed=\(pressed) source=\(source) keyCode=\(keyCode) modifiers=\(binding.keyModifiers)")
         if pressed {
             state.pressedStartedAt = ProcessInfo.processInfo.systemUptime
             state.pressedBinding = (keyCode: keyCode, modifiers: modifiers)
@@ -1592,6 +1597,7 @@ final class GamepadButtonView: NSView {
         guard pressed != state.isPressed else { return }
         state.isPressed = pressed
         debugLog("[Button \(button.rawValue)] setSimultaneousPressed=\(pressed) source=\(source) keyBindings=\(input.bindings.map(\.keyCode)) mode=\(input.mode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
+        debugLatencyLog("[Button \(button.rawValue)] setSimultaneousPressed=\(pressed) source=\(source) keyBindings=\(input.bindings.map(\.keyCode))")
 
         if pressed {
             state.pressedStartedAt = ProcessInfo.processInfo.systemUptime
