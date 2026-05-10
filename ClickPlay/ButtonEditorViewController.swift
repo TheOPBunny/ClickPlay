@@ -171,6 +171,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private var savedProfileFingerprint: Data?
     private var shouldScrollToProfileContent = false
     private var pendingProfileContentScrollRetries = 0
+    private var hasLoadedEditableProfile = false
     private var templatesDidChangeObserver: NSObjectProtocol?
     private var screenParametersObserver: NSObjectProtocol?
     private var editorMouseDownMonitor: Any?
@@ -217,7 +218,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     override func viewDidLoad() {
         super.viewDidLoad()
         loadInspectorDefaults()
-        updateWorkspaceSizeForCurrentDisplay()
+        updateWorkspaceSizeForCurrentDisplay(remapExistingButtons: false)
         buildLayout()
         installEditorFocusMonitor()
         installScreenParametersObserver()
@@ -269,20 +270,67 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         )
     }
 
-    private func updateWorkspaceSizeForCurrentDisplay(scrollToContent: Bool = false) {
+    private func updateWorkspaceSizeForCurrentDisplay(
+        scrollToContent: Bool = false,
+        remapExistingButtons: Bool = true
+    ) {
         let nextWorkspaceSize = Self.workspaceSize(for: view.window?.screen)
         guard nextWorkspaceSize != maximumWorkspaceSize else {
             return
         }
 
+        let previousWorkspaceSize = maximumWorkspaceSize
         maximumWorkspaceSize = nextWorkspaceSize
         previewCanvasView.workspaceSize = nextWorkspaceSize
         previewView.maximumWorkspaceSize = nextWorkspaceSize
+
+        if remapExistingButtons, hasLoadedEditableProfile {
+            remapEditableProfile(from: previousWorkspaceSize, to: nextWorkspaceSize)
+            canvasObjects = makeCanvasObjects(from: profile)
+            reloadPreview(keepSelection: true)
+            refreshDetailPanelForCurrentSelection()
+        }
+
         updatePreviewCanvasLayout()
 
         if scrollToContent {
             prepareProfileContentScroll()
             scrollToProfileContentIfNeeded()
+        }
+    }
+
+    private func remapEditableProfile(from oldSize: CGSize, to newSize: CGSize) {
+        for button in profile.orderedButtonIDs {
+            guard var config = profile.buttons[button.rawValue] else {
+                continue
+            }
+
+            config.x = remappedWorkspaceCoordinate(
+                config.x,
+                oldLength: oldSize.width,
+                newLength: newSize.width
+            )
+            config.y = remappedWorkspaceCoordinate(
+                config.y,
+                oldLength: oldSize.height,
+                newLength: newSize.height
+            )
+            profile.buttons[button.rawValue] = configByApplyingGeometryClamp(config)
+        }
+
+        refreshFittedPadSizeFields()
+    }
+
+    private func remappedWorkspaceCoordinate(_ value: Double, oldLength: CGFloat, newLength: CGFloat) -> Double {
+        let oldLength = max(Double(oldLength), 1)
+        let newLength = max(Double(newLength), 1)
+
+        switch profile.editorCoordinateMode {
+        case .legacyTopLeft:
+            return (value / oldLength) * newLength
+        case .centered:
+            let normalized = (value + oldLength / 2) / oldLength
+            return (normalized * newLength) - (newLength / 2)
         }
     }
 
@@ -344,10 +392,12 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     func load(profile: Profile) {
+        hasLoadedEditableProfile = false
         editorUndoManager.removeAllActions()
         selectedIDs = []
         selectedGroupID = nil
         self.profile = makeEditableProfile(from: profile)
+        hasLoadedEditableProfile = true
         previewView.usesCenteredOrigin = profile.editorCoordinateMode == .centered
         clampEditableProfileToWorkspace()
         self.profile.buttonGroups = sanitizedEditorGroups(self.profile.buttonGroups)
@@ -1415,6 +1465,22 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             groups: makeCanvasGroups(from: profile),
             keepSelection: keepSelection
         )
+    }
+
+    private func refreshDetailPanelForCurrentSelection() {
+        if let selectedGroupID, let group = buttonGroup(for: selectedGroupID) {
+            detailPanel.loadGroup(group, colorHex: commonColorHex(for: group))
+            return
+        }
+
+        if selectedIDs.count == 1,
+           let button = selectedIDs.first,
+           let config = profile.buttons[button.rawValue] {
+            detailPanel.load(button: button, config: config)
+            return
+        }
+
+        showProfileSettings()
     }
 
     private func showProfileSettings() {
