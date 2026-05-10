@@ -59,11 +59,17 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         var showsGrid = true {
             didSet { needsDisplay = true }
         }
-        private let workspaceSize = CGSize(width: 1000, height: 1000)
+        var workspaceSize = CGSize(width: 1000, height: 1000) {
+            didSet {
+                guard oldValue != workspaceSize else { return }
+                needsDisplay = true
+            }
+        }
         private(set) var workspaceOrigin = CGPoint.zero
 
-        init(previewView: GamepadPreviewView) {
+        init(previewView: GamepadPreviewView, workspaceSize: CGSize) {
             self.previewView = previewView
+            self.workspaceSize = workspaceSize
             super.init(frame: .zero)
             wantsLayer = true
             addSubview(previewView)
@@ -96,7 +102,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             previewView.frame = bounds
         }
 
-        func updateCanvasSize(visibleSize: CGSize) {
+        func updateCanvasSize(visibleSize: CGSize, workspaceSize: CGSize) {
+            self.workspaceSize = workspaceSize
             let nextSize = CGSize(
                 width: max(workspaceSize.width, visibleSize.width),
                 height: workspaceSize.height
@@ -140,12 +147,13 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     var onToggleSidebar: (() -> Void)?
     var onSavePanelLayout: (() -> Void)?
 
-    private static let maximumWorkspaceSize = CGSize(width: 1000, height: 1000)
+    private static let fallbackWorkspaceSize = CGSize(width: 1000, height: 1000)
     private static let buttonCountWarningThreshold = 100
     private static let pasteOffset: Double = 18
     private static let snapThreshold: CGFloat = 5
     private static let pasteboardType = NSPasteboard.PasteboardType("com.clickplay.canvas-buttons")
 
+    private var maximumWorkspaceSize = ButtonEditorViewController.workspaceSize(for: NSScreen.main)
     private var profile = ProfileStore.shared.activeResolvedProfile
     private var canvasObjects: [CanvasButtonObject] = []
     private var selectedIDs = Set<GamepadButton>()
@@ -164,6 +172,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private var shouldScrollToProfileContent = false
     private var pendingProfileContentScrollRetries = 0
     private var templatesDidChangeObserver: NSObjectProtocol?
+    private var screenParametersObserver: NSObjectProtocol?
     private var editorMouseDownMonitor: Any?
 
     private let compatibilityModeCheckbox = NSButton(checkboxWithTitle: "Compatibility Mode", target: nil, action: nil)
@@ -174,7 +183,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private let saveGroupButton = NSButton(title: "Save Group", target: nil, action: nil)
     private let addPopupButton = NSPopUpButton(frame: .zero, pullsDown: true)
     private let previewView = GamepadPreviewView()
-    private lazy var previewCanvasView = PreviewCanvasView(previewView: previewView)
+    private lazy var previewCanvasView = PreviewCanvasView(
+        previewView: previewView,
+        workspaceSize: maximumWorkspaceSize
+    )
     private let previewScrollView = NSScrollView()
     private lazy var detailPanel = ButtonDetailPanel(
         frame: NSRect(
@@ -205,14 +217,24 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     override func viewDidLoad() {
         super.viewDidLoad()
         loadInspectorDefaults()
+        updateWorkspaceSizeForCurrentDisplay()
         buildLayout()
         installEditorFocusMonitor()
+        installScreenParametersObserver()
         load(profile: ProfileStore.shared.activeResolvedProfile)
+    }
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        updateWorkspaceSizeForCurrentDisplay(scrollToContent: true)
     }
 
     deinit {
         if let templatesDidChangeObserver {
             NotificationCenter.default.removeObserver(templatesDidChangeObserver)
+        }
+        if let screenParametersObserver {
+            NotificationCenter.default.removeObserver(screenParametersObserver)
         }
         if let editorMouseDownMonitor {
             NSEvent.removeMonitor(editorMouseDownMonitor)
@@ -223,6 +245,44 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         editorMouseDownMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             self?.clearEditorFocusIfNeeded(for: event)
             return event
+        }
+    }
+
+    private func installScreenParametersObserver() {
+        screenParametersObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.updateWorkspaceSizeForCurrentDisplay(scrollToContent: true)
+        }
+    }
+
+    private static func workspaceSize(for screen: NSScreen?) -> CGSize {
+        let screenSize = screen?.frame.size
+            ?? NSScreen.main?.frame.size
+            ?? fallbackWorkspaceSize
+
+        return CGSize(
+            width: max(1, round(screenSize.width)),
+            height: max(1, round(screenSize.height))
+        )
+    }
+
+    private func updateWorkspaceSizeForCurrentDisplay(scrollToContent: Bool = false) {
+        let nextWorkspaceSize = Self.workspaceSize(for: view.window?.screen)
+        guard nextWorkspaceSize != maximumWorkspaceSize else {
+            return
+        }
+
+        maximumWorkspaceSize = nextWorkspaceSize
+        previewCanvasView.workspaceSize = nextWorkspaceSize
+        previewView.maximumWorkspaceSize = nextWorkspaceSize
+        updatePreviewCanvasLayout()
+
+        if scrollToContent {
+            prepareProfileContentScroll()
+            scrollToProfileContentIfNeeded()
         }
     }
 
@@ -365,7 +425,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     private func buildLayout() {
-        previewView.maximumWorkspaceSize = Self.maximumWorkspaceSize
+        previewView.maximumWorkspaceSize = maximumWorkspaceSize
         compatibilityModeCheckbox.target = self
         compatibilityModeCheckbox.action = #selector(compatibilityModeChanged)
         showGridCheckbox.state = .on
@@ -1342,7 +1402,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     private func updatePreviewCanvasLayout() {
         previewCanvasView.showsGrid = showGridCheckbox.state == .on
-        previewCanvasView.updateCanvasSize(visibleSize: previewScrollView.contentView.bounds.size)
+        previewCanvasView.updateCanvasSize(
+            visibleSize: previewScrollView.contentView.bounds.size,
+            workspaceSize: maximumWorkspaceSize
+        )
         previewCanvasView.needsLayout = true
     }
 
@@ -1596,13 +1659,13 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private func editorWorkspaceBounds() -> CGRect {
         switch profile.editorCoordinateMode {
         case .legacyTopLeft:
-            return CGRect(origin: .zero, size: Self.maximumWorkspaceSize)
+            return CGRect(origin: .zero, size: maximumWorkspaceSize)
         case .centered:
             return CGRect(
-                x: -Self.maximumWorkspaceSize.width / 2,
-                y: -Self.maximumWorkspaceSize.height / 2,
-                width: Self.maximumWorkspaceSize.width,
-                height: Self.maximumWorkspaceSize.height
+                x: -maximumWorkspaceSize.width / 2,
+                y: -maximumWorkspaceSize.height / 2,
+                width: maximumWorkspaceSize.width,
+                height: maximumWorkspaceSize.height
             )
         }
     }
@@ -2577,18 +2640,18 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private var workspaceVerticalSnapCandidates: [CGFloat] {
         switch profile.editorCoordinateMode {
         case .legacyTopLeft:
-            return [0, Self.maximumWorkspaceSize.width / 2, Self.maximumWorkspaceSize.width]
+            return [0, maximumWorkspaceSize.width / 2, maximumWorkspaceSize.width]
         case .centered:
-            return [-Self.maximumWorkspaceSize.width / 2, 0, Self.maximumWorkspaceSize.width / 2]
+            return [-maximumWorkspaceSize.width / 2, 0, maximumWorkspaceSize.width / 2]
         }
     }
 
     private var workspaceHorizontalSnapCandidates: [CGFloat] {
         switch profile.editorCoordinateMode {
         case .legacyTopLeft:
-            return [0, Self.maximumWorkspaceSize.height / 2, Self.maximumWorkspaceSize.height]
+            return [0, maximumWorkspaceSize.height / 2, maximumWorkspaceSize.height]
         case .centered:
-            return [-Self.maximumWorkspaceSize.height / 2, 0, Self.maximumWorkspaceSize.height / 2]
+            return [-maximumWorkspaceSize.height / 2, 0, maximumWorkspaceSize.height / 2]
         }
     }
 
@@ -2614,8 +2677,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             return clampedAnchoredGeometry(geometry, type: type, anchoredResize: anchoredResize)
         }
 
-        let maxWidth = Self.maximumWorkspaceSize.width
-        let maxHeight = Self.maximumWorkspaceSize.height
+        let maxWidth = maximumWorkspaceSize.width
+        let maxHeight = maximumWorkspaceSize.height
         let minimumSize = ButtonSizing.minimumSize(for: type)
         let width = min(max(geometry.width, minimumSize.width), maxWidth)
         let height = min(max(geometry.height, minimumSize.height), maxHeight)
@@ -2655,14 +2718,14 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         switch profile.editorCoordinateMode {
         case .legacyTopLeft:
             workspaceMinX = 0
-            workspaceMaxX = Self.maximumWorkspaceSize.width
+            workspaceMaxX = maximumWorkspaceSize.width
             workspaceMinY = 0
-            workspaceMaxY = Self.maximumWorkspaceSize.height
+            workspaceMaxY = maximumWorkspaceSize.height
         case .centered:
-            workspaceMinX = -Self.maximumWorkspaceSize.width / 2
-            workspaceMaxX = Self.maximumWorkspaceSize.width / 2
-            workspaceMinY = -Self.maximumWorkspaceSize.height / 2
-            workspaceMaxY = Self.maximumWorkspaceSize.height / 2
+            workspaceMinX = -maximumWorkspaceSize.width / 2
+            workspaceMaxX = maximumWorkspaceSize.width / 2
+            workspaceMinY = -maximumWorkspaceSize.height / 2
+            workspaceMaxY = maximumWorkspaceSize.height / 2
         }
 
         let maxWidth = anchoredResize.resizesFromLeft
@@ -2709,8 +2772,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 CGRect(
                     x: previewCanvasView.workspaceOrigin.x,
                     y: previewCanvasView.workspaceOrigin.y,
-                    width: Self.maximumWorkspaceSize.width,
-                    height: Self.maximumWorkspaceSize.height
+                    width: maximumWorkspaceSize.width,
+                    height: maximumWorkspaceSize.height
                 )
             )
             return
@@ -2786,8 +2849,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         }
 
         return contentBounds.offsetBy(
-            dx: (Self.maximumWorkspaceSize.width / 2) + previewCanvasView.workspaceOrigin.x,
-            dy: (Self.maximumWorkspaceSize.height / 2) + previewCanvasView.workspaceOrigin.y
+            dx: (maximumWorkspaceSize.width / 2) + previewCanvasView.workspaceOrigin.x,
+            dy: (maximumWorkspaceSize.height / 2) + previewCanvasView.workspaceOrigin.y
         )
     }
 
