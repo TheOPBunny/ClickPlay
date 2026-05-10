@@ -300,6 +300,9 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     private func remapEditableProfile(from oldSize: CGSize, to newSize: CGSize) {
+        let widthScale = max(Double(newSize.width), 1) / max(Double(oldSize.width), 1)
+        let heightScale = max(Double(newSize.height), 1) / max(Double(oldSize.height), 1)
+
         for button in profile.orderedButtonIDs {
             guard var config = profile.buttons[button.rawValue] else {
                 continue
@@ -315,6 +318,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 oldLength: oldSize.height,
                 newLength: newSize.height
             )
+            config.editorWidth = max(1, config.editorWidth) * widthScale
+            config.editorHeight = max(1, config.editorHeight) * heightScale
             profile.buttons[button.rawValue] = configByApplyingGeometryClamp(config)
         }
 
