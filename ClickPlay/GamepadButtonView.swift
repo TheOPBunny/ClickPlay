@@ -1829,7 +1829,9 @@ final class GamepadButtonView: NSView {
         }
 
         switch config.shape {
-        case .roundedRectangle, .square:
+        case .roundedRectangle:
+            return buttonPath(in: bounds).contains(point)
+        case .square:
             return true
         case .oval:
             guard bounds.width > 0, bounds.height > 0 else {
