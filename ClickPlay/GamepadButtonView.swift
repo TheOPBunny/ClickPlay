@@ -64,6 +64,7 @@ final class GamepadButtonView: NSView {
         var pressedBinding: (keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)?
         var pressedBindings: [(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)] = []
         var isPressed = false
+        var pressedStartedAt: TimeInterval?
         var autoReleaseWorkItem: DispatchWorkItem?
         var sequenceRepeatWorkItem: DispatchWorkItem?
     }
@@ -1186,24 +1187,12 @@ final class GamepadButtonView: NSView {
                 return
             }
 
-            if usesCompatibilityTap(input) {
-                setSimultaneousPressed(true, source: source, input: input)
-                scheduleCompatibilityRelease(source: source, input: input)
-                return
-            }
-
             setSimultaneousPressed(true, source: source, input: input)
             return
         }
 
         if input.mode == .toggleHold {
             setPressed(!state(for: source).isPressed, source: source, input: input)
-            return
-        }
-
-        if usesCompatibilityTap(input) {
-            setPressed(true, source: source, input: input)
-            scheduleCompatibilityRelease(source: source, input: input)
             return
         }
 
@@ -1217,8 +1206,12 @@ final class GamepadButtonView: NSView {
 
         guard input.mode != .turbo,
               !usesSequentialMultiKey(input),
-              input.mode != .toggleHold,
-              !usesCompatibilityTap(input) else {
+              input.mode != .toggleHold else {
+            return
+        }
+
+        if usesCompatibilityTap(input) {
+            releaseCurrentPressedRespectingMinimumDuration(source: source, input: input)
             return
         }
 
@@ -1270,15 +1263,23 @@ final class GamepadButtonView: NSView {
         guard let input = resolvedInput(for: source),
               input.mode != .turbo,
               !usesSequentialMultiKey(input),
-              input.mode != .toggleHold,
-              !usesCompatibilityTap(input) else {
+              input.mode != .toggleHold else {
             return
         }
 
         let inside = containsInteractivePoint(convert(event.locationInWindow, from: nil))
         let state = state(for: source)
+        if inside {
+            state.autoReleaseWorkItem?.cancel()
+            state.autoReleaseWorkItem = nil
+        }
+
         if inside != state.isPressed {
-            setCurrentPressed(inside, source: source, input: input)
+            if inside || !usesCompatibilityTap(input) {
+                setCurrentPressed(inside, source: source, input: input)
+            } else {
+                releaseCurrentPressedRespectingMinimumDuration(source: source, input: input)
+            }
         }
     }
 
@@ -1287,12 +1288,15 @@ final class GamepadButtonView: NSView {
               input.mode != .turbo,
               !usesSequentialMultiKey(input),
               input.mode != .toggleHold,
-              !usesCompatibilityTap(input),
               state(for: source).isPressed else {
             return
         }
 
-        setCurrentPressed(false, source: source, input: input)
+        if usesCompatibilityTap(input) {
+            releaseCurrentPressedRespectingMinimumDuration(source: source, input: input)
+        } else {
+            setCurrentPressed(false, source: source, input: input)
+        }
     }
 
     private func resolvedInput(for source: PressSource) -> ResolvedInput? {
@@ -1383,6 +1387,27 @@ final class GamepadButtonView: NSView {
         state.autoReleaseWorkItem = workItem
 
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration, execute: workItem)
+    }
+
+    private func releaseCurrentPressedRespectingMinimumDuration(source: PressSource, input: ResolvedInput) {
+        let state = state(for: source)
+        guard state.isPressed else {
+            return
+        }
+
+        let elapsed = ProcessInfo.processInfo.systemUptime - (state.pressedStartedAt ?? ProcessInfo.processInfo.systemUptime)
+        let remainingDuration = Self.compatibilityTapDuration - elapsed
+        guard remainingDuration > 0 else {
+            setCurrentPressed(false, source: source, input: input)
+            return
+        }
+
+        state.autoReleaseWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.setCurrentPressed(false, source: source, input: input)
+        }
+        state.autoReleaseWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + remainingDuration, execute: workItem)
     }
 
     private func playSequentialBindings(source: PressSource, input: ResolvedInput) {
@@ -1526,12 +1551,17 @@ final class GamepadButtonView: NSView {
 
     private func setPressed(_ pressed: Bool, source: PressSource, input: ResolvedInput) {
         let state = state(for: source)
+        if pressed {
+            state.autoReleaseWorkItem?.cancel()
+            state.autoReleaseWorkItem = nil
+        }
         guard pressed != state.isPressed, let binding = input.bindings.first else { return }
         state.isPressed = pressed
         let keyCode = CGKeyCode(binding.keyCode)
         let modifiers = NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
         debugLog("[Button \(button.rawValue)] setPressed=\(pressed) source=\(source) keyCode=\(keyCode) modifiers=\(binding.keyModifiers) mode=\(input.mode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
         if pressed {
+            state.pressedStartedAt = ProcessInfo.processInfo.systemUptime
             state.pressedBinding = (keyCode: keyCode, modifiers: modifiers)
             KeyInjector.shared.pressRaw(keyCode, modifiers: modifiers)
         } else {
@@ -1540,6 +1570,7 @@ final class GamepadButtonView: NSView {
             state.pressedBinding = nil
             state.autoReleaseWorkItem?.cancel()
             state.autoReleaseWorkItem = nil
+            state.pressedStartedAt = nil
         }
         updateAppearance(animated: true)
     }
@@ -1554,11 +1585,16 @@ final class GamepadButtonView: NSView {
 
     private func setSimultaneousPressed(_ pressed: Bool, source: PressSource, input: ResolvedInput) {
         let state = state(for: source)
+        if pressed {
+            state.autoReleaseWorkItem?.cancel()
+            state.autoReleaseWorkItem = nil
+        }
         guard pressed != state.isPressed else { return }
         state.isPressed = pressed
         debugLog("[Button \(button.rawValue)] setSimultaneousPressed=\(pressed) source=\(source) keyBindings=\(input.bindings.map(\.keyCode)) mode=\(input.mode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
 
         if pressed {
+            state.pressedStartedAt = ProcessInfo.processInfo.systemUptime
             state.pressedBindings = uniqueInputBindings(input.bindings)
 
             for binding in state.pressedBindings {
@@ -1576,6 +1612,7 @@ final class GamepadButtonView: NSView {
         state.autoReleaseWorkItem = nil
         state.sequenceRepeatWorkItem?.cancel()
         state.sequenceRepeatWorkItem = nil
+        state.pressedStartedAt = nil
 
         if let pressedBinding = state.pressedBinding {
             KeyInjector.shared.releaseRaw(pressedBinding.keyCode, modifiers: pressedBinding.modifiers)
@@ -1594,6 +1631,7 @@ final class GamepadButtonView: NSView {
         state.pressedBindings = []
         state.autoReleaseWorkItem?.cancel()
         state.autoReleaseWorkItem = nil
+        state.pressedStartedAt = nil
         state.isPressed = false
     }
 
