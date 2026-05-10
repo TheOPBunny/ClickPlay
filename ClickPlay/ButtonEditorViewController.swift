@@ -102,13 +102,23 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             previewView.frame = bounds
         }
 
-        func updateCanvasSize(visibleSize: CGSize, workspaceSize: CGSize) {
+        func updateCanvasSize(visibleSize: CGSize, workspaceSize: CGSize, workspaceContentBounds: CGRect?) {
             self.workspaceSize = workspaceSize
-            let nextSize = CGSize(
-                width: max(workspaceSize.width, visibleSize.width),
-                height: workspaceSize.height
+            let paddedContentBounds = workspaceContentBounds?.insetBy(dx: -40, dy: -40)
+            let minimumContentRect = CGRect(origin: .zero, size: workspaceSize)
+            let contentRect = paddedContentBounds.map { minimumContentRect.union($0) } ?? minimumContentRect
+            let baseDocumentSize = CGSize(
+                width: max(1, contentRect.width),
+                height: max(1, contentRect.height)
             )
-            let nextWorkspaceOrigin = CGPoint(x: max(0, (nextSize.width - workspaceSize.width) / 2), y: 0)
+            let nextSize = CGSize(
+                width: max(baseDocumentSize.width, visibleSize.width),
+                height: max(baseDocumentSize.height, visibleSize.height)
+            )
+            let nextWorkspaceOrigin = CGPoint(
+                x: -contentRect.minX + max(0, (nextSize.width - baseDocumentSize.width) / 2),
+                y: -contentRect.minY + max(0, (nextSize.height - baseDocumentSize.height) / 2)
+            )
 
             if frame.size != nextSize {
                 frame = CGRect(origin: .zero, size: nextSize)
@@ -1493,7 +1503,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         previewCanvasView.showsGrid = showGridCheckbox.state == .on
         previewCanvasView.updateCanvasSize(
             visibleSize: previewScrollView.contentView.bounds.size,
-            workspaceSize: maximumWorkspaceSize
+            workspaceSize: maximumWorkspaceSize,
+            workspaceContentBounds: workspaceContentBounds(for: profile)
         )
         previewCanvasView.needsLayout = true
     }
@@ -2942,20 +2953,28 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     private func canvasContentBounds(for profile: Profile) -> CGRect? {
+        guard let workspaceBounds = workspaceContentBounds(for: profile) else {
+            return nil
+        }
+
+        return workspaceBounds.offsetBy(
+            dx: previewCanvasView.workspaceOrigin.x,
+            dy: previewCanvasView.workspaceOrigin.y
+        )
+    }
+
+    private func workspaceContentBounds(for profile: Profile) -> CGRect? {
         guard let contentBounds = buttonContentBounds(for: profile) else {
             return nil
         }
 
         guard profile.editorCoordinateMode == .centered else {
-            return contentBounds.offsetBy(
-                dx: previewCanvasView.workspaceOrigin.x,
-                dy: previewCanvasView.workspaceOrigin.y
-            )
+            return contentBounds
         }
 
         return contentBounds.offsetBy(
-            dx: (maximumWorkspaceSize.width / 2) + previewCanvasView.workspaceOrigin.x,
-            dy: (maximumWorkspaceSize.height / 2) + previewCanvasView.workspaceOrigin.y
+            dx: maximumWorkspaceSize.width / 2,
+            dy: maximumWorkspaceSize.height / 2
         )
     }
 
