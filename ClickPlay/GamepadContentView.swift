@@ -155,6 +155,10 @@ final class GamepadContentView: NSView {
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
         override func hitTest(_ point: NSPoint) -> NSView? {
+            guard bounds.contains(point) else {
+                return nil
+            }
+
             for subview in subviews.reversed() where !subview.isHidden {
                 let convertedPoint = subview.convert(point, from: self)
                 if let hitView = subview.hitTest(convertedPoint) {
@@ -162,7 +166,7 @@ final class GamepadContentView: NSView {
                 }
             }
 
-            return bounds.contains(point) ? self : nil
+            return self
         }
 
         override func mouseDown(with event: NSEvent) {
