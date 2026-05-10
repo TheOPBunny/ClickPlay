@@ -102,23 +102,13 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             previewView.frame = bounds
         }
 
-        func updateCanvasSize(visibleSize: CGSize, workspaceSize: CGSize, workspaceContentBounds: CGRect?) {
+        func updateCanvasSize(visibleSize: CGSize, workspaceSize: CGSize) {
             self.workspaceSize = workspaceSize
-            let paddedContentBounds = workspaceContentBounds?.insetBy(dx: -40, dy: -40)
-            let minimumContentRect = CGRect(origin: .zero, size: workspaceSize)
-            let contentRect = paddedContentBounds.map { minimumContentRect.union($0) } ?? minimumContentRect
-            let baseDocumentSize = CGSize(
-                width: max(1, contentRect.width),
-                height: max(1, contentRect.height)
-            )
             let nextSize = CGSize(
-                width: max(baseDocumentSize.width, visibleSize.width),
-                height: max(baseDocumentSize.height, visibleSize.height)
+                width: max(workspaceSize.width, visibleSize.width),
+                height: workspaceSize.height
             )
-            let nextWorkspaceOrigin = CGPoint(
-                x: -contentRect.minX + max(0, (nextSize.width - baseDocumentSize.width) / 2),
-                y: -contentRect.minY + max(0, (nextSize.height - baseDocumentSize.height) / 2)
-            )
+            let nextWorkspaceOrigin = CGPoint(x: max(0, (nextSize.width - workspaceSize.width) / 2), y: 0)
 
             if frame.size != nextSize {
                 frame = CGRect(origin: .zero, size: nextSize)
@@ -228,7 +218,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     override func viewDidLoad() {
         super.viewDidLoad()
         loadInspectorDefaults()
-        updateWorkspaceSizeForCurrentDisplay(repositionExistingButtons: false)
+        updateWorkspaceSizeForCurrentDisplay(remapExistingButtons: false)
         buildLayout()
         installEditorFocusMonitor()
         installScreenParametersObserver()
@@ -282,19 +272,20 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     private func updateWorkspaceSizeForCurrentDisplay(
         scrollToContent: Bool = false,
-        repositionExistingButtons: Bool = true
+        remapExistingButtons: Bool = true
     ) {
         let nextWorkspaceSize = Self.workspaceSize(for: view.window?.screen)
         guard nextWorkspaceSize != maximumWorkspaceSize else {
             return
         }
 
+        let previousWorkspaceSize = maximumWorkspaceSize
         maximumWorkspaceSize = nextWorkspaceSize
         previewCanvasView.workspaceSize = nextWorkspaceSize
         previewView.maximumWorkspaceSize = nextWorkspaceSize
 
-        if repositionExistingButtons, hasLoadedEditableProfile {
-            moveEditableProfileIntoCurrentWorkspace()
+        if remapExistingButtons, hasLoadedEditableProfile {
+            remapEditableProfile(from: previousWorkspaceSize, to: nextWorkspaceSize)
             canvasObjects = makeCanvasObjects(from: profile)
             reloadPreview(keepSelection: true)
             refreshDetailPanelForCurrentSelection()
@@ -308,79 +299,44 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         }
     }
 
-    private func moveEditableProfileIntoCurrentWorkspace() {
-        guard let contentBounds = buttonContentBounds(for: profile) else {
-            return
-        }
-
-        let workspaceBounds = editorWorkspaceBounds()
-        let offset = containmentOffset(for: contentBounds, within: workspaceBounds)
-        guard offset != .zero else {
-            refreshFittedPadSizeFields()
-            return
-        }
+    private func remapEditableProfile(from oldSize: CGSize, to newSize: CGSize) {
+        let widthScale = max(Double(newSize.width), 1) / max(Double(oldSize.width), 1)
+        let heightScale = max(Double(newSize.height), 1) / max(Double(oldSize.height), 1)
 
         for button in profile.orderedButtonIDs {
             guard var config = profile.buttons[button.rawValue] else {
                 continue
             }
 
-            config.x += Double(offset.x)
-            config.y += Double(offset.y)
-            profile.buttons[button.rawValue] = config
+            config.x = remappedWorkspaceCoordinate(
+                config.x,
+                oldLength: oldSize.width,
+                newLength: newSize.width
+            )
+            config.y = remappedWorkspaceCoordinate(
+                config.y,
+                oldLength: oldSize.height,
+                newLength: newSize.height
+            )
+            config.editorWidth = max(1, config.editorWidth) * widthScale
+            config.editorHeight = max(1, config.editorHeight) * heightScale
+            profile.buttons[button.rawValue] = configByApplyingGeometryClamp(config)
         }
 
         refreshFittedPadSizeFields()
     }
 
-    private func containmentOffset(for contentBounds: CGRect, within workspaceBounds: CGRect) -> CGPoint {
-        CGPoint(
-            x: containmentOffset(
-                contentMin: contentBounds.minX,
-                contentMax: contentBounds.maxX,
-                contentMid: contentBounds.midX,
-                contentLength: contentBounds.width,
-                workspaceMin: workspaceBounds.minX,
-                workspaceMax: workspaceBounds.maxX,
-                workspaceMid: workspaceBounds.midX,
-                workspaceLength: workspaceBounds.width
-            ),
-            y: containmentOffset(
-                contentMin: contentBounds.minY,
-                contentMax: contentBounds.maxY,
-                contentMid: contentBounds.midY,
-                contentLength: contentBounds.height,
-                workspaceMin: workspaceBounds.minY,
-                workspaceMax: workspaceBounds.maxY,
-                workspaceMid: workspaceBounds.midY,
-                workspaceLength: workspaceBounds.height
-            )
-        )
-    }
+    private func remappedWorkspaceCoordinate(_ value: Double, oldLength: CGFloat, newLength: CGFloat) -> Double {
+        let oldLength = max(Double(oldLength), 1)
+        let newLength = max(Double(newLength), 1)
 
-    private func containmentOffset(
-        contentMin: CGFloat,
-        contentMax: CGFloat,
-        contentMid: CGFloat,
-        contentLength: CGFloat,
-        workspaceMin: CGFloat,
-        workspaceMax: CGFloat,
-        workspaceMid: CGFloat,
-        workspaceLength: CGFloat
-    ) -> CGFloat {
-        guard contentLength <= workspaceLength else {
-            return workspaceMid - contentMid
+        switch profile.editorCoordinateMode {
+        case .legacyTopLeft:
+            return (value / oldLength) * newLength
+        case .centered:
+            let normalized = (value + oldLength / 2) / oldLength
+            return (normalized * newLength) - (newLength / 2)
         }
-
-        if contentMin < workspaceMin {
-            return workspaceMin - contentMin
-        }
-
-        if contentMax > workspaceMax {
-            return workspaceMax - contentMax
-        }
-
-        return 0
     }
 
     private func clearEditorFocusIfNeeded(for event: NSEvent) {
@@ -1503,8 +1459,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         previewCanvasView.showsGrid = showGridCheckbox.state == .on
         previewCanvasView.updateCanvasSize(
             visibleSize: previewScrollView.contentView.bounds.size,
-            workspaceSize: maximumWorkspaceSize,
-            workspaceContentBounds: workspaceContentBounds(for: profile)
+            workspaceSize: maximumWorkspaceSize
         )
         previewCanvasView.needsLayout = true
     }
@@ -2953,28 +2908,20 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     private func canvasContentBounds(for profile: Profile) -> CGRect? {
-        guard let workspaceBounds = workspaceContentBounds(for: profile) else {
-            return nil
-        }
-
-        return workspaceBounds.offsetBy(
-            dx: previewCanvasView.workspaceOrigin.x,
-            dy: previewCanvasView.workspaceOrigin.y
-        )
-    }
-
-    private func workspaceContentBounds(for profile: Profile) -> CGRect? {
         guard let contentBounds = buttonContentBounds(for: profile) else {
             return nil
         }
 
         guard profile.editorCoordinateMode == .centered else {
-            return contentBounds
+            return contentBounds.offsetBy(
+                dx: previewCanvasView.workspaceOrigin.x,
+                dy: previewCanvasView.workspaceOrigin.y
+            )
         }
 
         return contentBounds.offsetBy(
-            dx: maximumWorkspaceSize.width / 2,
-            dy: maximumWorkspaceSize.height / 2
+            dx: (maximumWorkspaceSize.width / 2) + previewCanvasView.workspaceOrigin.x,
+            dy: (maximumWorkspaceSize.height / 2) + previewCanvasView.workspaceOrigin.y
         )
     }
 
