@@ -25,8 +25,8 @@ enum ButtonType: String, Codable {
 enum ButtonSizing {
     static let minimumButtonWidth = 20.0
     static let minimumButtonHeight = 14.0
-    static let minimumJoystickWidth = 48.0
-    static let minimumJoystickHeight = 48.0
+    static let minimumJoystickWidth = 40.0
+    static let minimumJoystickHeight = 40.0
     static let joystickOuterInsetFraction = 0.08
     static let joystickMinimumOuterInset = 4.0
     static let joystickKnobDiameterFraction = 0.26
