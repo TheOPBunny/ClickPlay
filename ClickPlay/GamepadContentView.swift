@@ -247,7 +247,7 @@ final class GamepadContentView: NSView {
     private func setup() {
         wantsLayer = true
         updateBackgroundColor()
-        layer?.cornerRadius = 20
+        layer?.cornerRadius = 12
         layer?.masksToBounds = true
 
         blurView.autoresizingMask = [.width, .height]
