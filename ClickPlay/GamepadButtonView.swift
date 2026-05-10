@@ -248,11 +248,7 @@ final class GamepadButtonView: NSView {
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        guard containsAnyInteractivePointCandidate(point) else {
-            return nil
-        }
-
-        return self
+        containsInteractivePoint(point) ? self : nil
     }
 
     override func updateTrackingAreas() {
@@ -1888,15 +1884,4 @@ final class GamepadButtonView: NSView {
         }
     }
 
-    private func containsAnyInteractivePointCandidate(_ point: CGPoint) -> Bool {
-        if containsInteractivePoint(point) {
-            return true
-        }
-
-        guard let superview else {
-            return false
-        }
-
-        return containsInteractivePoint(convert(point, from: superview))
-    }
 }
