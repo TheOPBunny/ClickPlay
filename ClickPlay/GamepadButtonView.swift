@@ -1617,7 +1617,7 @@ final class GamepadButtonView: NSView {
 
     // MARK: - Drawing
 
-    private func updateAppearance(animated: Bool) {
+    private func updateAppearance(animated _: Bool) {
         let base = NSColor(hex: config.colorHex)
         let defaultAlpha = isCurrentSubProfileSwitch ? 0.32 : 0.75
         let target = isVisuallyPressed ? base.withAlphaComponent(1.0) : base.withAlphaComponent(defaultAlpha)
@@ -1634,18 +1634,11 @@ final class GamepadButtonView: NSView {
             self.shapeLayer.lineWidth = lineWidth
         }
 
-        if animated {
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.05
-                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                applyAppearance()
-            }
-        } else {
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            applyAppearance()
-            CATransaction.commit()
-        }
+        // Button visuals need to track mouse-down/drag instantly; implicit layer animations make outlines feel delayed.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        applyAppearance()
+        CATransaction.commit()
     }
 
     private func updateShapePath() {
