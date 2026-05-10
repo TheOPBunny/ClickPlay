@@ -358,11 +358,9 @@ final class GamepadContentView: NSView {
 
         for button in profile.orderedButtonIDs {
             guard let cfg = profile.buttons[button.rawValue], cfg.enabled else { continue }
-            let rawWidth = CGFloat(cfg.width) * width
-            let rawHeight = CGFloat(cfg.height) * height
-            let minimumSize = ButtonSizing.minimumSize(for: cfg.type)
-            let bw = min(width, max(rawWidth, CGFloat(minimumSize.width)))
-            let bh = min(height, max(rawHeight, CGFloat(minimumSize.height)))
+            let buttonSize = displaySize(for: cfg, in: padSurface.bounds.size, profile: profile)
+            let bw = buttonSize.width
+            let bh = buttonSize.height
             let cx = min(max(CGFloat(cfg.x) * width, bw / 2), width - bw / 2)
             let cy = min(max(CGFloat(cfg.y) * height, bh / 2), height - bh / 2)
             let frame = CGRect(x: cx - bw / 2, y: cy - bh / 2, width: bw, height: bh)
@@ -396,6 +394,45 @@ final class GamepadContentView: NSView {
         }
         updateButtonVisibilityForJoystickCapture()
         debugLog("[ContentView] Built \(buttonViews.count) buttons")
+    }
+
+    private func displaySize(for config: ButtonConfig, in padSize: CGSize, profile: Profile) -> CGSize {
+        let minimumSize = ButtonSizing.minimumSize(for: config.type)
+
+        guard config.type == .joystick else {
+            let rawWidth = CGFloat(config.width) * padSize.width
+            let rawHeight = CGFloat(config.height) * padSize.height
+            return CGSize(
+                width: min(padSize.width, max(rawWidth, CGFloat(minimumSize.width))),
+                height: min(padSize.height, max(rawHeight, CGFloat(minimumSize.height)))
+            )
+        }
+
+        let baseWidthSource = config.editorWidth > 0
+            ? config.editorWidth
+            : config.width * max(profile.padWidth, 1)
+        let baseHeightSource = config.editorHeight > 0
+            ? config.editorHeight
+            : config.height * max(profile.padHeight, 1)
+        let baseWidth = max(1, baseWidthSource)
+        let baseHeight = max(1, baseHeightSource)
+        let scaleX = padSize.width / max(CGFloat(profile.padWidth), 1)
+        let scaleY = padSize.height / max(CGFloat(profile.padHeight), 1)
+        let authoredScale = min(scaleX, scaleY)
+        let minimumScale = max(
+            CGFloat(minimumSize.width) / CGFloat(baseWidth),
+            CGFloat(minimumSize.height) / CGFloat(baseHeight)
+        )
+        let maximumScale = min(
+            padSize.width / CGFloat(baseWidth),
+            padSize.height / CGFloat(baseHeight)
+        )
+        let scale = min(max(authoredScale, minimumScale), maximumScale)
+
+        return CGSize(
+            width: CGFloat(baseWidth) * scale,
+            height: CGFloat(baseHeight) * scale
+        )
     }
 
     private func releaseAllButtonsForRebuild() {
