@@ -29,7 +29,10 @@ final class KeyInjector {
     // MARK: - Public Press/Release API
 
     func pressRaw(_ keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags = []) {
+        let enqueuedAt = ProcessInfo.processInfo.systemUptime
+        debugLatencyLog("[KeyInjector] enqueue pressRaw \(keyCode) modifiers=\(modifiers.rawValue)")
         queue.async { [self] in
+            debugLatencyLog("[KeyInjector] begin pressRaw \(keyCode) queueWait=\(formatMilliseconds(ProcessInfo.processInfo.systemUptime - enqueuedAt)) modifiers=\(modifiers.rawValue)")
             let supportedModifiers = supportedModifiers(from: modifiers)
             let binding = KeyBinding(keyCode: keyCode, modifiersRawValue: supportedModifiers.rawValue)
             if let heldCount = heldKeyCounts[binding], heldCount > 0 {
@@ -67,7 +70,10 @@ final class KeyInjector {
     }
 
     func releaseRaw(_ keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags = []) {
+        let enqueuedAt = ProcessInfo.processInfo.systemUptime
+        debugLatencyLog("[KeyInjector] enqueue releaseRaw \(keyCode) modifiers=\(modifiers.rawValue)")
         queue.async { [self] in
+            debugLatencyLog("[KeyInjector] begin releaseRaw \(keyCode) queueWait=\(formatMilliseconds(ProcessInfo.processInfo.systemUptime - enqueuedAt)) modifiers=\(modifiers.rawValue)")
             let supportedModifiers = supportedModifiers(from: modifiers)
             let binding = KeyBinding(keyCode: keyCode, modifiersRawValue: supportedModifiers.rawValue)
             guard let heldCount = heldKeyCounts[binding], heldCount > 0 else {
@@ -184,8 +190,15 @@ final class KeyInjector {
             return false
         }
         evt.flags = cgEventFlags(from: modifiers, keyCode: keyCode, keyDown: keyDown)
+        let postStartedAt = ProcessInfo.processInfo.systemUptime
         evt.post(tap: .cghidEventTap)
+        let postEndedAt = ProcessInfo.processInfo.systemUptime
+        debugLatencyLog("[KeyInjector] postEvent keyCode=\(keyCode) keyDown=\(keyDown) modifiers=\(modifiers.rawValue) postDuration=\(formatMilliseconds(postEndedAt - postStartedAt))")
         return true
+    }
+
+    private func formatMilliseconds(_ seconds: TimeInterval) -> String {
+        String(format: "%.3fms", seconds * 1000)
     }
 
     // MARK: - Modifier Translation
