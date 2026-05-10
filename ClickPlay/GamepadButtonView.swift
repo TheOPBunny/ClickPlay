@@ -146,6 +146,7 @@ final class GamepadButtonView: NSView {
     private var isJoystickCursorHidden = false
     private var lastJoystickScrollActivation: (direction: JoystickScrollDirection, time: TimeInterval)?
     private var trackingArea: NSTrackingArea?
+    private var visualScale: CGFloat = 1
     var onJoystickCaptureChanged: ((Bool) -> Void)?
 
     init(button: GamepadButton, config: ButtonConfig, compatibilityModeEnabled: Bool, activeSubProfileID: UUID?) {
@@ -1620,32 +1621,46 @@ final class GamepadButtonView: NSView {
         let base = NSColor(hex: config.colorHex)
         let defaultAlpha = isCurrentSubProfileSwitch ? 0.32 : 0.75
         let target = isVisuallyPressed ? base.withAlphaComponent(1.0) : base.withAlphaComponent(defaultAlpha)
-        let scale: CGFloat = isVisuallyPressed ? 0.92 : 1.0
+        let targetVisualScale: CGFloat = isVisuallyPressed ? 0.92 : 1.0
         let activeOutlineColor = activeModeOutline.map { outlineColor(for: $0, baseColor: base) }
         let strokeColor = (activeOutlineColor ?? (isHovered ? hoverOutlineColor : nil))?.cgColor
         let lineWidth: CGFloat = activeOutlineColor == nil ? (isHovered ? 2 : 0) : 3
-        updateShapePath()
-        updateJoystickLayers(baseColor: base)
+        let applyAppearance = {
+            self.visualScale = targetVisualScale
+            self.updateShapePath()
+            self.updateJoystickLayers(baseColor: base)
+            self.shapeLayer.fillColor = target.cgColor
+            self.shapeLayer.strokeColor = strokeColor
+            self.shapeLayer.lineWidth = lineWidth
+        }
+
         if animated {
             NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = 0.05
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                shapeLayer.fillColor = target.cgColor
-                shapeLayer.strokeColor = strokeColor
-                shapeLayer.lineWidth = lineWidth
-                layer?.transform = CATransform3DMakeScale(scale, scale, 1)
+                applyAppearance()
             }
         } else {
-            shapeLayer.fillColor = target.cgColor
-            shapeLayer.strokeColor = strokeColor
-            shapeLayer.lineWidth = lineWidth
-            layer?.transform = CATransform3DMakeScale(scale, scale, 1)
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            applyAppearance()
+            CATransaction.commit()
         }
     }
 
     private func updateShapePath() {
         shapeLayer.frame = bounds
-        shapeLayer.path = buttonPath(in: bounds)
+        shapeLayer.path = buttonPath(in: visualBounds)
+    }
+
+    private var visualBounds: CGRect {
+        guard visualScale < 1, bounds.width > 0, bounds.height > 0 else {
+            return bounds
+        }
+
+        let horizontalInset = bounds.width * (1 - visualScale) / 2
+        let verticalInset = bounds.height * (1 - visualScale) / 2
+        return bounds.insetBy(dx: horizontalInset, dy: verticalInset)
     }
 
     private func updateSystemEventSymbol() {
@@ -1677,7 +1692,7 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        let outerRect = joystickOuterRect
+        let outerRect = joystickVisualOuterRect
         joystickOuterLayer.frame = bounds
         joystickOuterLayer.path = CGPath(roundedRect: outerRect, cornerWidth: 8, cornerHeight: 8, transform: nil)
         joystickOuterLayer.fillColor = baseColor.withAlphaComponent(isJoystickCaptured ? 0.42 : 0.26).cgColor
@@ -1686,7 +1701,7 @@ final class GamepadButtonView: NSView {
             : NSColor.white.withAlphaComponent(isJoystickCaptured ? 0.65 : 0.32).cgColor
         joystickOuterLayer.lineWidth = isHovered ? 2.5 : 2
 
-        let knobDiameter = joystickKnobDiameter
+        let knobDiameter = joystickVisualKnobDiameter
         let clampedOffset = joystickVisualOffset
         let knobRect = CGRect(
             x: bounds.midX + clampedOffset.x - knobDiameter / 2,
@@ -1702,12 +1717,12 @@ final class GamepadButtonView: NSView {
     }
 
     private var joystickVisualOffset: CGPoint {
-        var offset = clampedJoystickOffset(joystickOffset)
+        let travelLimits = joystickVisualTravelLimits
+        var offset = clampedJoystickOffset(joystickOffset, travelLimits: travelLimits)
         guard let lockedJoystickVerticalDirection else {
             return offset
         }
 
-        let travelLimits = joystickTravelLimits
         switch lockedJoystickVerticalDirection {
         case .up:
             offset.y = travelLimits.height
@@ -1718,7 +1733,10 @@ final class GamepadButtonView: NSView {
     }
 
     private func clampedJoystickOffset(_ offset: CGPoint) -> CGPoint {
-        let travelLimits = joystickTravelLimits
+        clampedJoystickOffset(offset, travelLimits: joystickTravelLimits)
+    }
+
+    private func clampedJoystickOffset(_ offset: CGPoint, travelLimits: CGSize) -> CGPoint {
         return CGPoint(
             x: min(max(offset.x, -travelLimits.width), travelLimits.width),
             y: min(max(offset.y, -travelLimits.height), travelLimits.height)
@@ -1731,6 +1749,15 @@ final class GamepadButtonView: NSView {
             min(bounds.width, bounds.height) * CGFloat(ButtonSizing.joystickOuterInsetFraction)
         )
         return bounds.insetBy(dx: inset, dy: inset)
+    }
+
+    private var joystickVisualOuterRect: CGRect {
+        let rect = visualBounds
+        let inset = max(
+            CGFloat(ButtonSizing.joystickMinimumOuterInset),
+            min(rect.width, rect.height) * CGFloat(ButtonSizing.joystickOuterInsetFraction)
+        )
+        return rect.insetBy(dx: inset, dy: inset)
     }
 
     private var joystickKnobDiameter: CGFloat {
@@ -1747,9 +1774,32 @@ final class GamepadButtonView: NSView {
         return min(boundedDiameter, max(6, shortestSide * 0.45))
     }
 
+    private var joystickVisualKnobDiameter: CGFloat {
+        let shortestSide = min(visualBounds.width, visualBounds.height)
+        guard shortestSide > 0 else {
+            return CGFloat(ButtonSizing.joystickMinimumKnobDiameter)
+        }
+
+        let scaledDiameter = shortestSide * CGFloat(ButtonSizing.joystickKnobDiameterFraction)
+        let boundedDiameter = min(
+            max(CGFloat(ButtonSizing.joystickMinimumKnobDiameter), scaledDiameter),
+            CGFloat(ButtonSizing.joystickMaximumKnobDiameter)
+        )
+        return min(boundedDiameter, max(6, shortestSide * 0.45))
+    }
+
     private var joystickTravelLimits: CGSize {
         let outerRect = joystickOuterRect
         let knobRadius = joystickKnobDiameter / 2
+        return CGSize(
+            width: max(0, outerRect.width / 2 - knobRadius),
+            height: max(0, outerRect.height / 2 - knobRadius)
+        )
+    }
+
+    private var joystickVisualTravelLimits: CGSize {
+        let outerRect = joystickVisualOuterRect
+        let knobRadius = joystickVisualKnobDiameter / 2
         return CGSize(
             width: max(0, outerRect.width / 2 - knobRadius),
             height: max(0, outerRect.height / 2 - knobRadius)
