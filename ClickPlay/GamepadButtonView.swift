@@ -910,12 +910,6 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        guard config.joystick.axisLockMode != .holdDirection
-            || joystickAxisLockWorkItem == nil else {
-            joystickIdleReturnWorkItem = nil
-            return
-        }
-
         let generation = joystickIdleReturnGeneration
         let workItem = DispatchWorkItem { [weak self] in
             self?.returnJoystickToDeadzoneIfIdle(generation: generation)
@@ -946,6 +940,10 @@ final class GamepadButtonView: NSView {
 
         joystickIdleReturnWorkItem = nil
         joystickOffset = .zero
+        if config.joystick.axisLockMode == .holdDirection, lockedJoystickDirection == nil {
+            requiresJoystickAxisLockNeutralBeforeLock = false
+            cancelJoystickAxisLockTimer()
+        }
         updateActiveJoystickDirection()
         updateAppearance(animated: true)
     }
