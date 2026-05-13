@@ -103,6 +103,11 @@ final class GamepadButtonView: NSView {
         case down
     }
 
+    private enum JoystickAxisLockAction: Equatable {
+        case lock
+        case unlock
+    }
+
     // Timing and movement constants tune joystick feel without changing the key-injection contract.
     private static let compatibilityTapDuration: TimeInterval = 0.033
     private static let joystickDeadzoneRadius: CGFloat = 18
@@ -113,6 +118,7 @@ final class GamepadButtonView: NSView {
     private static let joystickParkingSuppressionWindow: TimeInterval = 0.012
     private static let joystickParkingMatchTolerance: CGFloat = 3
     private static let joystickScrollActivationInterval: TimeInterval = 0.18
+    private static let joystickAxisLockEdgeThreshold: CGFloat = 0.88
 
     // Persistent configuration comes from the active profile; runtime flags mirror current mouse/joystick state.
     let button: GamepadButton
@@ -128,6 +134,7 @@ final class GamepadButtonView: NSView {
     private let shapeLayer = CAShapeLayer()
     private let joystickOuterLayer = CAShapeLayer()
     private let joystickKnobLayer = CAShapeLayer()
+    private let joystickLockIndicatorLayer = CATextLayer()
     private let label = CenteredLabelView(frame: .zero)
     private let symbolImageView = NSImageView(frame: .zero)
     private var isHovered = false
@@ -138,7 +145,7 @@ final class GamepadButtonView: NSView {
     private var joystickOffset = CGPoint.zero
     private var activeJoystickDirection: JoystickDirection?
     private var activeJoystickBindings: [(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)] = []
-    private var lockedJoystickVerticalDirection: JoystickVerticalDirection?
+    private var lockedJoystickDirection: JoystickDirection?
     private var joystickEventTap: CFMachPort?
     private var joystickEventTapRunLoopSource: CFRunLoopSource?
     private var joystickIdleReturnWorkItem: DispatchWorkItem?
@@ -149,6 +156,9 @@ final class GamepadButtonView: NSView {
     private var pendingJoystickParkingSuppressionDeadline: TimeInterval = 0
     private var isJoystickCursorHidden = false
     private var lastJoystickScrollActivation: (direction: JoystickScrollDirection, time: TimeInterval)?
+    private var joystickAxisLockWorkItem: DispatchWorkItem?
+    private var pendingJoystickAxisLockDirection: JoystickDirection?
+    private var pendingJoystickAxisLockAction: JoystickAxisLockAction?
     private var trackingArea: NSTrackingArea?
     private var visualScale: CGFloat = 1
     var onJoystickCaptureChanged: ((Bool) -> Void)?
@@ -173,8 +183,13 @@ final class GamepadButtonView: NSView {
         layer?.addSublayer(shapeLayer)
         joystickOuterLayer.contentsScale = shapeLayer.contentsScale
         joystickKnobLayer.contentsScale = shapeLayer.contentsScale
+        joystickLockIndicatorLayer.contentsScale = shapeLayer.contentsScale
+        joystickLockIndicatorLayer.alignmentMode = .center
+        joystickLockIndicatorLayer.truncationMode = .none
+        joystickLockIndicatorLayer.string = "􀒲"
         layer?.addSublayer(joystickOuterLayer)
         layer?.addSublayer(joystickKnobLayer)
+        layer?.addSublayer(joystickLockIndicatorLayer)
 
         symbolImageView.imageScaling = .scaleProportionallyDown
         symbolImageView.contentTintColor = displayTextColor
@@ -625,8 +640,9 @@ final class GamepadButtonView: NSView {
         joystickOffset = .zero
         activeJoystickDirection = nil
         activeJoystickBindings = []
-        lockedJoystickVerticalDirection = nil
+        lockedJoystickDirection = nil
         lastJoystickScrollActivation = nil
+        cancelJoystickAxisLockTimer()
         joystickIdleReturnGeneration &+= 1
         lastJoystickMovementTime = ProcessInfo.processInfo.systemUptime
         guard installJoystickEventMonitors() else {
@@ -652,6 +668,7 @@ final class GamepadButtonView: NSView {
         noteJoystickMovementActivity()
         let movementDelta = CGPoint(x: deltaX, y: deltaY)
         joystickOffset = clampedJoystickOffset(joystickOffset(afterApplying: movementDelta))
+        updateJoystickAxisLockHoldState()
         updateActiveJoystickDirection()
 
         scheduleJoystickIdleReturnIfNeeded()
@@ -667,7 +684,7 @@ final class GamepadButtonView: NSView {
         joystickOffset = .zero
         activeJoystickDirection = nil
         activeJoystickBindings = []
-        lockedJoystickVerticalDirection = nil
+        lockedJoystickDirection = nil
         lastJoystickScrollActivation = nil
         joystickIdleReturnWorkItem?.cancel()
         joystickIdleReturnWorkItem = nil
@@ -675,12 +692,15 @@ final class GamepadButtonView: NSView {
         joystickParkingWorkItem?.cancel()
         joystickParkingWorkItem = nil
         clearPendingJoystickParkingSuppression()
+        cancelJoystickAxisLockTimer()
     }
 
     private func releaseJoystickCapture(warpCursorToCenter: Bool) {
         guard isJoystickCaptured
             || activeJoystickDirection != nil
             || !activeJoystickBindings.isEmpty
+            || lockedJoystickDirection != nil
+            || joystickAxisLockWorkItem != nil
             || joystickLeftClickState.isPressed
             || joystickRightClickState.isPressed
             || joystickScrollUpState.isPressed
@@ -695,7 +715,7 @@ final class GamepadButtonView: NSView {
         releaseState(joystickScrollDownState)
         activeJoystickDirection = nil
         joystickOffset = .zero
-        lockedJoystickVerticalDirection = nil
+        lockedJoystickDirection = nil
         lastJoystickScrollActivation = nil
         joystickIdleReturnWorkItem?.cancel()
         joystickIdleReturnWorkItem = nil
@@ -703,6 +723,7 @@ final class GamepadButtonView: NSView {
         joystickParkingWorkItem?.cancel()
         joystickParkingWorkItem = nil
         clearPendingJoystickParkingSuppression()
+        cancelJoystickAxisLockTimer()
 
         if isJoystickCaptured {
             isJoystickCaptured = false
@@ -754,7 +775,7 @@ final class GamepadButtonView: NSView {
         releaseActiveJoystickBindings()
         activeJoystickDirection = nil
         activeJoystickBindings = []
-        lockedJoystickVerticalDirection = nil
+        lockedJoystickDirection = nil
         lastJoystickScrollActivation = nil
         joystickIdleReturnWorkItem?.cancel()
         joystickIdleReturnWorkItem = nil
@@ -771,12 +792,17 @@ final class GamepadButtonView: NSView {
         let point = convert(event.locationInWindow, from: nil)
         let rawOffset = CGPoint(x: point.x - bounds.midX, y: point.y - bounds.midY)
         joystickOffset = clampedJoystickOffsetToTravelEllipse(rawOffset)
+        updateJoystickAxisLockHoldState()
         updateActiveJoystickDirection()
         updateAppearance(animated: false)
     }
 
     private func releaseJoystickDrag() {
-        guard isJoystickDragActive || activeJoystickDirection != nil || !activeJoystickBindings.isEmpty else {
+        guard isJoystickDragActive
+            || activeJoystickDirection != nil
+            || !activeJoystickBindings.isEmpty
+            || lockedJoystickDirection != nil
+            || joystickAxisLockWorkItem != nil else {
             return
         }
 
@@ -784,7 +810,8 @@ final class GamepadButtonView: NSView {
         releaseActiveJoystickBindings()
         activeJoystickDirection = nil
         joystickOffset = .zero
-        lockedJoystickVerticalDirection = nil
+        lockedJoystickDirection = nil
+        cancelJoystickAxisLockTimer()
         updateAppearance(animated: true)
         debugLog("[Button \(button.rawValue)] joystickDragEnded")
     }
@@ -822,6 +849,7 @@ final class GamepadButtonView: NSView {
         joystickParkingWorkItem?.cancel()
         joystickParkingWorkItem = nil
         clearPendingJoystickParkingSuppression()
+        cancelJoystickAxisLockTimer()
 
         if let joystickEventTapRunLoopSource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), joystickEventTapRunLoopSource, .commonModes)
@@ -857,6 +885,12 @@ final class GamepadButtonView: NSView {
         joystickIdleReturnGeneration &+= 1
 
         guard hypot(joystickOffset.x, joystickOffset.y) > 0.5 else {
+            joystickIdleReturnWorkItem = nil
+            return
+        }
+
+        guard config.joystick.axisLockMode != .holdDirection
+            || joystickEdgeDirection(for: joystickOffset) == nil else {
             joystickIdleReturnWorkItem = nil
             return
         }
@@ -919,10 +953,14 @@ final class GamepadButtonView: NSView {
     }
 
     private func joystickDirection(for offset: CGPoint) -> JoystickDirection? {
-        if let lockedJoystickVerticalDirection {
-            return joystickDirection(forLockedVerticalDirection: lockedJoystickVerticalDirection, offset: offset)
+        if let lockedJoystickDirection {
+            return joystickDirection(forLockedDirection: lockedJoystickDirection, offset: offset)
         }
 
+        return unlockedJoystickDirection(for: offset)
+    }
+
+    private func unlockedJoystickDirection(for offset: CGPoint) -> JoystickDirection? {
         let distance = hypot(offset.x, offset.y)
         let deadzoneRadius = effectiveJoystickDeadzoneRadius
         guard distance >= deadzoneRadius else {
@@ -968,23 +1006,68 @@ final class GamepadButtonView: NSView {
             : (offset.y >= 0 ? .up : .down)
     }
 
-    private func joystickDirection(forLockedVerticalDirection verticalDirection: JoystickVerticalDirection, offset: CGPoint) -> JoystickDirection {
-        let horizontalDirection = joystickHorizontalDirection(for: offset)
-
-        switch (verticalDirection, horizontalDirection) {
-        case (.up, .right):
+    private func joystickDirection(forLockedDirection lockedDirection: JoystickDirection, offset: CGPoint) -> JoystickDirection {
+        switch lockedDirection {
+        case .up:
+            switch joystickHorizontalDirection(for: offset) {
+            case .right:
+                return .upRight
+            case .left:
+                return .upLeft
+            case nil:
+                return .up
+            }
+        case .down:
+            switch joystickHorizontalDirection(for: offset) {
+            case .right:
+                return .downRight
+            case .left:
+                return .downLeft
+            case nil:
+                return .down
+            }
+        case .left:
+            switch joystickVerticalDirection(for: offset) {
+            case .up:
+                return .upLeft
+            case .down:
+                return .downLeft
+            case nil:
+                return .left
+            }
+        case .right:
+            switch joystickVerticalDirection(for: offset) {
+            case .up:
+                return .upRight
+            case .down:
+                return .downRight
+            case nil:
+                return .right
+            }
+        case .upRight:
             return .upRight
-        case (.up, .left):
-            return .upLeft
-        case (.up, nil):
-            return .up
-        case (.down, .right):
+        case .downRight:
             return .downRight
-        case (.down, .left):
+        case .downLeft:
             return .downLeft
-        case (.down, nil):
+        case .upLeft:
+            return .upLeft
+        }
+    }
+
+    private func joystickVerticalDirection(for offset: CGPoint) -> JoystickVerticalDirection? {
+        let deadzoneRadius = effectiveJoystickDeadzoneRadius
+        let axisThreshold = deadzoneRadius * 0.55
+
+        if offset.y > axisThreshold {
+            return .up
+        }
+
+        if offset.y < -axisThreshold {
             return .down
         }
+
+        return nil
     }
 
     private func joystickHorizontalDirection(for offset: CGPoint) -> JoystickHorizontalDirection? {
@@ -1189,6 +1272,93 @@ final class GamepadButtonView: NSView {
         pendingJoystickParkingSuppressionDeadline = 0
     }
 
+    private func updateJoystickAxisLockHoldState() {
+        guard config.joystick.axisLockMode == .holdDirection,
+              isJoystickCaptured || isJoystickDragActive,
+              let edgeDirection = joystickEdgeDirection(for: joystickOffset) else {
+            cancelJoystickAxisLockTimer()
+            return
+        }
+
+        let action: JoystickAxisLockAction = lockedJoystickDirection == edgeDirection ? .unlock : .lock
+        guard pendingJoystickAxisLockDirection != edgeDirection
+            || pendingJoystickAxisLockAction != action else {
+            return
+        }
+
+        cancelJoystickAxisLockTimer()
+        pendingJoystickAxisLockDirection = edgeDirection
+        pendingJoystickAxisLockAction = action
+
+        let delay = action == .lock
+            ? effectiveJoystickAxisLockHoldDuration
+            : effectiveJoystickAxisUnlockHoldDuration
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.completeJoystickAxisLockHold(direction: edgeDirection, action: action)
+        }
+        joystickAxisLockWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
+    private func completeJoystickAxisLockHold(direction: JoystickDirection, action: JoystickAxisLockAction) {
+        guard config.joystick.axisLockMode == .holdDirection,
+              isJoystickCaptured || isJoystickDragActive,
+              joystickEdgeDirection(for: joystickOffset) == direction,
+              pendingJoystickAxisLockDirection == direction,
+              pendingJoystickAxisLockAction == action else {
+            cancelJoystickAxisLockTimer()
+            return
+        }
+
+        switch action {
+        case .lock:
+            lockedJoystickDirection = direction
+            debugLog("[Button \(button.rawValue)] joystickAxisLocked direction=\(direction)")
+        case .unlock:
+            guard lockedJoystickDirection == direction else {
+                cancelJoystickAxisLockTimer()
+                return
+            }
+            lockedJoystickDirection = nil
+            debugLog("[Button \(button.rawValue)] joystickAxisUnlocked direction=\(direction)")
+        }
+
+        cancelJoystickAxisLockTimer()
+        updateActiveJoystickDirection()
+        scheduleJoystickIdleReturnIfNeeded()
+        updateAppearance(animated: true)
+    }
+
+    private func cancelJoystickAxisLockTimer() {
+        joystickAxisLockWorkItem?.cancel()
+        joystickAxisLockWorkItem = nil
+        pendingJoystickAxisLockDirection = nil
+        pendingJoystickAxisLockAction = nil
+    }
+
+    private func joystickEdgeDirection(for offset: CGPoint) -> JoystickDirection? {
+        let travelLimits = joystickTravelLimits
+        guard travelLimits.width > 0, travelLimits.height > 0 else {
+            return nil
+        }
+
+        let normalizedX = abs(offset.x / travelLimits.width)
+        let normalizedY = abs(offset.y / travelLimits.height)
+        guard max(normalizedX, normalizedY) >= Self.joystickAxisLockEdgeThreshold else {
+            return nil
+        }
+
+        return unlockedJoystickDirection(for: offset)
+    }
+
+    private var effectiveJoystickAxisLockHoldDuration: TimeInterval {
+        max(0.1, config.joystick.axisLockHoldDuration)
+    }
+
+    private var effectiveJoystickAxisUnlockHoldDuration: TimeInterval {
+        max(0.1, config.joystick.axisUnlockHoldDuration)
+    }
+
     private func handleJoystickScroll(_ event: CGEvent) {
         let rawDelta = event.getIntegerValueField(.scrollWheelEventDeltaAxis1)
         guard rawDelta != 0 else {
@@ -1204,6 +1374,9 @@ final class GamepadButtonView: NSView {
         case .off:
             return
         case .axisLock:
+            guard config.joystick.axisLockMode == .scrollWheel else {
+                return
+            }
             toggleJoystickAxisLock(for: direction)
         case .keyCombo:
             triggerJoystickScrollInput(for: direction)
@@ -1232,13 +1405,14 @@ final class GamepadButtonView: NSView {
     }
 
     private func toggleJoystickAxisLock(for direction: JoystickScrollDirection) {
-        let nextVerticalDirection: JoystickVerticalDirection = direction == .up ? .up : .down
-        if lockedJoystickVerticalDirection == nextVerticalDirection {
-            lockedJoystickVerticalDirection = nil
+        let nextDirection: JoystickDirection = direction == .up ? .up : .down
+        if lockedJoystickDirection == nextDirection {
+            lockedJoystickDirection = nil
         } else {
-            lockedJoystickVerticalDirection = nextVerticalDirection
+            lockedJoystickDirection = nextDirection
         }
 
+        cancelJoystickAxisLockTimer()
         updateActiveJoystickDirection()
         scheduleJoystickIdleReturnIfNeeded()
         updateAppearance(animated: true)
@@ -1838,6 +2012,7 @@ final class GamepadButtonView: NSView {
         symbolImageView.isHidden = true
         joystickOuterLayer.isHidden = !showsJoystick
         joystickKnobLayer.isHidden = !showsJoystick
+        joystickLockIndicatorLayer.isHidden = !showsJoystick || lockedJoystickDirection == nil
         shapeLayer.isHidden = showsJoystick
 
         guard showsJoystick else {
@@ -1867,20 +2042,92 @@ final class GamepadButtonView: NSView {
         joystickKnobLayer.fillColor = baseColor.withAlphaComponent(isActiveJoystick ? 0.95 : 0.72).cgColor
         joystickKnobLayer.strokeColor = NSColor.white.withAlphaComponent(0.78).cgColor
         joystickKnobLayer.lineWidth = 1
+
+        updateJoystickLockIndicatorLayer(baseColor: baseColor)
+    }
+
+    private func updateJoystickLockIndicatorLayer(baseColor: NSColor) {
+        guard let lockedJoystickDirection else {
+            joystickLockIndicatorLayer.isHidden = true
+            return
+        }
+
+        let symbolSize = max(11, min(18, min(visualBounds.width, visualBounds.height) * 0.18))
+        let frameSize = symbolSize + 8
+        let center = joystickLockIndicatorCenter(for: lockedJoystickDirection, frameSize: frameSize)
+        joystickLockIndicatorLayer.isHidden = false
+        joystickLockIndicatorLayer.frame = CGRect(
+            x: center.x - frameSize / 2,
+            y: center.y - frameSize / 2,
+            width: frameSize,
+            height: frameSize
+        )
+        joystickLockIndicatorLayer.font = NSFont.systemFont(ofSize: symbolSize, weight: .semibold)
+        joystickLockIndicatorLayer.fontSize = symbolSize
+        joystickLockIndicatorLayer.foregroundColor = lockIndicatorColor(baseColor: baseColor).cgColor
+        joystickLockIndicatorLayer.backgroundColor = NSColor.black.withAlphaComponent(0.42).cgColor
+        joystickLockIndicatorLayer.cornerRadius = frameSize / 2
+        joystickLockIndicatorLayer.contentsScale = window?.backingScaleFactor ?? shapeLayer.contentsScale
+    }
+
+    private func joystickLockIndicatorCenter(for direction: JoystickDirection, frameSize: CGFloat) -> CGPoint {
+        let outerRect = joystickVisualOuterRect
+        let inset = frameSize / 2 + 2
+        let x: CGFloat
+        let y: CGFloat
+
+        switch direction {
+        case .up, .down:
+            x = outerRect.midX
+        case .upRight, .right, .downRight:
+            x = outerRect.maxX - inset
+        case .upLeft, .left, .downLeft:
+            x = outerRect.minX + inset
+        }
+
+        switch direction {
+        case .left, .right:
+            y = outerRect.midY
+        case .up, .upRight, .upLeft:
+            y = outerRect.maxY - inset
+        case .down, .downRight, .downLeft:
+            y = outerRect.minY + inset
+        }
+
+        return CGPoint(x: x, y: y)
+    }
+
+    private func lockIndicatorColor(baseColor: NSColor) -> NSColor {
+        guard let color = baseColor.usingColorSpace(.sRGB) else {
+            return .white
+        }
+
+        return color.brightnessComponent >= 0.78 ? .black : .white
     }
 
     private var joystickVisualOffset: CGPoint {
         let travelLimits = joystickVisualTravelLimits
         var offset = clampedJoystickOffset(joystickOffset, travelLimits: travelLimits)
-        guard let lockedJoystickVerticalDirection else {
+        guard let lockedJoystickDirection else {
             return offset
         }
 
-        switch lockedJoystickVerticalDirection {
-        case .up:
+        switch lockedJoystickDirection {
+        case .up, .upRight, .upLeft:
             offset.y = travelLimits.height
-        case .down:
+        case .down, .downRight, .downLeft:
             offset.y = -travelLimits.height
+        case .left, .right:
+            break
+        }
+
+        switch lockedJoystickDirection {
+        case .right, .upRight, .downRight:
+            offset.x = travelLimits.width
+        case .left, .upLeft, .downLeft:
+            offset.x = -travelLimits.width
+        case .up, .down:
+            break
         }
         return offset
     }
