@@ -66,6 +66,9 @@ final class ButtonDetailPanel: NSView {
     private let joystickLeftRecorder = KeyRecorderButton()
     private let joystickRightRecorder = KeyRecorderButton()
     private let joystickOperationModePopup = NSPopUpButton()
+    private let joystickAxisLockModePopup = NSPopUpButton()
+    private let joystickAxisLockHoldDurationField = NSTextField()
+    private let joystickAxisUnlockHoldDurationField = NSTextField()
     private let joystickUpClearButton = NSButton(title: "Clear", target: nil, action: nil)
     private let joystickDownClearButton = NSButton(title: "Clear", target: nil, action: nil)
     private let joystickLeftClearButton = NSButton(title: "Clear", target: nil, action: nil)
@@ -90,6 +93,9 @@ final class ButtonDetailPanel: NSView {
     private let joystickScrollDownMultiKeyPopup = NSPopUpButton()
     private var joystickSectionLabel: NSTextField?
     private var joystickOperationModeRow: NSStackView?
+    private var joystickAxisLockModeRow: NSStackView?
+    private var joystickAxisLockHoldDurationRow: NSStackView?
+    private var joystickAxisUnlockHoldDurationRow: NSStackView?
     private var joystickUpRow: NSStackView?
     private var joystickDownRow: NSStackView?
     private var joystickLeftRow: NSStackView?
@@ -174,6 +180,9 @@ final class ButtonDetailPanel: NSView {
         systemEventIconSizePopup.selectItem(withTag: SystemEventIconSize.large.tag)
         keyRecorder.setKeyBindings([ButtonKeyBinding(keyCode: 49, keyModifiers: 0)])
         joystickOperationModePopup.selectItem(withTag: JoystickOperationMode.capture.tag)
+        joystickAxisLockModePopup.selectItem(withTag: JoystickAxisLockMode.scrollWheel.tag)
+        joystickAxisLockHoldDurationField.stringValue = String(format: "%.1f", JoystickConfig.defaultAxisLockHoldDuration)
+        joystickAxisUnlockHoldDurationField.stringValue = String(format: "%.1f", JoystickConfig.defaultAxisUnlockHoldDuration)
         joystickUpRecorder.setKeyBindings([JoystickConfig.defaultBindings.up])
         joystickDownRecorder.setKeyBindings([JoystickConfig.defaultBindings.down])
         joystickLeftRecorder.setKeyBindings([JoystickConfig.defaultBindings.left])
@@ -241,6 +250,9 @@ final class ButtonDetailPanel: NSView {
         rightClickFallbackCheckbox.state = config.rightClickFallsBackToPrimary ? .on : .off
         rightClickModePopup.selectItem(withTag: config.rightClickInteractionMode?.tag ?? Self.sameAsLeftModeTag)
         joystickOperationModePopup.selectItem(withTag: config.joystick.operationMode.tag)
+        joystickAxisLockModePopup.selectItem(withTag: config.joystick.axisLockMode.tag)
+        joystickAxisLockHoldDurationField.stringValue = String(format: "%.1f", config.joystick.axisLockHoldDuration)
+        joystickAxisUnlockHoldDurationField.stringValue = String(format: "%.1f", config.joystick.axisUnlockHoldDuration)
         joystickUpRecorder.setKeyBindings([config.joystick.up])
         joystickDownRecorder.setKeyBindings([config.joystick.down])
         joystickLeftRecorder.setKeyBindings([config.joystick.left])
@@ -400,6 +412,9 @@ final class ButtonDetailPanel: NSView {
         joystickOperationModePopup.target = self
         joystickOperationModePopup.action = #selector(applyPressed)
         populateJoystickOperationModes()
+        joystickAxisLockModePopup.target = self
+        joystickAxisLockModePopup.action = #selector(applyPressed)
+        populateJoystickAxisLockModes()
         interactionModePopup.target = self
         interactionModePopup.action = #selector(applyPressed)
         populateInteractionModes()
@@ -429,6 +444,13 @@ final class ButtonDetailPanel: NSView {
         rightClickClearButton.bezelStyle = .rounded
         rightClickClearButton.target = self
         rightClickClearButton.action = #selector(clearRightClickKey)
+        [joystickAxisLockHoldDurationField, joystickAxisUnlockHoldDurationField].forEach { field in
+            field.bezelStyle = .roundedBezel
+            field.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+            field.widthAnchor.constraint(equalToConstant: 58).isActive = true
+            field.target = self
+            field.action = #selector(applyPressed)
+        }
 
         header.addArrangedSubview(titleLabel)
         header.addArrangedSubview(NSView())
@@ -497,6 +519,10 @@ final class ButtonDetailPanel: NSView {
         if let joystickOperationModeRow {
             contentStack.addArrangedSubview(joystickOperationModeRow)
         }
+        joystickAxisLockModeRow = makeRow(label: "Axis Lock:", control: joystickAxisLockModePopup)
+        joystickAxisLockHoldDurationRow = makeRow(label: "Lock Sec:", control: joystickAxisLockHoldDurationField)
+        joystickAxisUnlockHoldDurationRow = makeRow(label: "Unlock Sec:", control: joystickAxisUnlockHoldDurationField)
+        [joystickAxisLockModeRow, joystickAxisLockHoldDurationRow, joystickAxisUnlockHoldDurationRow].compactMap { $0 }.forEach(contentStack.addArrangedSubview)
         joystickUpRow = makeJoystickKeyRow(label: "Up:", recorder: joystickUpRecorder, clearButton: joystickUpClearButton)
         joystickDownRow = makeJoystickKeyRow(label: "Down:", recorder: joystickDownRecorder, clearButton: joystickDownClearButton)
         joystickLeftRow = makeJoystickKeyRow(label: "Left:", recorder: joystickLeftRecorder, clearButton: joystickLeftClearButton)
@@ -871,6 +897,17 @@ final class ButtonDetailPanel: NSView {
         joystickOperationModePopup.selectItem(withTag: JoystickOperationMode.capture.tag)
     }
 
+    private func populateJoystickAxisLockModes() {
+        joystickAxisLockModePopup.removeAllItems()
+
+        for mode in JoystickAxisLockMode.allCases {
+            joystickAxisLockModePopup.addItem(withTitle: mode.displayName)
+            joystickAxisLockModePopup.lastItem?.tag = mode.tag
+        }
+
+        joystickAxisLockModePopup.selectItem(withTag: JoystickAxisLockMode.scrollWheel.tag)
+    }
+
     private func populateSystemEvents() {
         systemEventPopup.removeAllItems()
 
@@ -1018,6 +1055,15 @@ final class ButtonDetailPanel: NSView {
             config.rightClickFallsBackToPrimary = false
             config.rightClickInteractionMode = nil
             config.joystick.operationMode = JoystickOperationMode(tag: joystickOperationModePopup.selectedTag()) ?? .capture
+            config.joystick.axisLockMode = JoystickAxisLockMode(tag: joystickAxisLockModePopup.selectedTag()) ?? .scrollWheel
+            config.joystick.axisLockHoldDuration = durationValue(
+                from: joystickAxisLockHoldDurationField.stringValue,
+                fallback: config.joystick.axisLockHoldDuration
+            )
+            config.joystick.axisUnlockHoldDuration = durationValue(
+                from: joystickAxisUnlockHoldDurationField.stringValue,
+                fallback: config.joystick.axisUnlockHoldDuration
+            )
             config.joystick.leftClickInput = joystickInput(
                 recorder: joystickLeftClickRecorder,
                 modePopup: joystickLeftClickModePopup,
@@ -1036,6 +1082,9 @@ final class ButtonDetailPanel: NSView {
             rightClickFallbackCheckbox.state = .off
             rightClickModePopup.selectItem(withTag: Self.sameAsLeftModeTag)
             shapePopup.selectItem(withTag: ButtonShape.oval.tag)
+            joystickAxisLockModePopup.selectItem(withTag: config.joystick.axisLockMode.tag)
+            joystickAxisLockHoldDurationField.stringValue = String(format: "%.1f", config.joystick.axisLockHoldDuration)
+            joystickAxisUnlockHoldDurationField.stringValue = String(format: "%.1f", config.joystick.axisUnlockHoldDuration)
         } else {
             config.action = .keyboard
             config.enabled = enabledCheckbox.state == .on
@@ -1360,7 +1409,8 @@ final class ButtonDetailPanel: NSView {
     ) {
         let isJoystick = config?.type == .joystick
         let operationMode = JoystickOperationMode(tag: joystickOperationModePopup.selectedTag()) ?? .capture
-        let showsCaptureInputs = isJoystick && operationMode == .capture
+        let axisLockMode = JoystickAxisLockMode(tag: joystickAxisLockModePopup.selectedTag()) ?? .scrollWheel
+        let showsCaptureInputs = isJoystick && operationMode == .capture && axisLockMode == .scrollWheel
         let isKeyCombo = JoystickScrollActionKind(tag: actionPopup.selectedTag()) == .keyCombo
         keyRow?.isHidden = !showsCaptureInputs || !isKeyCombo
         modeRow?.isHidden = !showsCaptureInputs || !isKeyCombo
@@ -1390,7 +1440,9 @@ final class ButtonDetailPanel: NSView {
         let isProtectedSwitch = config?.action.isProtectedSwitch == true
         let isJoystick = config?.type == .joystick
         let joystickOperationMode = JoystickOperationMode(tag: joystickOperationModePopup.selectedTag()) ?? .capture
-        let showsJoystickCaptureInputs = isJoystick && joystickOperationMode == .capture
+        let joystickAxisLockMode = JoystickAxisLockMode(tag: joystickAxisLockModePopup.selectedTag()) ?? .scrollWheel
+        let showsJoystickCaptureInputs = isJoystick && joystickOperationMode == .capture && joystickAxisLockMode == .scrollWheel
+        let showsHoldDirectionAxisLock = isJoystick && joystickAxisLockMode == .holdDirection
         let isSystemEvent = config?.type == .systemEvent
         let hidesKeyboardControls = isProtectedSwitch || isJoystick || isSystemEvent
 
@@ -1407,6 +1459,9 @@ final class ButtonDetailPanel: NSView {
         rightClickModeRow?.isHidden = hidesKeyboardControls
         joystickSectionLabel?.isHidden = !isJoystick || isProtectedSwitch
         joystickOperationModeRow?.isHidden = !isJoystick || isProtectedSwitch
+        joystickAxisLockModeRow?.isHidden = !isJoystick || isProtectedSwitch
+        joystickAxisLockHoldDurationRow?.isHidden = !showsHoldDirectionAxisLock || isProtectedSwitch
+        joystickAxisUnlockHoldDurationRow?.isHidden = !showsHoldDirectionAxisLock || isProtectedSwitch
         joystickUpRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickDownRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickLeftRow?.isHidden = !isJoystick || isProtectedSwitch
@@ -1444,6 +1499,14 @@ final class ButtonDetailPanel: NSView {
         }
 
         return parsedValue
+    }
+
+    private func durationValue(from stringValue: String, fallback: Double) -> Double {
+        guard let parsedValue = Double(stringValue), parsedValue.isFinite else {
+            return fallback
+        }
+
+        return max(0.1, parsedValue)
     }
 
     private func syncLabelSizeControls(to size: Double) {
@@ -1528,6 +1591,41 @@ private extension JoystickOperationMode {
             self = .capture
         case 1:
             self = .clickDrag
+        default:
+            return nil
+        }
+    }
+}
+
+private extension JoystickAxisLockMode {
+    static var allCases: [JoystickAxisLockMode] {
+        [.scrollWheel, .holdDirection]
+    }
+
+    var displayName: String {
+        switch self {
+        case .scrollWheel:
+            return "Scroll Wheel"
+        case .holdDirection:
+            return "Hold Direction"
+        }
+    }
+
+    var tag: Int {
+        switch self {
+        case .scrollWheel:
+            return 0
+        case .holdDirection:
+            return 1
+        }
+    }
+
+    init?(tag: Int) {
+        switch tag {
+        case 0:
+            self = .scrollWheel
+        case 1:
+            self = .holdDirection
         default:
             return nil
         }

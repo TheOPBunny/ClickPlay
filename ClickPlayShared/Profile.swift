@@ -25,6 +25,11 @@ enum JoystickOperationMode: String, Codable, Equatable {
     case clickDrag
 }
 
+enum JoystickAxisLockMode: String, Codable, Equatable {
+    case scrollWheel
+    case holdDirection
+}
+
 // MARK: - Sizing and Coordinates
 
 enum ButtonSizing {
@@ -116,7 +121,13 @@ struct JoystickScrollAction: Codable, Equatable {
 
 /// Four directional bindings plus optional click/scroll behavior for joystick-style controls.
 struct JoystickConfig: Codable, Equatable {
+    static let defaultAxisLockHoldDuration = 5.0
+    static let defaultAxisUnlockHoldDuration = 1.0
+
     var operationMode: JoystickOperationMode
+    var axisLockMode: JoystickAxisLockMode
+    var axisLockHoldDuration: Double
+    var axisUnlockHoldDuration: Double
     var up: ButtonKeyBinding
     var down: ButtonKeyBinding
     var left: ButtonKeyBinding
@@ -128,6 +139,9 @@ struct JoystickConfig: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case operationMode
+        case axisLockMode
+        case axisLockHoldDuration
+        case axisUnlockHoldDuration
         case up
         case down
         case left
@@ -140,6 +154,9 @@ struct JoystickConfig: Codable, Equatable {
 
     static let defaultBindings = JoystickConfig(
         operationMode: .capture,
+        axisLockMode: .scrollWheel,
+        axisLockHoldDuration: defaultAxisLockHoldDuration,
+        axisUnlockHoldDuration: defaultAxisUnlockHoldDuration,
         up: ButtonKeyBinding(keyCode: 13, keyModifiers: 0),
         down: ButtonKeyBinding(keyCode: 1, keyModifiers: 0),
         left: ButtonKeyBinding(keyCode: 0, keyModifiers: 0),
@@ -152,6 +169,9 @@ struct JoystickConfig: Codable, Equatable {
 
     init(
         operationMode: JoystickOperationMode = .capture,
+        axisLockMode: JoystickAxisLockMode = .scrollWheel,
+        axisLockHoldDuration: Double = JoystickConfig.defaultAxisLockHoldDuration,
+        axisUnlockHoldDuration: Double = JoystickConfig.defaultAxisUnlockHoldDuration,
         up: ButtonKeyBinding,
         down: ButtonKeyBinding,
         left: ButtonKeyBinding,
@@ -162,6 +182,9 @@ struct JoystickConfig: Codable, Equatable {
         scrollDownAction: JoystickScrollAction = .off
     ) {
         self.operationMode = operationMode
+        self.axisLockMode = axisLockMode
+        self.axisLockHoldDuration = axisLockHoldDuration
+        self.axisUnlockHoldDuration = axisUnlockHoldDuration
         self.up = up
         self.down = down
         self.left = left
@@ -175,6 +198,9 @@ struct JoystickConfig: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         operationMode = try container.decodeIfPresent(JoystickOperationMode.self, forKey: .operationMode) ?? .capture
+        axisLockMode = try container.decodeIfPresent(JoystickAxisLockMode.self, forKey: .axisLockMode) ?? .scrollWheel
+        axisLockHoldDuration = try container.decodeIfPresent(Double.self, forKey: .axisLockHoldDuration) ?? Self.defaultAxisLockHoldDuration
+        axisUnlockHoldDuration = try container.decodeIfPresent(Double.self, forKey: .axisUnlockHoldDuration) ?? Self.defaultAxisUnlockHoldDuration
         up = try container.decode(ButtonKeyBinding.self, forKey: .up)
         down = try container.decode(ButtonKeyBinding.self, forKey: .down)
         left = try container.decode(ButtonKeyBinding.self, forKey: .left)

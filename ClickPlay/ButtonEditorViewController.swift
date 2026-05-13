@@ -828,6 +828,9 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         let origin = nearestEmptySpawnOrigin(for: CGSize(width: width, height: height))
         var joystick = JoystickConfig.defaultBindings
         joystick.operationMode = .clickDrag
+        joystick.axisLockMode = .holdDirection
+        joystick.axisLockHoldDuration = JoystickConfig.defaultAxisLockHoldDuration
+        joystick.axisUnlockHoldDuration = JoystickConfig.defaultAxisUnlockHoldDuration
 
         return ButtonConfig(
             type: .joystick,
