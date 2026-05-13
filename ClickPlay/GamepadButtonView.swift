@@ -833,6 +833,9 @@ final class GamepadButtonView: NSView {
             lastJoystickAxisLockMovementTime = nil
         }
         cancelJoystickAxisLockTimer()
+        if !clearLock, lockedJoystickDirection != nil {
+            updateActiveJoystickDirection()
+        }
         updateAppearance(animated: true)
         debugLog("[Button \(button.rawValue)] joystickDragEnded")
     }
