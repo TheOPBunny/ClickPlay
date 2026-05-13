@@ -20,6 +20,11 @@ enum ButtonType: String, Codable {
     case systemEvent
 }
 
+enum JoystickOperationMode: String, Codable, Equatable {
+    case capture
+    case clickDrag
+}
+
 // MARK: - Sizing and Coordinates
 
 enum ButtonSizing {
@@ -111,59 +116,71 @@ struct JoystickScrollAction: Codable, Equatable {
 
 /// Four directional bindings plus optional click/scroll behavior for joystick-style controls.
 struct JoystickConfig: Codable, Equatable {
+    var operationMode: JoystickOperationMode
     var up: ButtonKeyBinding
     var down: ButtonKeyBinding
     var left: ButtonKeyBinding
     var right: ButtonKeyBinding
     var leftClickInput: JoystickInputConfig
+    var rightClickInput: JoystickInputConfig
     var scrollUpAction: JoystickScrollAction
     var scrollDownAction: JoystickScrollAction
 
     private enum CodingKeys: String, CodingKey {
+        case operationMode
         case up
         case down
         case left
         case right
         case leftClickInput
+        case rightClickInput
         case scrollUpAction
         case scrollDownAction
     }
 
     static let defaultBindings = JoystickConfig(
+        operationMode: .capture,
         up: ButtonKeyBinding(keyCode: 13, keyModifiers: 0),
         down: ButtonKeyBinding(keyCode: 1, keyModifiers: 0),
         left: ButtonKeyBinding(keyCode: 0, keyModifiers: 0),
         right: ButtonKeyBinding(keyCode: 2, keyModifiers: 0),
         leftClickInput: .empty,
+        rightClickInput: .empty,
         scrollUpAction: .off,
         scrollDownAction: .off
     )
 
     init(
+        operationMode: JoystickOperationMode = .capture,
         up: ButtonKeyBinding,
         down: ButtonKeyBinding,
         left: ButtonKeyBinding,
         right: ButtonKeyBinding,
         leftClickInput: JoystickInputConfig = .empty,
+        rightClickInput: JoystickInputConfig = .empty,
         scrollUpAction: JoystickScrollAction = .off,
         scrollDownAction: JoystickScrollAction = .off
     ) {
+        self.operationMode = operationMode
         self.up = up
         self.down = down
         self.left = left
         self.right = right
         self.leftClickInput = leftClickInput
+        self.rightClickInput = rightClickInput
         self.scrollUpAction = scrollUpAction
         self.scrollDownAction = scrollDownAction
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        operationMode = try container.decodeIfPresent(JoystickOperationMode.self, forKey: .operationMode) ?? .capture
         up = try container.decode(ButtonKeyBinding.self, forKey: .up)
         down = try container.decode(ButtonKeyBinding.self, forKey: .down)
         left = try container.decode(ButtonKeyBinding.self, forKey: .left)
         right = try container.decode(ButtonKeyBinding.self, forKey: .right)
         leftClickInput = try container.decodeIfPresent(JoystickInputConfig.self, forKey: .leftClickInput) ?? .empty
+        rightClickInput = try container.decodeIfPresent(JoystickInputConfig.self, forKey: .rightClickInput) ?? .empty
         scrollUpAction = try container.decodeIfPresent(JoystickScrollAction.self, forKey: .scrollUpAction) ?? .off
         scrollDownAction = try container.decodeIfPresent(JoystickScrollAction.self, forKey: .scrollDownAction) ?? .off
     }

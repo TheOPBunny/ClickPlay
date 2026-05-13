@@ -826,6 +826,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         let width = 50.0
         let height = 50.0
         let origin = nearestEmptySpawnOrigin(for: CGSize(width: width, height: height))
+        var joystick = JoystickConfig.defaultBindings
+        joystick.operationMode = .clickDrag
 
         return ButtonConfig(
             type: .joystick,
@@ -845,7 +847,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             rightClickKeyBindings: nil,
             rightClickFallsBackToPrimary: false,
             rightClickInteractionMode: nil,
-            joystick: .defaultBindings
+            joystick: joystick
         )
     }
 
