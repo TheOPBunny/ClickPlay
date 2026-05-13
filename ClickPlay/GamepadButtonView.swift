@@ -2271,6 +2271,10 @@ final class GamepadButtonView: NSView {
     private var joystickVisualOffset: CGPoint {
         let travelLimits = joystickVisualTravelLimits
         var offset = clampedJoystickOffset(joystickOffset, travelLimits: travelLimits)
+        guard !isJoystickCaptured else {
+            return offset
+        }
+
         guard let lockedJoystickDirection else {
             return offset
         }
