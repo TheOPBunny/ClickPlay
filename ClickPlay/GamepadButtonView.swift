@@ -252,7 +252,11 @@ final class GamepadButtonView: NSView {
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        containsInteractivePoint(point) ? self : nil
+        if isJoystick {
+            return bounds.contains(point) ? self : nil
+        }
+
+        return containsInteractivePoint(point) ? self : nil
     }
 
     override func updateTrackingAreas() {
@@ -320,7 +324,7 @@ final class GamepadButtonView: NSView {
                 if isJoystickCaptured {
                     releaseJoystickCapture(warpCursorToCenter: true)
                 }
-            } else if containsInteractivePoint(convert(event.locationInWindow, from: nil)) {
+            } else if bounds.contains(convert(event.locationInWindow, from: nil)) {
                 debugLog("[Button \(button.rawValue)] joystickRightMouseDown")
                 debugLatencyLog("[Button \(button.rawValue)] joystickRightMouseDown", eventTimestamp: event.timestamp)
                 handlePressStarted(source: .joystickRightClick)
