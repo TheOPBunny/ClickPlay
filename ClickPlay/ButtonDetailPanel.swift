@@ -1461,7 +1461,7 @@ final class ButtonDetailPanel: NSView {
         joystickOperationModeRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickAxisLockModeRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickAxisLockHoldDurationRow?.isHidden = !showsHoldDirectionAxisLock || isProtectedSwitch
-        joystickAxisUnlockHoldDurationRow?.isHidden = !showsHoldDirectionAxisLock || isProtectedSwitch
+        joystickAxisUnlockHoldDurationRow?.isHidden = true
         joystickUpRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickDownRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickLeftRow?.isHidden = !isJoystick || isProtectedSwitch
