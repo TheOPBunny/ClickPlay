@@ -305,14 +305,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
 
     private func makeTemplateCreationMenu(kind: ProfileTemplateKind) -> NSMenu {
         let menu = NSMenu(title: kind == .profile ? "Add Profile from Template" : "Add Layer from Template")
-        let defaultSelector = kind == .profile
-            ? #selector(addDefaultTemplateProfile(_:))
-            : #selector(addDefaultTemplateLayer(_:))
-        let defaultItem = NSMenuItem(title: "Default Template", action: defaultSelector, keyEquivalent: "")
-        defaultItem.target = self
-        menu.addItem(defaultItem)
-
-        menu.addItem(NSMenuItem.separator())
         let templates = ProfileTemplateStore.shared.templates(kind: kind)
         guard !templates.isEmpty else {
             let emptyItem = NSMenuItem(title: "No Saved Templates", action: nil, keyEquivalent: "")

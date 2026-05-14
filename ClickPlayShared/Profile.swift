@@ -861,10 +861,40 @@ struct Profile: Codable, Identifiable {
         makeStarterTemplate(name: name)
     }
 
-    // Starter template matching the original hardcoded layout.
+    // Starter template for fresh installs and built-in profile creation.
     static func makeStarterTemplate(name: String = "Default") -> Profile {
-        let W: Double = 420
-        let H: Double = 300
+        var profile = Profile(
+            id: UUID(),
+            name: name,
+            opacity: 0.90,
+            backgroundColorHex: Self.defaultBackgroundColorHex,
+            backgroundFrostedGlassIntensity: Self.defaultBackgroundFrostedGlassIntensity,
+            compatibilityMode: false,
+            editorCoordinateMode: .centered,
+            padWidth: 420,
+            padHeight: 300,
+            displayPadWidth: 462,
+            displayPadHeight: 255,
+            buttons: [:],
+            subProfiles: [
+                makeDefaultGamepadLayer(),
+                makeDefaultKeyboardLayer(),
+            ]
+        )
+        profile.activeSubProfileID = profile.subProfiles.first { $0.name == "Keyboard" }?.id
+        return profile
+    }
+
+    static func makeDefaultLayerTemplates() -> [Profile] {
+        [
+            makeDefaultGamepadLayer(),
+            makeDefaultKeyboardLayer(),
+        ]
+    }
+
+    private static func makeDefaultGamepadLayer() -> Profile {
+        let W = 480.4
+        let H = 274.0
 
         func cx(_ abs: Double) -> Double { abs / W }
         func cy(_ abs: Double) -> Double { abs / H }
@@ -873,8 +903,16 @@ struct Profile: Codable, Identifiable {
 
         var btns: [String: ButtonConfig] = [:]
 
-        func add(label: String, x: Double, y: Double,
-                 w: Double, h: Double, hex: String, key: Int) {
+        func add(
+            key: Int,
+            x: Double,
+            y: Double,
+            w: Double = 40,
+            h: Double = 40,
+            hex: String = "#3D3D3D",
+            shape: ButtonShape = .square,
+            label: String = ""
+        ) {
             btns[GamepadButton.generated().rawValue] = ButtonConfig(
                 x: cx(x), y: cy(y),
                 width: bw(w), height: bh(h),
@@ -884,39 +922,68 @@ struct Profile: Codable, Identifiable {
                 keyCode: key,
                 keyModifiers: 0,
                 label: label,
+                labelFontSize: 11,
+                shape: shape,
                 enabled: true
             )
         }
 
-        // Shoulders / triggers
-        add(label: "ZL", x: 38,    y: H - 24,  w: 52, h: 32, hex: "#8844DD", key: 14)  // E
-        add(label: "L",  x: 38,    y: H - 60,  w: 52, h: 32, hex: "#8844DD", key: 12)  // Q
-        add(label: "ZR", x: W - 38, y: H - 24, w: 52, h: 32, hex: "#8844DD", key: 15)  // R
-        add(label: "R",  x: W - 38, y: H - 60, w: 52, h: 32, hex: "#8844DD", key: 13)  // W
+        func addJoystick(x: Double, y: Double, up: Int, down: Int, left: Int, right: Int) {
+            var joystick = JoystickConfig.defaultBindings
+            joystick.operationMode = .clickDrag
+            joystick.axisLockMode = .holdDirection
+            joystick.up = ButtonKeyBinding(keyCode: up, keyModifiers: 0)
+            joystick.down = ButtonKeyBinding(keyCode: down, keyModifiers: 0)
+            joystick.left = ButtonKeyBinding(keyCode: left, keyModifiers: 0)
+            joystick.right = ButtonKeyBinding(keyCode: right, keyModifiers: 0)
+            btns[GamepadButton.generated().rawValue] = ButtonConfig(
+                type: .joystick,
+                x: cx(x), y: cy(y),
+                width: bw(40), height: bh(40),
+                editorWidth: 40,
+                editorHeight: 40,
+                colorHex: "#000000",
+                keyCode: 13,
+                label: "Joystick",
+                labelFontSize: 11,
+                shape: .oval,
+                enabled: true,
+                rightClickFallsBackToPrimary: false,
+                joystick: joystick
+            )
+        }
 
-        // D-pad
-        add(label: "D↑", x: 82,  y: H - 111, w: 40, h: 40, hex: "#666666", key: 126)
-        add(label: "D↓", x: 82,  y: H - 199, w: 40, h: 40, hex: "#666666", key: 125)
-        add(label: "D←", x: 38,  y: H - 155, w: 40, h: 40, hex: "#666666", key: 123)
-        add(label: "D→", x: 126, y: H - 155, w: 40, h: 40, hex: "#666666", key: 124)
-
-        // Start / Select
-        add(label: "SELECT", x: W / 2 - 36, y: H - 91, w: 52, h: 28, hex: "#333333", key: 49)  // Space
-        add(label: "START",  x: W / 2 + 36, y: H - 91, w: 52, h: 28, hex: "#333333", key: 36)  // Return
-
-        // Face buttons
-        add(label: "Y", x: W - 82,  y: H - 111, w: 44, h: 44, hex: "#CCAA00", key: 1)   // S
-        add(label: "A", x: W - 82,  y: H - 199, w: 44, h: 44, hex: "#229933", key: 6)   // Z
-        add(label: "X", x: W - 126, y: H - 155, w: 44, h: 44, hex: "#2255CC", key: 0)   // A
-        add(label: "B", x: W - 38,  y: H - 155, w: 44, h: 44, hex: "#CC2222", key: 7)   // X
-
-        // Stick clicks
-        add(label: "LS", x: 82,     y: H - 240, w: 40, h: 40, hex: "#2a2a2a", key: 8)   // C
-        add(label: "RS", x: W - 82, y: H - 240, w: 40, h: 40, hex: "#2a2a2a", key: 9)  // V
+        add(key: 6, x: 20, y: 20)
+        add(key: 9, x: 148, y: 20)
+        add(key: 8, x: 105.3, y: 20)
+        add(key: 7, x: 62.7, y: 20)
+        add(key: 125, x: 375.2, y: 20)
+        add(key: 126, x: 332.4, y: 20)
+        add(key: 123, x: 417.7, y: 20)
+        add(key: 124, x: 460.4, y: 20)
+        addJoystick(x: 84, y: 93, up: 13, down: 1, left: 0, right: 2)
+        addJoystick(x: 398, y: 93, up: 34, down: 38, left: 40, right: 37)
+        add(key: 0, x: 40, y: 144)
+        add(key: 1, x: 84, y: 142)
+        add(key: 2, x: 128, y: 142)
+        add(key: 38, x: 354, y: 144)
+        add(key: 40, x: 398, y: 144)
+        add(key: 37, x: 442, y: 144)
+        add(key: 27, x: 218.7, y: 105, w: 40, h: 20, shape: .roundedRectangle)
+        add(key: 24, x: 260.7, y: 105, w: 40, h: 20, shape: .roundedRectangle)
+        add(key: 36, x: 240.7, y: 135, w: 40, h: 20, shape: .roundedRectangle)
+        add(key: 53, x: 219.7, y: 169, w: 40, h: 20, shape: .roundedRectangle)
+        add(key: 49, x: 261.7, y: 169, w: 40, h: 20, shape: .roundedRectangle)
+        add(key: 13, x: 84, y: 186)
+        add(key: 34, x: 398, y: 188)
+        add(key: 12, x: 48.4, y: 256, w: 65.4, h: 24, shape: .roundedRectangle)
+        add(key: 14, x: 117, y: 256, w: 65.4, h: 24, shape: .roundedRectangle)
+        add(key: 32, x: 365.2, y: 256, w: 62.4, h: 24, shape: .roundedRectangle)
+        add(key: 31, x: 430.8, y: 256, w: 62.4, h: 24, shape: .roundedRectangle)
 
         return Profile(
             id: UUID(),
-            name: name,
+            name: "Gamepad",
             opacity: 0.90,
             backgroundColorHex: Self.defaultBackgroundColorHex,
             backgroundFrostedGlassIntensity: Self.defaultBackgroundFrostedGlassIntensity,
@@ -924,8 +991,91 @@ struct Profile: Codable, Identifiable {
             editorCoordinateMode: .centered,
             padWidth: W,
             padHeight: H,
-            displayPadWidth: W,
-            displayPadHeight: H,
+            displayPadWidth: 462,
+            displayPadHeight: 255,
+            buttons: btns
+        )
+    }
+
+    private static func makeDefaultKeyboardLayer() -> Profile {
+        let W = 600.0
+        let H = 331.0
+        let keyHeight = 40.0
+        let gap = 1.0
+        let keyColor = "#212121"
+
+        func cx(_ abs: Double) -> Double { abs / W }
+        func cy(_ abs: Double) -> Double { abs / H }
+        func bw(_ abs: Double) -> Double { abs / W }
+        func bh(_ abs: Double) -> Double { abs / H }
+
+        var btns: [String: ButtonConfig] = [:]
+
+        func add(key: Int, x: Double, y: Double, w: Double, h: Double = keyHeight) {
+            btns[GamepadButton.generated().rawValue] = ButtonConfig(
+                x: cx(x), y: cy(y),
+                width: bw(w), height: bh(h),
+                editorWidth: w,
+                editorHeight: h,
+                colorHex: keyColor,
+                keyCode: key,
+                label: "",
+                labelFontSize: 11,
+                shape: .square,
+                enabled: true
+            )
+        }
+
+        func addRow(y: Double, items: [(key: Int, width: Double)]) {
+            let rowWidth = items.reduce(0) { $0 + $1.width } + gap * Double(max(0, items.count - 1))
+            var x = (W - rowWidth) / 2
+            for item in items {
+                add(key: item.key, x: x + item.width / 2, y: y, w: item.width)
+                x += item.width + gap
+            }
+        }
+
+        addRow(y: 20, items: [
+            (63, 40), (59, 40), (58, 40), (55, 50), (49, 209),
+            (55, 50), (61, 40), (123, 40), (125, 20), (126, 20), (124, 40),
+        ])
+        addRow(y: 61, items: [
+            (56, 87), (6, 40), (7, 40), (8, 40), (9, 40), (11, 40),
+            (45, 40), (46, 40), (43, 40), (47, 40), (44, 40), (60, 101),
+        ])
+        addRow(y: 102, items: [
+            (57, 68), (0, 40), (1, 40), (2, 40), (3, 40), (5, 40),
+            (4, 40), (38, 40), (40, 40), (37, 40), (41, 40), (39, 40), (36, 80),
+        ])
+        addRow(y: 143, items: [
+            (48, 62), (12, 40), (13, 40), (14, 40), (15, 40), (17, 40),
+            (16, 40), (32, 40), (34, 40), (31, 40), (35, 40), (33, 40), (30, 40), (42, 45),
+        ])
+        addRow(y: 184, items: [
+            (50, 40), (18, 40), (19, 40), (20, 40), (21, 40), (23, 40), (22, 40),
+            (26, 40), (28, 40), (25, 40), (29, 40), (27, 40), (24, 40), (51, 67),
+        ])
+        addRow(y: 224, items: [
+            (53, 40), (122, 40), (120, 40), (99, 40), (118, 40), (96, 40), (97, 40),
+            (98, 40), (100, 40), (101, 40), (109, 40), (103, 40), (111, 40),
+        ])
+        addRow(y: 270, items: [
+            (53, 40), (49, 40), (49, 40), (49, 40), (49, 40), (49, 40), (49, 40),
+            (49, 40), (49, 40), (49, 40), (49, 40), (49, 40), (49, 40), (49, 40),
+        ])
+
+        return Profile(
+            id: UUID(),
+            name: "Keyboard",
+            opacity: 0.90,
+            backgroundColorHex: Self.defaultBackgroundColorHex,
+            backgroundFrostedGlassIntensity: Self.defaultBackgroundFrostedGlassIntensity,
+            compatibilityMode: false,
+            editorCoordinateMode: .centered,
+            padWidth: W,
+            padHeight: H,
+            displayPadWidth: 600,
+            displayPadHeight: 325,
             buttons: btns
         )
     }

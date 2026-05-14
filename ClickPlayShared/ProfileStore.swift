@@ -51,6 +51,9 @@ final class ProfileTemplateStore {
 
     static let shared = ProfileTemplateStore()
     static let templatesDidChange = Notification.Name("templatesDidChange")
+    private static let defaultProfileTemplateID = UUID(uuidString: "4C8E916B-6C57-4F1B-8B77-2593598E02B3")!
+    private static let gamepadLayerTemplateID = UUID(uuidString: "4C5B2AF7-8D11-4C64-9E19-A36F1F9E8F61")!
+    private static let keyboardLayerTemplateID = UUID(uuidString: "76740C26-1DD9-4C10-A4C5-2E26B908A4E8")!
 
     private(set) var templates: [ProfileTemplate] = []
 
@@ -65,7 +68,7 @@ final class ProfileTemplateStore {
     // MARK: - Template CRUD
 
     func templates(kind: ProfileTemplateKind) -> [ProfileTemplate] {
-        templates.filter { $0.kind == kind }
+        allTemplates.filter { $0.kind == kind }
     }
 
     @discardableResult
@@ -82,12 +85,14 @@ final class ProfileTemplateStore {
     }
 
     func renameTemplate(id: UUID, to name: String) {
+        guard !isBuiltInTemplateID(id) else { return }
         guard let index = templates.firstIndex(where: { $0.id == id }) else { return }
         templates[index].name = normalizedName(name, fallback: templates[index].name)
         save()
     }
 
     func deleteTemplate(id: UUID) {
+        guard !isBuiltInTemplateID(id) else { return }
         let previousCount = templates.count
         templates.removeAll { $0.id == id }
         guard templates.count != previousCount else { return }
@@ -95,14 +100,14 @@ final class ProfileTemplateStore {
     }
 
     func makeProfile(fromTemplateID id: UUID, name: String) -> Profile? {
-        guard let template = templates.first(where: { $0.id == id && $0.kind == .profile }) else { return nil }
+        guard let template = allTemplates.first(where: { $0.id == id && $0.kind == .profile }) else { return nil }
         var profile = template.profile.copyWithNewIDs(nameSuffix: "").asTopLevelContainer()
         profile.name = normalizedName(name, fallback: template.name)
         return profile.normalizedActiveSubProfileSelection()
     }
 
     func makeLayer(fromTemplateID id: UUID, name: String) -> Profile? {
-        guard let template = templates.first(where: { $0.id == id && $0.kind == .layer }) else { return nil }
+        guard let template = allTemplates.first(where: { $0.id == id && $0.kind == .layer }) else { return nil }
         var layer = template.profile.copyWithNewIDs(nameSuffix: "")
         layer.name = normalizedName(name, fallback: template.name)
         layer.subProfiles = []
@@ -111,8 +116,42 @@ final class ProfileTemplateStore {
     }
 
     func makeGroup(fromTemplateID id: UUID) -> Profile? {
-        guard let template = templates.first(where: { $0.id == id && $0.kind == .group }) else { return nil }
+        guard let template = allTemplates.first(where: { $0.id == id && $0.kind == .group }) else { return nil }
         return template.profile.copyWithFreshButtonIDs()
+    }
+
+    private var allTemplates: [ProfileTemplate] {
+        builtInTemplates + templates
+    }
+
+    private var builtInTemplates: [ProfileTemplate] {
+        let layers = Profile.makeDefaultLayerTemplates()
+        return [
+            ProfileTemplate(
+                id: Self.defaultProfileTemplateID,
+                name: "Default",
+                kind: .profile,
+                profile: Profile.makeDefault()
+            ),
+            ProfileTemplate(
+                id: Self.gamepadLayerTemplateID,
+                name: "Gamepad",
+                kind: .layer,
+                profile: layers.first { $0.name == "Gamepad" } ?? Profile.makeBlank(name: "Gamepad")
+            ),
+            ProfileTemplate(
+                id: Self.keyboardLayerTemplateID,
+                name: "Keyboard",
+                kind: .layer,
+                profile: layers.first { $0.name == "Keyboard" } ?? Profile.makeBlank(name: "Keyboard")
+            ),
+        ]
+    }
+
+    private func isBuiltInTemplateID(_ id: UUID) -> Bool {
+        id == Self.defaultProfileTemplateID
+            || id == Self.gamepadLayerTemplateID
+            || id == Self.keyboardLayerTemplateID
     }
 
     private func load() {
@@ -461,8 +500,11 @@ final class ProfileStore {
         guard let parentIndex = profiles.firstIndex(where: { $0.id == parentProfileID }) else { return nil }
         let nextIndex = profiles[parentIndex].subProfiles.count + 1
         var subProfile = fromTemplate
-            ? Profile.makeStarterTemplate(name: "Layer \(nextIndex)")
+            ? (Profile.makeDefaultLayerTemplates().first?.copyWithNewIDs(nameSuffix: "") ?? Profile.makeBlank())
             : Profile.makeBlank(name: "Layer \(nextIndex)")
+        if fromTemplate {
+            subProfile.name = "Layer \(nextIndex)"
+        }
         subProfile.subProfiles = []
         subProfile.activeSubProfileID = nil
         profiles[parentIndex].subProfiles.append(subProfile)
