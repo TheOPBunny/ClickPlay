@@ -217,7 +217,7 @@ private struct LoopingVideoView: NSViewRepresentable {
     }
 
     private func configure(_ view: PlayerContainerView, coordinator: Coordinator) {
-        guard let url = Bundle.main.url(forResource: resourceName, withExtension: "mp4") else {
+        guard let url = Self.materializedVideoURL(named: resourceName) else {
             view.showMissingVideo()
             return
         }
@@ -225,6 +225,33 @@ private struct LoopingVideoView: NSViewRepresentable {
         coordinator.configure(url: url)
         view.player = coordinator.player
         coordinator.play()
+    }
+
+    private static func materializedVideoURL(named name: String) -> URL? {
+        guard let asset = NSDataAsset(name: name) else { return nil }
+
+        let cacheDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ClickPlayMedia", isDirectory: true)
+        let url = cacheDirectory.appendingPathComponent("\(name).mp4")
+
+        do {
+            try FileManager.default.createDirectory(
+                at: cacheDirectory,
+                withIntermediateDirectories: true
+            )
+
+            if let existingSize = try? FileManager.default
+                .attributesOfItem(atPath: url.path)[.size] as? NSNumber,
+               existingSize.intValue == asset.data.count {
+                return url
+            }
+
+            try asset.data.write(to: url, options: .atomic)
+            return url
+        } catch {
+            errorLog("ERROR: Could not prepare onboarding video \(name): \(error)")
+            return nil
+        }
     }
 
     final class Coordinator {
