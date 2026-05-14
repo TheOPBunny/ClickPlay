@@ -2197,48 +2197,67 @@ final class GamepadButtonView: NSView {
         joystickLockIndicatorLayer.contentsScale = window?.backingScaleFactor ?? shapeLayer.contentsScale
 
         let localBounds = CGRect(origin: .zero, size: CGSize(width: frameSize, height: frameSize))
-        let ringInset = frameSize * 0.08
-        let ringLineWidth = max(3, frameSize * 0.12)
+        let scale = frameSize / 1024
+        var svgTransform = CGAffineTransform(scaleX: scale, y: scale)
+        let ringLineWidth = max(3, 65 * scale)
         joystickLockIndicatorRingLayer.frame = localBounds
         joystickLockIndicatorRingLayer.path = CGPath(
-            ellipseIn: localBounds.insetBy(dx: ringInset, dy: ringInset),
-            transform: nil
+            ellipseIn: CGRect(x: 87, y: 87, width: 850, height: 850),
+            transform: &svgTransform
         )
         joystickLockIndicatorRingLayer.fillColor = NSColor.black.withAlphaComponent(0.72).cgColor
         joystickLockIndicatorRingLayer.strokeColor = NSColor.white.cgColor
         joystickLockIndicatorRingLayer.lineWidth = ringLineWidth
 
-        let lockBody = CGRect(
-            x: frameSize * 0.34,
-            y: frameSize * 0.41,
-            width: frameSize * 0.32,
-            height: frameSize * 0.28
-        )
+        var bodyTransform = CGAffineTransform(scaleX: scale, y: scale)
+        let lockBody = CGRect(x: 332, y: 462, width: 359.538452, height: 342)
         joystickLockIndicatorBodyLayer.frame = localBounds
         joystickLockIndicatorBodyLayer.path = CGPath(
             roundedRect: lockBody,
-            cornerWidth: frameSize * 0.055,
-            cornerHeight: frameSize * 0.055,
-            transform: nil
+            cornerWidth: 40,
+            cornerHeight: 40,
+            transform: &bodyTransform
         )
         joystickLockIndicatorBodyLayer.fillColor = NSColor.white.cgColor
         joystickLockIndicatorBodyLayer.strokeColor = nil
         joystickLockIndicatorBodyLayer.lineWidth = 0
 
+        let shackleTransform = CGAffineTransform(scaleX: scale, y: scale)
         let shacklePath = CGMutablePath()
-        shacklePath.move(to: CGPoint(x: frameSize * 0.40, y: frameSize * 0.45))
-        shacklePath.addLine(to: CGPoint(x: frameSize * 0.40, y: frameSize * 0.34))
+        shacklePath.move(to: CGPoint(x: 387, y: 540), transform: shackleTransform)
         shacklePath.addCurve(
-            to: CGPoint(x: frameSize * 0.60, y: frameSize * 0.34),
-            control1: CGPoint(x: frameSize * 0.40, y: frameSize * 0.20),
-            control2: CGPoint(x: frameSize * 0.60, y: frameSize * 0.20)
+            to: CGPoint(x: 496, y: 649),
+            control1: CGPoint(x: 387, y: 600.199036),
+            control2: CGPoint(x: 435.800964, y: 649),
+            transform: shackleTransform
         )
-        shacklePath.addLine(to: CGPoint(x: frameSize * 0.60, y: frameSize * 0.45))
+        shacklePath.addLine(to: CGPoint(x: 528, y: 649), transform: shackleTransform)
+        shacklePath.addCurve(
+            to: CGPoint(x: 637, y: 540),
+            control1: CGPoint(x: 588.199036, y: 649),
+            control2: CGPoint(x: 637, y: 600.199036),
+            transform: shackleTransform
+        )
+        shacklePath.addLine(to: CGPoint(x: 637, y: 329.100952), transform: shackleTransform)
+        shacklePath.addCurve(
+            to: CGPoint(x: 528, y: 220.100952),
+            control1: CGPoint(x: 637, y: 268.901855),
+            control2: CGPoint(x: 588.199036, y: 220.100952),
+            transform: shackleTransform
+        )
+        shacklePath.addLine(to: CGPoint(x: 496, y: 220.100952), transform: shackleTransform)
+        shacklePath.addCurve(
+            to: CGPoint(x: 387, y: 329.100952),
+            control1: CGPoint(x: 435.800964, y: 220.100952),
+            control2: CGPoint(x: 387, y: 268.901855),
+            transform: shackleTransform
+        )
+        shacklePath.closeSubpath()
         joystickLockIndicatorShackleLayer.frame = localBounds
         joystickLockIndicatorShackleLayer.path = shacklePath
         joystickLockIndicatorShackleLayer.fillColor = nil
         joystickLockIndicatorShackleLayer.strokeColor = NSColor.white.cgColor
-        joystickLockIndicatorShackleLayer.lineWidth = max(3, frameSize * 0.09)
+        joystickLockIndicatorShackleLayer.lineWidth = max(3, 40 * scale)
         joystickLockIndicatorShackleLayer.lineCap = .round
         joystickLockIndicatorShackleLayer.lineJoin = .round
     }
