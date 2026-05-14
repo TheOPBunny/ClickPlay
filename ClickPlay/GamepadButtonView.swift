@@ -155,6 +155,8 @@ final class GamepadButtonView: NSView {
     private var pendingJoystickParkingPoint: CGPoint?
     private var pendingJoystickParkingSuppressionDeadline: TimeInterval = 0
     private var isJoystickCursorHidden = false
+    private var isJoystickCaptureReleasePending = false
+    private var pendingJoystickCaptureReleaseShouldWarp = false
     private var lastJoystickScrollActivation: (direction: JoystickScrollDirection, time: TimeInterval)?
     private var joystickAxisLockWorkItem: DispatchWorkItem?
     private var pendingJoystickAxisLockDirection: JoystickDirection?
@@ -650,6 +652,8 @@ final class GamepadButtonView: NSView {
         requiresJoystickAxisLockNeutralBeforeLock = false
         lastJoystickAxisLockMovementTime = nil
         lastJoystickScrollActivation = nil
+        isJoystickCaptureReleasePending = false
+        pendingJoystickCaptureReleaseShouldWarp = false
         cancelJoystickAxisLockTimer()
         joystickIdleReturnGeneration &+= 1
         lastJoystickMovementTime = ProcessInfo.processInfo.systemUptime
@@ -703,11 +707,14 @@ final class GamepadButtonView: NSView {
         joystickParkingWorkItem?.cancel()
         joystickParkingWorkItem = nil
         clearPendingJoystickParkingSuppression()
+        isJoystickCaptureReleasePending = false
+        pendingJoystickCaptureReleaseShouldWarp = false
         cancelJoystickAxisLockTimer()
     }
 
     private func releaseJoystickCapture(warpCursorToCenter: Bool) {
         guard isJoystickCaptured
+            || isJoystickCaptureReleasePending
             || activeJoystickDirection != nil
             || !activeJoystickBindings.isEmpty
             || lockedJoystickDirection != nil
@@ -719,6 +726,40 @@ final class GamepadButtonView: NSView {
             return
         }
 
+        releaseJoystickCaptureInputs()
+
+        if isJoystickCaptured {
+            finishJoystickCaptureRelease(warpCursorToCenter: warpCursorToCenter)
+        } else {
+            isJoystickCaptureReleasePending = false
+            pendingJoystickCaptureReleaseShouldWarp = false
+        }
+
+        updateAppearance(animated: true)
+    }
+
+    private func beginDeferredJoystickCaptureRelease(warpCursorToCenter: Bool) {
+        guard isJoystickCaptured else {
+            return
+        }
+
+        releaseJoystickCaptureInputs()
+        isJoystickCaptureReleasePending = true
+        pendingJoystickCaptureReleaseShouldWarp = pendingJoystickCaptureReleaseShouldWarp || warpCursorToCenter
+        updateAppearance(animated: true)
+        debugLog("[Button \(button.rawValue)] joystickCaptureReleasePending")
+    }
+
+    private func finishDeferredJoystickCaptureReleaseIfNeeded() {
+        guard isJoystickCaptureReleasePending else {
+            return
+        }
+
+        finishJoystickCaptureRelease(warpCursorToCenter: pendingJoystickCaptureReleaseShouldWarp)
+        updateAppearance(animated: true)
+    }
+
+    private func releaseJoystickCaptureInputs() {
         releaseActiveJoystickBindings()
         releaseState(joystickLeftClickState)
         releaseState(joystickRightClickState)
@@ -737,20 +778,27 @@ final class GamepadButtonView: NSView {
         joystickParkingWorkItem = nil
         clearPendingJoystickParkingSuppression()
         cancelJoystickAxisLockTimer()
+    }
 
-        if isJoystickCaptured {
-            isJoystickCaptured = false
-            removeJoystickEventMonitors()
-            CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
-            unhideJoystickCursorIfNeeded()
-            if warpCursorToCenter {
-                warpCursorToJoystickCenter()
-            }
-            onJoystickCaptureChanged?(false)
-            debugLog("[Button \(button.rawValue)] joystickCaptureEnded")
+    private func finishJoystickCaptureRelease(warpCursorToCenter: Bool) {
+        guard isJoystickCaptured else {
+            isJoystickCaptureReleasePending = false
+            pendingJoystickCaptureReleaseShouldWarp = false
+            return
         }
 
-        updateAppearance(animated: true)
+        isJoystickCaptured = false
+        isJoystickCaptureReleasePending = false
+        pendingJoystickCaptureReleaseShouldWarp = false
+        removeJoystickEventMonitors()
+        CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
+        unhideJoystickCursorIfNeeded()
+        if warpCursorToCenter {
+            warpCursorToJoystickCenter()
+        }
+        refreshMouseHoverAfterJoystickCaptureRelease()
+        onJoystickCaptureChanged?(false)
+        debugLog("[Button \(button.rawValue)] joystickCaptureEnded")
     }
 
     private func handleJoystickMouseDown(with event: NSEvent) {
@@ -1194,6 +1242,7 @@ final class GamepadButtonView: NSView {
             | eventMask(for: .leftMouseUp)
             | eventMask(for: .leftMouseDragged)
             | eventMask(for: .rightMouseDown)
+            | eventMask(for: .rightMouseUp)
             | eventMask(for: .rightMouseDragged)
             | eventMask(for: .scrollWheel)
     }
@@ -1226,8 +1275,18 @@ final class GamepadButtonView: NSView {
             scheduleJoystickCursorParking()
             return nil
 
+        case _ where isJoystickCaptureReleasePending:
+            if type == .rightMouseUp {
+                finishDeferredJoystickCaptureReleaseIfNeeded()
+            }
+            return nil
+
         case .rightMouseDown, .rightMouseDragged:
-            releaseJoystickCapture(warpCursorToCenter: true)
+            beginDeferredJoystickCaptureRelease(warpCursorToCenter: true)
+            return nil
+
+        case .rightMouseUp:
+            finishDeferredJoystickCaptureReleaseIfNeeded()
             return nil
 
         case .leftMouseDown:
@@ -1565,6 +1624,21 @@ final class GamepadButtonView: NSView {
         }
 
         CGWarpMouseCursorPosition(quartzPoint)
+    }
+
+    private func refreshMouseHoverAfterJoystickCaptureRelease() {
+        guard let source = CGEventSource(stateID: .hidSystemState),
+              let location = quartzPoint(for: CGPoint(x: bounds.midX, y: bounds.midY)),
+              let event = CGEvent(
+                mouseEventSource: source,
+                mouseType: .mouseMoved,
+                mouseCursorPosition: location,
+                mouseButton: .left
+              ) else {
+            return
+        }
+
+        event.post(tap: .cghidEventTap)
     }
 
     private func quartzPoint(for localPoint: CGPoint) -> CGPoint? {
