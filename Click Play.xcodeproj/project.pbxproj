@@ -14,15 +14,11 @@
 		108EF0E02F984826009EFAAA /* GamepadPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108EF0DF2F984826009EFAAA /* GamepadPreviewView.swift */; };
 		108EF0E22F9848B2009EFAAA /* ProfileListViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108EF0E12F9848B2009EFAAA /* ProfileListViewController.swift */; };
 		108EF0E42F984A0B009EFAAA /* ButtonEditorViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108EF0E32F984A0B009EFAAA /* ButtonEditorViewController.swift */; };
+		1092B7AB2FB66E6E00D0F4A9 /* Media.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1092B7AA2FB66E6E00D0F4A9 /* Media.xcassets */; };
 		10A1B0002F9D000000000001 /* SidebarToggleButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A1B0002F9D000000000000 /* SidebarToggleButton.swift */; };
 		10AE615B2FA816700071028C /* ClickPlay.icon in Resources */ = {isa = PBXBuildFile; fileRef = 10AE615A2FA816700071028C /* ClickPlay.icon */; };
-		10B000012FA9000000000001 /* Click-Play-nobg-black.svg in Resources */ = {isa = PBXBuildFile; fileRef = 10B000002FA9000000000001 /* Click-Play-nobg-black.svg */; };
-		10B000032FA9000000000001 /* Click-Play-nobg-white.svg in Resources */ = {isa = PBXBuildFile; fileRef = 10B000022FA9000000000001 /* Click-Play-nobg-white.svg */; };
-		10B000052FA9000000000001 /* Click-Play-menubar-template.png in Resources */ = {isa = PBXBuildFile; fileRef = 10B000042FA9000000000001 /* Click-Play-menubar-template.png */; };
 		10D000012FA9000000000001 /* DebugLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D000002FA9000000000001 /* DebugLog.swift */; };
 		10F100012FAF000000000001 /* FirstRunOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10F100002FAF000000000001 /* FirstRunOnboardingView.swift */; };
-		10F100032FAF000000000001 /* FirstRunIntro1.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 10F100022FAF000000000001 /* FirstRunIntro1.mp4 */; };
-		10F100052FAF000000000001 /* FirstRunIntro2.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 10F100042FAF000000000001 /* FirstRunIntro2.mp4 */; };
 		A000 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = B000 /* main.swift */; };
 		A001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B001 /* AppDelegate.swift */; };
 		A002 /* ../ClickPlayShared/KeyMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = B002 /* ../ClickPlayShared/KeyMapping.swift */; };
@@ -42,15 +38,11 @@
 		108EF0DF2F984826009EFAAA /* GamepadPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamepadPreviewView.swift; sourceTree = "<group>"; };
 		108EF0E12F9848B2009EFAAA /* ProfileListViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileListViewController.swift; sourceTree = "<group>"; };
 		108EF0E32F984A0B009EFAAA /* ButtonEditorViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ButtonEditorViewController.swift; sourceTree = "<group>"; };
+		1092B7AA2FB66E6E00D0F4A9 /* Media.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Media.xcassets; sourceTree = "<group>"; };
 		10A1B0002F9D000000000000 /* SidebarToggleButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarToggleButton.swift; sourceTree = "<group>"; };
 		10AE615A2FA816700071028C /* ClickPlay.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = ClickPlay.icon; sourceTree = "<group>"; };
-		10B000002FA9000000000001 /* Click-Play-nobg-black.svg */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = "Click-Play-nobg-black.svg"; sourceTree = "<group>"; };
-		10B000022FA9000000000001 /* Click-Play-nobg-white.svg */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = "Click-Play-nobg-white.svg"; sourceTree = "<group>"; };
-		10B000042FA9000000000001 /* Click-Play-menubar-template.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Click-Play-menubar-template.png"; sourceTree = "<group>"; };
 		10D000002FA9000000000001 /* DebugLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLog.swift; sourceTree = "<group>"; };
 		10F100002FAF000000000001 /* FirstRunOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRunOnboardingView.swift; sourceTree = "<group>"; };
-		10F100022FAF000000000001 /* FirstRunIntro1.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = FirstRunIntro1.mp4; sourceTree = "<group>"; };
-		10F100042FAF000000000001 /* FirstRunIntro2.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = FirstRunIntro2.mp4; sourceTree = "<group>"; };
 		B000 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		B001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		B002 /* ../ClickPlayShared/KeyMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../ClickPlayShared/KeyMapping.swift; sourceTree = "<group>"; };
@@ -101,11 +93,6 @@
 				108EF0E32F984A0B009EFAAA /* ButtonEditorViewController.swift */,
 				10A1B0002F9D000000000000 /* SidebarToggleButton.swift */,
 				10AE615A2FA816700071028C /* ClickPlay.icon */,
-				10B000002FA9000000000001 /* Click-Play-nobg-black.svg */,
-				10B000022FA9000000000001 /* Click-Play-nobg-white.svg */,
-				10B000042FA9000000000001 /* Click-Play-menubar-template.png */,
-				10F100022FAF000000000001 /* FirstRunIntro1.mp4 */,
-				10F100042FAF000000000001 /* FirstRunIntro2.mp4 */,
 			);
 			path = ClickPlay;
 			sourceTree = "<group>";
@@ -121,6 +108,7 @@
 		ROOT = {
 			isa = PBXGroup;
 			children = (
+				1092B7AA2FB66E6E00D0F4A9 /* Media.xcassets */,
 				GRP1 /* ClickPlay */,
 				GRP2 /* Products */,
 			);
@@ -154,7 +142,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1500;
-				LastUpgradeCheck = 2640;
+				LastUpgradeCheck = 2650;
 				TargetAttributes = {
 					TGT1 = {
 						CreatedOnToolsVersion = 15.0;
@@ -184,12 +172,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				10B000012FA9000000000001 /* Click-Play-nobg-black.svg in Resources */,
 				10AE615B2FA816700071028C /* ClickPlay.icon in Resources */,
-				10F100032FAF000000000001 /* FirstRunIntro1.mp4 in Resources */,
-				10B000032FA9000000000001 /* Click-Play-nobg-white.svg in Resources */,
-				10B000052FA9000000000001 /* Click-Play-menubar-template.png in Resources */,
-				10F100052FAF000000000001 /* FirstRunIntro2.mp4 in Resources */,
+				1092B7AB2FB66E6E00D0F4A9 /* Media.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

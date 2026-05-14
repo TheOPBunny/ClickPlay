@@ -180,8 +180,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         button.title = ""
         button.toolTip = "Click Play"
 
-        guard let iconURL = Bundle.main.url(forResource: "Click-Play-menubar-template", withExtension: "png"),
-              let icon = NSImage(contentsOf: iconURL) else {
+        guard let icon = NSImage(named: "Click-Play-menubar-template") else {
             errorLog("ERROR: Could not load Click Play menu bar icon")
             button.title = "CP"
             return
