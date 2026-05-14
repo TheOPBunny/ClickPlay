@@ -755,8 +755,15 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        finishJoystickCaptureRelease(warpCursorToCenter: pendingJoystickCaptureReleaseShouldWarp)
-        updateAppearance(animated: true)
+        let shouldWarpCursorToCenter = pendingJoystickCaptureReleaseShouldWarp
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isJoystickCaptureReleasePending else {
+                return
+            }
+
+            self.finishJoystickCaptureRelease(warpCursorToCenter: shouldWarpCursorToCenter)
+            self.updateAppearance(animated: true)
+        }
     }
 
     private func releaseJoystickCaptureInputs() {
@@ -791,12 +798,11 @@ final class GamepadButtonView: NSView {
         isJoystickCaptureReleasePending = false
         pendingJoystickCaptureReleaseShouldWarp = false
         removeJoystickEventMonitors()
-        CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
-        unhideJoystickCursorIfNeeded()
         if warpCursorToCenter {
             warpCursorToJoystickCenter()
         }
-        refreshMouseHoverAfterJoystickCaptureRelease()
+        reassociateMouseAndCursorAfterJoystickCaptureRelease()
+        unhideJoystickCursorIfNeeded()
         onJoystickCaptureChanged?(false)
         debugLog("[Button \(button.rawValue)] joystickCaptureEnded")
     }
@@ -1624,6 +1630,16 @@ final class GamepadButtonView: NSView {
         }
 
         CGWarpMouseCursorPosition(quartzPoint)
+    }
+
+    private func reassociateMouseAndCursorAfterJoystickCaptureRelease() {
+        CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
+        refreshMouseHoverAfterJoystickCaptureRelease()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { [weak self] in
+            CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
+            self?.refreshMouseHoverAfterJoystickCaptureRelease()
+        }
     }
 
     private func refreshMouseHoverAfterJoystickCaptureRelease() {
