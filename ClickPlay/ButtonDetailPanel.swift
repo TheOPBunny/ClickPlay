@@ -271,6 +271,7 @@ final class ButtonDetailPanel: NSView {
         )
         syncJoystickScrollControls(action: config.joystick.scrollUpAction, direction: .up)
         syncJoystickScrollControls(action: config.joystick.scrollDownAction, direction: .down)
+        updateJoystickScrollActionOptions(axisLockMode: config.joystick.axisLockMode)
         updateMultiKeyActivationModeVisibility()
         keyRecorder.setKeyBindings(config.keyBindings)
         updateControlVisibility()
@@ -945,15 +946,32 @@ final class ButtonDetailPanel: NSView {
         popup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
     }
 
-    private func populateJoystickScrollActions(_ popup: NSPopUpButton) {
+    private func populateJoystickScrollActions(_ popup: NSPopUpButton, includeAxisLock: Bool = true) {
         popup.removeAllItems()
 
-        for kind in JoystickScrollActionKind.allCases {
+        for kind in JoystickScrollActionKind.allCases(includeAxisLock: includeAxisLock) {
             popup.addItem(withTitle: kind.displayName)
             popup.lastItem?.tag = kind.tag
         }
 
         popup.selectItem(withTag: JoystickScrollActionKind.off.tag)
+    }
+
+    private func updateJoystickScrollActionOptions(axisLockMode: JoystickAxisLockMode) {
+        let includeAxisLock = axisLockMode == .scrollWheel
+        updateJoystickScrollActionOptions(joystickScrollUpActionPopup, includeAxisLock: includeAxisLock)
+        updateJoystickScrollActionOptions(joystickScrollDownActionPopup, includeAxisLock: includeAxisLock)
+    }
+
+    private func updateJoystickScrollActionOptions(_ popup: NSPopUpButton, includeAxisLock: Bool) {
+        let selectedKind = JoystickScrollActionKind(tag: popup.selectedTag()) ?? .off
+        populateJoystickScrollActions(popup, includeAxisLock: includeAxisLock)
+
+        if includeAxisLock || selectedKind != .axisLock {
+            popup.selectItem(withTag: selectedKind.tag)
+        } else {
+            popup.selectItem(withTag: JoystickScrollActionKind.off.tag)
+        }
     }
 
     private func populateRightClickModes() {
@@ -1055,7 +1073,9 @@ final class ButtonDetailPanel: NSView {
             config.rightClickFallsBackToPrimary = false
             config.rightClickInteractionMode = nil
             config.joystick.operationMode = JoystickOperationMode(tag: joystickOperationModePopup.selectedTag()) ?? .capture
-            config.joystick.axisLockMode = JoystickAxisLockMode(tag: joystickAxisLockModePopup.selectedTag()) ?? .scrollWheel
+            let axisLockMode = JoystickAxisLockMode(tag: joystickAxisLockModePopup.selectedTag()) ?? .scrollWheel
+            config.joystick.axisLockMode = axisLockMode
+            updateJoystickScrollActionOptions(axisLockMode: axisLockMode)
             config.joystick.axisLockHoldDuration = durationValue(
                 from: joystickAxisLockHoldDurationField.stringValue,
                 fallback: config.joystick.axisLockHoldDuration
@@ -1409,8 +1429,7 @@ final class ButtonDetailPanel: NSView {
     ) {
         let isJoystick = config?.type == .joystick
         let operationMode = JoystickOperationMode(tag: joystickOperationModePopup.selectedTag()) ?? .capture
-        let axisLockMode = JoystickAxisLockMode(tag: joystickAxisLockModePopup.selectedTag()) ?? .scrollWheel
-        let showsCaptureInputs = isJoystick && operationMode == .capture && axisLockMode == .scrollWheel
+        let showsCaptureInputs = isJoystick && operationMode == .capture
         let isKeyCombo = JoystickScrollActionKind(tag: actionPopup.selectedTag()) == .keyCombo
         keyRow?.isHidden = !showsCaptureInputs || !isKeyCombo
         modeRow?.isHidden = !showsCaptureInputs || !isKeyCombo
@@ -1441,7 +1460,8 @@ final class ButtonDetailPanel: NSView {
         let isJoystick = config?.type == .joystick
         let joystickOperationMode = JoystickOperationMode(tag: joystickOperationModePopup.selectedTag()) ?? .capture
         let joystickAxisLockMode = JoystickAxisLockMode(tag: joystickAxisLockModePopup.selectedTag()) ?? .scrollWheel
-        let showsJoystickCaptureInputs = isJoystick && joystickOperationMode == .capture && joystickAxisLockMode == .scrollWheel
+        updateJoystickScrollActionOptions(axisLockMode: joystickAxisLockMode)
+        let showsJoystickCaptureInputs = isJoystick && joystickOperationMode == .capture
         let showsHoldDirectionAxisLock = isJoystick && joystickAxisLockMode == .holdDirection
         let isSystemEvent = config?.type == .systemEvent
         let hidesKeyboardControls = isProtectedSwitch || isJoystick || isSystemEvent
@@ -1750,8 +1770,8 @@ private extension MultiKeyActivationMode {
 }
 
 private extension JoystickScrollActionKind {
-    static var allCases: [JoystickScrollActionKind] {
-        [.off, .axisLock, .keyCombo]
+    static func allCases(includeAxisLock: Bool = true) -> [JoystickScrollActionKind] {
+        includeAxisLock ? [.off, .axisLock, .keyCombo] : [.off, .keyCombo]
     }
 
     var displayName: String {
