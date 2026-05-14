@@ -1000,8 +1000,6 @@ struct Profile: Codable, Identifiable {
     private static func makeDefaultKeyboardLayer() -> Profile {
         let W = 600.0
         let H = 331.0
-        let keyHeight = 40.0
-        let gap = 1.0
         let keyColor = "#212121"
 
         func cx(_ abs: Double) -> Double { abs / W }
@@ -1011,7 +1009,7 @@ struct Profile: Codable, Identifiable {
 
         var btns: [String: ButtonConfig] = [:]
 
-        func add(key: Int, x: Double, y: Double, w: Double, h: Double = keyHeight) {
+        func add(key: Int, x: Double, y: Double, w: Double = 40, h: Double = 40) {
             btns[GamepadButton.generated().rawValue] = ButtonConfig(
                 x: cx(x), y: cy(y),
                 width: bw(w), height: bh(h),
@@ -1026,43 +1024,93 @@ struct Profile: Codable, Identifiable {
             )
         }
 
-        func addRow(y: Double, items: [(key: Int, width: Double)]) {
-            let rowWidth = items.reduce(0) { $0 + $1.width } + gap * Double(max(0, items.count - 1))
-            var x = (W - rowWidth) / 2
-            for item in items {
-                add(key: item.key, x: x + item.width / 2, y: y, w: item.width)
-                x += item.width + gap
-            }
-        }
-
-        addRow(y: 20, items: [
-            (63, 40), (59, 40), (58, 40), (55, 50), (49, 209),
-            (55, 50), (61, 40), (123, 40), (125, 20), (126, 20), (124, 40),
-        ])
-        addRow(y: 61, items: [
-            (56, 87), (6, 40), (7, 40), (8, 40), (9, 40), (11, 40),
-            (45, 40), (46, 40), (43, 40), (47, 40), (44, 40), (60, 101),
-        ])
-        addRow(y: 102, items: [
-            (57, 68), (0, 40), (1, 40), (2, 40), (3, 40), (5, 40),
-            (4, 40), (38, 40), (40, 40), (37, 40), (41, 40), (39, 40), (36, 80),
-        ])
-        addRow(y: 143, items: [
-            (48, 62), (12, 40), (13, 40), (14, 40), (15, 40), (17, 40),
-            (16, 40), (32, 40), (34, 40), (31, 40), (35, 40), (33, 40), (30, 40), (42, 45),
-        ])
-        addRow(y: 184, items: [
-            (50, 40), (18, 40), (19, 40), (20, 40), (21, 40), (23, 40), (22, 40),
-            (26, 40), (28, 40), (25, 40), (29, 40), (27, 40), (24, 40), (51, 67),
-        ])
-        addRow(y: 224, items: [
-            (53, 40), (122, 40), (120, 40), (99, 40), (118, 40), (96, 40), (97, 40),
-            (98, 40), (100, 40), (101, 40), (109, 40), (103, 40), (111, 40),
-        ])
-        addRow(y: 270, items: [
-            (53, 40), (49, 40), (49, 40), (49, 40), (49, 40), (49, 40), (49, 40),
-            (49, 40), (49, 40), (49, 40), (49, 40), (49, 40), (49, 40), (49, 40),
-        ])
+        add(key: 125, x: 539, y: 10, h: 20)
+        add(key: 63, x: 20, y: 20)
+        add(key: 59, x: 62, y: 20)
+        add(key: 58, x: 104, y: 20)
+        add(key: 55, x: 150, y: 20, w: 50)
+        add(key: 49, x: 281.2, y: 20, w: 209)
+        add(key: 55, x: 411, y: 20, w: 50)
+        add(key: 61, x: 457, y: 20)
+        add(key: 123, x: 498, y: 20)
+        add(key: 124, x: 580, y: 20)
+        add(key: 126, x: 539, y: 30, h: 20)
+        add(key: 56, x: 44, y: 61, w: 87)
+        add(key: 6, x: 108, y: 61)
+        add(key: 7, x: 149, y: 61)
+        add(key: 8, x: 190, y: 61)
+        add(key: 9, x: 231, y: 61)
+        add(key: 11, x: 272, y: 61)
+        add(key: 45, x: 313, y: 61)
+        add(key: 46, x: 354, y: 61)
+        add(key: 43, x: 395, y: 61)
+        add(key: 47, x: 436, y: 61)
+        add(key: 44, x: 477, y: 61)
+        add(key: 60, x: 549.5, y: 61, w: 101)
+        add(key: 57, x: 34, y: 102, w: 68)
+        add(key: 0, x: 89, y: 102)
+        add(key: 1, x: 130, y: 102)
+        add(key: 2, x: 171, y: 102)
+        add(key: 3, x: 212, y: 102)
+        add(key: 5, x: 253, y: 102)
+        add(key: 4, x: 294, y: 102)
+        add(key: 38, x: 335, y: 102)
+        add(key: 40, x: 376, y: 102)
+        add(key: 37, x: 417, y: 102)
+        add(key: 41, x: 458, y: 102)
+        add(key: 39, x: 499, y: 102)
+        add(key: 36, x: 560, y: 102, w: 80)
+        add(key: 48, x: 31.2, y: 143, w: 62)
+        add(key: 12, x: 82.5, y: 143)
+        add(key: 13, x: 123.5, y: 143)
+        add(key: 14, x: 164.5, y: 143)
+        add(key: 15, x: 205.5, y: 143)
+        add(key: 17, x: 246.5, y: 143)
+        add(key: 16, x: 287.5, y: 143)
+        add(key: 32, x: 328.5, y: 143)
+        add(key: 34, x: 369.5, y: 143)
+        add(key: 31, x: 410.5, y: 143)
+        add(key: 35, x: 451.5, y: 143)
+        add(key: 33, x: 492.5, y: 143)
+        add(key: 30, x: 533.5, y: 143)
+        add(key: 42, x: 577, y: 143, w: 45)
+        add(key: 50, x: 20, y: 184)
+        add(key: 18, x: 61, y: 184)
+        add(key: 19, x: 102, y: 184)
+        add(key: 20, x: 143, y: 184)
+        add(key: 21, x: 184, y: 184)
+        add(key: 23, x: 225, y: 184)
+        add(key: 22, x: 266, y: 184)
+        add(key: 26, x: 307, y: 184)
+        add(key: 28, x: 348, y: 184)
+        add(key: 25, x: 389, y: 184)
+        add(key: 29, x: 430, y: 184)
+        add(key: 27, x: 471, y: 184)
+        add(key: 24, x: 512, y: 184)
+        add(key: 51, x: 566.5, y: 184, w: 67)
+        add(key: 53, x: 20, y: 224)
+        add(key: 122, x: 61, y: 224)
+        add(key: 120, x: 102, y: 224)
+        add(key: 99, x: 143, y: 224)
+        add(key: 118, x: 184, y: 224)
+        add(key: 96, x: 225, y: 224)
+        add(key: 97, x: 266, y: 224)
+        add(key: 98, x: 307, y: 224)
+        add(key: 100, x: 348, y: 224)
+        add(key: 101, x: 389, y: 224)
+        add(key: 109, x: 430, y: 224)
+        add(key: 103, x: 471, y: 224)
+        add(key: 111, x: 512, y: 224)
+        add(key: 49, x: 62, y: 270)
+        add(key: 49, x: 111.8889, y: 270)
+        add(key: 49, x: 161.7778, y: 270)
+        add(key: 49, x: 211.6667, y: 270)
+        add(key: 49, x: 261.5556, y: 270)
+        add(key: 49, x: 311.4444, y: 270)
+        add(key: 49, x: 361.3333, y: 270)
+        add(key: 49, x: 411.2222, y: 270)
+        add(key: 49, x: 461.1111, y: 270)
+        add(key: 49, x: 511, y: 270)
 
         return Profile(
             id: UUID(),
