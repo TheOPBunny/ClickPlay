@@ -1024,6 +1024,30 @@ struct Profile: Codable, Identifiable {
             )
         }
 
+        func addSystemEvent(
+            _ systemEvent: SystemEvent,
+            x: Double,
+            y: Double,
+            iconSize: SystemEventIconSize = .large
+        ) {
+            btns[GamepadButton.generated().rawValue] = ButtonConfig(
+                type: .systemEvent,
+                x: cx(x), y: cy(y),
+                width: bw(40), height: bh(40),
+                editorWidth: 40,
+                editorHeight: 40,
+                colorHex: keyColor,
+                keyCode: 49,
+                label: "",
+                labelFontSize: 11,
+                shape: .square,
+                enabled: true,
+                rightClickFallsBackToPrimary: false,
+                action: .systemEvent(systemEvent),
+                systemEventIconSize: iconSize
+            )
+        }
+
         add(key: 125, x: 539, y: 10, h: 20)
         add(key: 63, x: 20, y: 20)
         add(key: 59, x: 62, y: 20)
@@ -1101,16 +1125,16 @@ struct Profile: Codable, Identifiable {
         add(key: 109, x: 430, y: 224)
         add(key: 103, x: 471, y: 224)
         add(key: 111, x: 512, y: 224)
-        add(key: 49, x: 62, y: 270)
-        add(key: 49, x: 111.8889, y: 270)
-        add(key: 49, x: 161.7778, y: 270)
-        add(key: 49, x: 211.6667, y: 270)
-        add(key: 49, x: 261.5556, y: 270)
-        add(key: 49, x: 311.4444, y: 270)
-        add(key: 49, x: 361.3333, y: 270)
-        add(key: 49, x: 411.2222, y: 270)
-        add(key: 49, x: 461.1111, y: 270)
-        add(key: 49, x: 511, y: 270)
+        addSystemEvent(.brightnessDown, x: 62, y: 270)
+        addSystemEvent(.brightnessUp, x: 111.8889, y: 270)
+        addSystemEvent(.missionControl, x: 161.7778, y: 270)
+        addSystemEvent(.launchpad, x: 211.6667, y: 270, iconSize: .small)
+        addSystemEvent(.previousTrack, x: 261.5556, y: 270)
+        addSystemEvent(.playPause, x: 311.4444, y: 270)
+        addSystemEvent(.nextTrack, x: 361.3333, y: 270)
+        addSystemEvent(.mute, x: 411.2222, y: 270)
+        addSystemEvent(.volumeDown, x: 461.1111, y: 270)
+        addSystemEvent(.volumeUp, x: 511, y: 270)
 
         return Profile(
             id: UUID(),
