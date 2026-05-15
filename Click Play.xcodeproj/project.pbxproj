@@ -19,6 +19,8 @@
 		10AE615B2FA816700071028C /* ClickPlay.icon in Resources */ = {isa = PBXBuildFile; fileRef = 10AE615A2FA816700071028C /* ClickPlay.icon */; };
 		10D000012FA9000000000001 /* DebugLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D000002FA9000000000001 /* DebugLog.swift */; };
 		10F100012FAF000000000001 /* FirstRunOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10F100002FAF000000000001 /* FirstRunOnboardingView.swift */; };
+		10F200012FB9000000000001 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10F200002FB9000000000001 /* UpdateChecker.swift */; };
+		10F200032FB9000000000001 /* UpdateCheckView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10F200022FB9000000000001 /* UpdateCheckView.swift */; };
 		A000 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = B000 /* main.swift */; };
 		A001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B001 /* AppDelegate.swift */; };
 		A002 /* ../ClickPlayShared/KeyMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = B002 /* ../ClickPlayShared/KeyMapping.swift */; };
@@ -43,6 +45,8 @@
 		10AE615A2FA816700071028C /* ClickPlay.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = ClickPlay.icon; sourceTree = "<group>"; };
 		10D000002FA9000000000001 /* DebugLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLog.swift; sourceTree = "<group>"; };
 		10F100002FAF000000000001 /* FirstRunOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRunOnboardingView.swift; sourceTree = "<group>"; };
+		10F200002FB9000000000001 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
+		10F200022FB9000000000001 /* UpdateCheckView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateCheckView.swift; sourceTree = "<group>"; };
 		B000 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		B001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		B002 /* ../ClickPlayShared/KeyMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../ClickPlayShared/KeyMapping.swift; sourceTree = "<group>"; };
@@ -74,6 +78,8 @@
 				B000 /* main.swift */,
 				B001 /* AppDelegate.swift */,
 				10F100002FAF000000000001 /* FirstRunOnboardingView.swift */,
+				10F200002FB9000000000001 /* UpdateChecker.swift */,
+				10F200022FB9000000000001 /* UpdateCheckView.swift */,
 				B002 /* ../ClickPlayShared/KeyMapping.swift */,
 				B003 /* KeyInjector.swift */,
 				B004 /* GamepadButtonView.swift */,
@@ -191,6 +197,8 @@
 				108EF0E22F9848B2009EFAAA /* ProfileListViewController.swift in Sources */,
 				A001 /* AppDelegate.swift in Sources */,
 				10F100012FAF000000000001 /* FirstRunOnboardingView.swift in Sources */,
+				10F200012FB9000000000001 /* UpdateChecker.swift in Sources */,
+				10F200032FB9000000000001 /* UpdateCheckView.swift in Sources */,
 				A002 /* ../ClickPlayShared/KeyMapping.swift in Sources */,
 				A003 /* KeyInjector.swift in Sources */,
 				10D000012FA9000000000001 /* DebugLog.swift in Sources */,

@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## Project Overview
-Click Play is a macOS AppKit status-bar utility that displays an always-on-top on-screen gamepad. Users click and hold buttons with the mouse, and the app injects keyboard events into other apps and games using `CGEvent`.
+Click Play is a macOS Swift/AppKit status-bar utility that displays an always-on-top on-screen gamepad. Users click and hold buttons with the mouse, and the app injects keyboard events into other apps and games using `CGEvent`.
 
 This is currently a functional prototype. Prefer improving the existing architecture over introducing major framework changes.
 
@@ -23,7 +23,7 @@ This is currently a functional prototype. Prefer improving the existing architec
 - Do not break release behavior when dragging off a button.
 - `CGEvent` injection requires Accessibility permission.
 - App Sandbox must remain disabled for the current injection approach to work.
-- This is an AppKit app. Do not introduce SwiftUI unless explicitly requested.
+- This is a Swift macOS app with AppKit-owned lifecycle/windowing. Use Swift and SwiftUI for new features and UI changes when practical, while preserving AppKit where required for the status item, non-activating overlay, editor integration, or other existing window behavior.
 
 ## Key Injector Stability Boundary
 - `KeyInjector` behavior is a compatibility boundary for this project.
@@ -51,7 +51,7 @@ This is currently a functional prototype. Prefer improving the existing architec
 - Preserve the current separation of responsibilities between lifecycle, windowing, rendering, injection, and persistence.
 - Avoid changing public behavior outside the requested task.
 - Keep debug logging unless removing or reducing it is part of the task.
-- Use AppKit-native patterns already present in the codebase.
+- Use Swift and SwiftUI for new feature/UI work when practical, and use AppKit-native patterns where they are already responsible for lifecycle, windowing, status menus, overlay behavior, or editor behavior.
 - Default to native macOS and industry-standard UI/UX elements and interaction patterns unless the user explicitly requests something custom.
 - Unless the user explicitly says otherwise, always do active development on the `dev` branch.
 - If work begins on another branch by mistake, stop and resolve branch state before continuing.
