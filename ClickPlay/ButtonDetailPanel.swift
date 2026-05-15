@@ -1609,11 +1609,13 @@ private extension JoystickOperationMode {
 
 private extension JoystickAxisLockMode {
     static var allCases: [JoystickAxisLockMode] {
-        [.scrollWheel, .holdDirection]
+        [.off, .scrollWheel, .holdDirection]
     }
 
     var displayName: String {
         switch self {
+        case .off:
+            return "Off"
         case .scrollWheel:
             return "Scroll Wheel"
         case .holdDirection:
@@ -1623,6 +1625,8 @@ private extension JoystickAxisLockMode {
 
     var tag: Int {
         switch self {
+        case .off:
+            return 2
         case .scrollWheel:
             return 0
         case .holdDirection:
@@ -1636,6 +1640,8 @@ private extension JoystickAxisLockMode {
             self = .scrollWheel
         case 1:
             self = .holdDirection
+        case 2:
+            self = .off
         default:
             return nil
         }
