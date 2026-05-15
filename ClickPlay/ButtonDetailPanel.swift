@@ -1,7 +1,7 @@
 import Cocoa
 
 /// Inspector panel for editing profile-wide visuals, selected buttons, joystick bindings, and groups.
-final class ButtonDetailPanel: NSView {
+final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
     // The scroll document is flipped so vertical stack coordinates match normal top-to-bottom form layout.
     private final class FlippedDocumentView: NSView {
         override var isFlipped: Bool { true }
@@ -28,7 +28,7 @@ final class ButtonDetailPanel: NSView {
 
     // Fixed control sizing lives here so rows stay aligned as the inspector is resized.
     private enum Metrics {
-        static let keyRecorderWidth: CGFloat = 150
+        static let keyRecorderWidth: CGFloat = 132
         static let minimumKeyRecorderWidth: CGFloat = 60
         static let keyRecorderHeight: CGFloat = 28
     }
@@ -95,7 +95,6 @@ final class ButtonDetailPanel: NSView {
     private var joystickOperationModeRow: NSStackView?
     private var joystickAxisLockModeRow: NSStackView?
     private var joystickAxisLockHoldDurationRow: NSStackView?
-    private var joystickAxisUnlockHoldDurationRow: NSStackView?
     private var joystickUpRow: NSStackView?
     private var joystickDownRow: NSStackView?
     private var joystickLeftRow: NSStackView?
@@ -371,18 +370,15 @@ final class ButtonDetailPanel: NSView {
         widthField.bezelStyle = .roundedBezel
         widthField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         widthField.widthAnchor.constraint(equalToConstant: 58).isActive = true
-        widthField.target = self
-        widthField.action = #selector(applyPressed)
+        configureApplyingTextField(widthField)
         heightField.bezelStyle = .roundedBezel
         heightField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         heightField.widthAnchor.constraint(equalToConstant: 58).isActive = true
-        heightField.target = self
-        heightField.action = #selector(applyPressed)
+        configureApplyingTextField(heightField)
         labelSizeField.bezelStyle = .roundedBezel
         labelSizeField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         labelSizeField.widthAnchor.constraint(equalToConstant: 44).isActive = true
-        labelSizeField.target = self
-        labelSizeField.action = #selector(applyPressed)
+        configureApplyingTextField(labelSizeField)
         labelSizeStepper.minValue = 6
         labelSizeStepper.maxValue = 36
         labelSizeStepper.increment = 1
@@ -447,8 +443,7 @@ final class ButtonDetailPanel: NSView {
             field.bezelStyle = .roundedBezel
             field.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
             field.widthAnchor.constraint(equalToConstant: 58).isActive = true
-            field.target = self
-            field.action = #selector(applyPressed)
+            configureApplyingTextField(field)
         }
 
         header.addArrangedSubview(titleLabel)
@@ -519,20 +514,19 @@ final class ButtonDetailPanel: NSView {
             contentStack.addArrangedSubview(joystickOperationModeRow)
         }
         joystickAxisLockModeRow = makeRow(label: "Axis Lock:", control: joystickAxisLockModePopup)
-        joystickAxisLockHoldDurationRow = makeRow(label: "Lock Sec:", control: joystickAxisLockHoldDurationField)
-        joystickAxisUnlockHoldDurationRow = makeRow(label: "Unlock Sec:", control: joystickAxisUnlockHoldDurationField)
-        [joystickAxisLockModeRow, joystickAxisLockHoldDurationRow, joystickAxisUnlockHoldDurationRow].compactMap { $0 }.forEach(contentStack.addArrangedSubview)
+        joystickAxisLockHoldDurationRow = makeRow(label: "Lock Timer:", control: joystickAxisLockHoldDurationField)
+        [joystickAxisLockModeRow, joystickAxisLockHoldDurationRow, ].compactMap { $0 }.forEach(contentStack.addArrangedSubview)
         joystickUpRow = makeJoystickKeyRow(label: "Up:", recorder: joystickUpRecorder, clearButton: joystickUpClearButton)
         joystickDownRow = makeJoystickKeyRow(label: "Down:", recorder: joystickDownRecorder, clearButton: joystickDownClearButton)
         joystickLeftRow = makeJoystickKeyRow(label: "Left:", recorder: joystickLeftRecorder, clearButton: joystickLeftClearButton)
         joystickRightRow = makeJoystickKeyRow(label: "Right:", recorder: joystickRightRecorder, clearButton: joystickRightClearButton)
         [joystickUpRow, joystickDownRow, joystickLeftRow, joystickRightRow].compactMap { $0 }.forEach(contentStack.addArrangedSubview)
-        joystickLeftClickKeyRow = makeJoystickInputKeyRow(label: "L Click:", recorder: joystickLeftClickRecorder, clearButton: joystickLeftClickClearButton)
-        joystickLeftClickModeRow = makeRow(label: "L Mode:", control: joystickLeftClickModePopup)
-        joystickLeftClickMultiKeyRow = makeRow(label: "L Keys:", control: joystickLeftClickMultiKeyPopup)
-        joystickRightClickKeyRow = makeJoystickInputKeyRow(label: "R Click:", recorder: joystickRightClickRecorder, clearButton: joystickRightClickClearButton)
-        joystickRightClickModeRow = makeRow(label: "R Mode:", control: joystickRightClickModePopup)
-        joystickRightClickMultiKeyRow = makeRow(label: "R Keys:", control: joystickRightClickMultiKeyPopup)
+        joystickLeftClickKeyRow = makeJoystickInputKeyRow(label: "Left Click:", recorder: joystickLeftClickRecorder, clearButton: joystickLeftClickClearButton)
+        joystickLeftClickModeRow = makeRow(label: "L-click Mode:", control: joystickLeftClickModePopup)
+        joystickLeftClickMultiKeyRow = makeRow(label: "L-click Keys:", control: joystickLeftClickMultiKeyPopup)
+        joystickRightClickKeyRow = makeJoystickInputKeyRow(label: "Right Click:", recorder: joystickRightClickRecorder, clearButton: joystickRightClickClearButton)
+        joystickRightClickModeRow = makeRow(label: "R-click Mode:", control: joystickRightClickModePopup)
+        joystickRightClickMultiKeyRow = makeRow(label: "R-click Keys:", control: joystickRightClickMultiKeyPopup)
         [
             joystickLeftClickKeyRow,
             joystickLeftClickModeRow,
@@ -541,7 +535,7 @@ final class ButtonDetailPanel: NSView {
             joystickRightClickModeRow,
             joystickRightClickMultiKeyRow,
         ].compactMap { $0 }.forEach(contentStack.addArrangedSubview)
-        let joystickScrollSectionLabel = makeSectionLabel("Joystick Scroll")
+        let joystickScrollSectionLabel = makeSectionLabel("Scroll Wheel")
         self.joystickScrollSectionLabel = joystickScrollSectionLabel
         contentStack.addArrangedSubview(joystickScrollSectionLabel)
         joystickScrollUpActionRow = makeRow(label: "Up:", control: joystickScrollUpActionPopup)
@@ -549,9 +543,9 @@ final class ButtonDetailPanel: NSView {
         joystickScrollUpModeRow = makeRow(label: "Up Mode:", control: joystickScrollUpModePopup)
         joystickScrollUpMultiKeyRow = makeRow(label: "Up Keys:", control: joystickScrollUpMultiKeyPopup)
         joystickScrollDownActionRow = makeRow(label: "Down:", control: joystickScrollDownActionPopup)
-        joystickScrollDownKeyRow = makeJoystickInputKeyRow(label: "Dn Key:", recorder: joystickScrollDownRecorder, clearButton: joystickScrollDownClearButton)
-        joystickScrollDownModeRow = makeRow(label: "Dn Mode:", control: joystickScrollDownModePopup)
-        joystickScrollDownMultiKeyRow = makeRow(label: "Dn Keys:", control: joystickScrollDownMultiKeyPopup)
+        joystickScrollDownKeyRow = makeJoystickInputKeyRow(label: "Down Key:", recorder: joystickScrollDownRecorder, clearButton: joystickScrollDownClearButton)
+        joystickScrollDownModeRow = makeRow(label: "Down Mode:", control: joystickScrollDownModePopup)
+        joystickScrollDownMultiKeyRow = makeRow(label: "Down Keys:", control: joystickScrollDownMultiKeyPopup)
         [
             joystickScrollUpActionRow,
             joystickScrollUpKeyRow,
@@ -621,18 +615,15 @@ final class ButtonDetailPanel: NSView {
 
         labelField.bezelStyle = .roundedBezel
         labelField.widthAnchor.constraint(equalToConstant: 115).isActive = true
-        labelField.target = self
-        labelField.action = #selector(applyPressed)
+        configureApplyingTextField(labelField)
 
         xField.bezelStyle = .roundedBezel
         xField.widthAnchor.constraint(equalToConstant: 115).isActive = true
-        xField.target = self
-        xField.action = #selector(applyPressed)
+        configureApplyingTextField(xField)
 
         yField.bezelStyle = .roundedBezel
         yField.widthAnchor.constraint(equalToConstant: 115).isActive = true
-        yField.target = self
-        yField.action = #selector(applyPressed)
+        configureApplyingTextField(yField)
 
         colorWell.target = self
         colorWell.action = #selector(applyPressed)
@@ -657,7 +648,7 @@ final class ButtonDetailPanel: NSView {
     private func makeFieldLabel(_ text: String) -> NSTextField {
         let label = NSTextField(labelWithString: text)
         label.font = .systemFont(ofSize: 12)
-        label.widthAnchor.constraint(equalToConstant: 60).isActive = true
+        label.widthAnchor.constraint(equalToConstant: 75).isActive = true
         return label
     }
 
@@ -762,6 +753,39 @@ final class ButtonDetailPanel: NSView {
 
     @objc private func applyPressed() {
         emitChange()
+    }
+
+    @objc private func applyTextFieldAndEndEditing(_ sender: NSTextField) {
+        emitChange()
+        endEditing(sender)
+    }
+
+    private func configureApplyingTextField(_ field: NSTextField) {
+        field.target = self
+        field.action = #selector(applyTextFieldAndEndEditing(_:))
+        field.delegate = self
+        field.wantsLayer = true
+        field.layer?.borderColor = NSColor.separatorColor.cgColor
+        field.layer?.borderWidth = 2
+        field.layer?.cornerRadius = 5
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard commandSelector == #selector(NSResponder.insertNewline(_:)),
+              let textField = control as? NSTextField else {
+            return false
+        }
+
+        textField.stringValue = textView.string
+        emitChange()
+        endEditing(textField)
+        return true
+    }
+
+    private func endEditing(_ textField: NSTextField) {
+        textField.currentEditor()?.selectedRange = NSRange(location: textField.stringValue.utf16.count, length: 0)
+        textField.window?.endEditing(for: textField)
+        textField.window?.makeFirstResponder(nil)
     }
 
     @objc private func profileBackgroundColorChanged() {
@@ -1472,7 +1496,6 @@ final class ButtonDetailPanel: NSView {
         joystickOperationModeRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickAxisLockModeRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickAxisLockHoldDurationRow?.isHidden = !showsHoldDirectionAxisLock || isProtectedSwitch
-        joystickAxisUnlockHoldDurationRow?.isHidden = true
         joystickUpRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickDownRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickLeftRow?.isHidden = !isJoystick || isProtectedSwitch
