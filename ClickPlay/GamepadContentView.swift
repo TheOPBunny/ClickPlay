@@ -21,10 +21,11 @@ final class GamepadContentView: NSView {
         var onDragChanged: ((NSEvent) -> Void)?
         var onDragEnded: (() -> Void)?
 
+        private var foregroundColor: NSColor = .white
         private let closeButton = NSButton(frame: .zero)
         private let minimizeButton = NSButton(frame: .zero)
         private let menuButton = NSButton(frame: .zero)
-        private let titleLabel = NSTextField(labelWithString: "")
+        private let titleLabel = NSTextField(labelWithString: "Profile")
         private let separatorView = NSView(frame: .zero)
 
         override init(frame frameRect: NSRect) {
@@ -48,8 +49,9 @@ final class GamepadContentView: NSView {
             onDragEnded?()
         }
 
-        func updateTitle(_ title: String) {
-            titleLabel.stringValue = title
+        func updateForegroundColor(_ color: NSColor) {
+            foregroundColor = color
+            applyForegroundColor()
         }
 
         func setMinimized(_ minimized: Bool) {
@@ -58,6 +60,7 @@ final class GamepadContentView: NSView {
             titleLabel.isHidden = minimized
             menuButton.isHidden = minimized
             separatorView.isHidden = minimized
+            applyForegroundColor()
             needsLayout = true
         }
 
@@ -104,6 +107,30 @@ final class GamepadContentView: NSView {
             addSubview(separatorView)
 
             setMinimized(false)
+        }
+
+        private func applyForegroundColor() {
+            closeButton.contentTintColor = foregroundColor
+            minimizeButton.contentTintColor = foregroundColor
+            menuButton.contentTintColor = foregroundColor
+            titleLabel.textColor = foregroundColor
+            separatorView.layer?.backgroundColor = foregroundColor.withAlphaComponent(0.12).cgColor
+
+            applyTitleColor(to: closeButton)
+            applyTitleColor(to: minimizeButton)
+            if menuButton.image == nil {
+                applyTitleColor(to: menuButton)
+            }
+        }
+
+        private func applyTitleColor(to button: NSButton) {
+            button.attributedTitle = NSAttributedString(
+                string: button.title,
+                attributes: [
+                    .font: button.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize),
+                    .foregroundColor: foregroundColor
+                ]
+            )
         }
 
         override func layout() {
@@ -308,8 +335,18 @@ final class GamepadContentView: NSView {
     }
 
     private func updateHeader() {
-        headerBar.updateTitle(currentProfile.name)
+        headerBar.updateForegroundColor(headerForegroundColor())
         headerBar.setMinimized(isMinimized)
+    }
+
+    private func headerForegroundColor() -> NSColor {
+        let backgroundColor = NSColor(hex: currentProfile.backgroundColorHex)
+        guard let color = backgroundColor.usingColorSpace(.sRGB) else {
+            return .white
+        }
+
+        let luminance = (0.2126 * color.redComponent) + (0.7152 * color.greenComponent) + (0.0722 * color.blueComponent)
+        return luminance >= 0.82 ? .black : .white
     }
 
     private func updateBackgroundColor() {
