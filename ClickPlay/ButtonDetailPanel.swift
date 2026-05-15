@@ -145,7 +145,6 @@ final class ButtonDetailPanel: NSView {
     private var interactionModeRow: NSStackView?
     private let multiKeyActivationModePopup = NSPopUpButton()
     private var multiKeyActivationModeRow: NSStackView?
-    private let enabledCheckbox = NSButton(checkboxWithTitle: "Enabled", target: nil, action: nil)
     private let deleteButton = NSButton(title: "Delete Button", target: nil, action: nil)
 
     override init(frame: NSRect) {
@@ -241,7 +240,6 @@ final class ButtonDetailPanel: NSView {
         widthField.stringValue = String(format: "%.1f", config.editorWidth > 0 ? config.editorWidth : config.width)
         heightField.stringValue = String(format: "%.1f", config.editorHeight > 0 ? config.editorHeight : config.height)
         shapePopup.selectItem(withTag: config.shape.tag)
-        enabledCheckbox.state = config.enabled ? .on : .off
         interactionModePopup.selectItem(withTag: config.interactionMode.tag)
         multiKeyActivationModePopup.selectItem(withTag: config.multiKeyActivationMode.tag)
         systemEventPopup.selectItem(withTag: (config.action.systemEvent ?? .brightnessDown).tag)
@@ -587,7 +585,6 @@ final class ButtonDetailPanel: NSView {
         let rightClickModeRow = makeRow(label: "Mode:", control: rightClickModePopup)
         self.rightClickModeRow = rightClickModeRow
         contentStack.addArrangedSubview(rightClickModeRow)
-        contentStack.addArrangedSubview(enabledCheckbox)
         contentStack.addArrangedSubview(makeSizeRow())
         contentStack.addArrangedSubview(deleteButton)
 
@@ -640,8 +637,6 @@ final class ButtonDetailPanel: NSView {
         colorWell.target = self
         colorWell.action = #selector(applyPressed)
 
-        enabledCheckbox.target = self
-        enabledCheckbox.action = #selector(applyPressed)
 
         clear()
     }
@@ -1029,7 +1024,6 @@ final class ButtonDetailPanel: NSView {
             config.rightClickKeyBindings = nil
             config.rightClickFallsBackToPrimary = true
             config.rightClickInteractionMode = nil
-            enabledCheckbox.state = .on
             interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
             multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
             rightClickRecorder.setOptionalKeyBindings(nil)
@@ -1054,7 +1048,6 @@ final class ButtonDetailPanel: NSView {
             config.labelBold = true
             config.labelItalic = false
             config.labelColorHex = "#FFFFFF"
-            enabledCheckbox.state = .on
             keyRecorder.setKeyBindings([Self.defaultKeyBinding])
             interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
             multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
@@ -1065,7 +1058,6 @@ final class ButtonDetailPanel: NSView {
             systemEventIconSizePopup.selectItem(withTag: iconSize.tag)
         } else if config.type == .joystick {
             config.action = .keyboard
-            config.enabled = enabledCheckbox.state == .on
             config.shape = .oval
             config.interactionMode = .momentary
             config.multiKeyActivationMode = .sequential
@@ -1107,7 +1099,6 @@ final class ButtonDetailPanel: NSView {
             joystickAxisUnlockHoldDurationField.stringValue = String(format: "%.1f", config.joystick.axisUnlockHoldDuration)
         } else {
             config.action = .keyboard
-            config.enabled = enabledCheckbox.state == .on
             config.interactionMode = ButtonInteractionMode(tag: interactionModePopup.selectedTag()) ?? .momentary
             config.multiKeyActivationMode = MultiKeyActivationMode(tag: multiKeyActivationModePopup.selectedTag()) ?? .sequential
             config.rightClickFallsBackToPrimary = rightClickFallbackCheckbox.state == .on
@@ -1500,7 +1491,6 @@ final class ButtonDetailPanel: NSView {
             updateMultiKeyActivationModeVisibility()
         }
         updateJoystickInputVisibility()
-        enabledCheckbox.isHidden = isProtectedSwitch || isSystemEvent
         deleteButton.isHidden = isProtectedSwitch
         deleteButton.isEnabled = !isProtectedSwitch && button != nil
     }
