@@ -11,7 +11,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
     private var editorWindowController: EditorWindowController?
 
     // Runtime state used to rebuild menus, avoid duplicate permission polling, and restore focus after editing.
-    private let supportedOpacityValues: [Double] = [0.25, 0.4, 0.55, 0.7, 0.85, 1.0]
+    private let supportedOpacityValues: [Double] = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
     private var lastActiveNonSelfApplication: NSRunningApplication?
     private var workspaceActivationObserver: NSObjectProtocol?
     private var addProfileFromTemplateItem: NSMenuItem?
@@ -259,7 +259,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         transparencyItem.submenu = makeTransparencyMenu()
         menu.addItem(transparencyItem)
 
-        let fadeItem = NSMenuItem(title: "Fade After", action: nil, keyEquivalent: "")
+        let fadeItem = NSMenuItem(title: "Fade After…", action: nil, keyEquivalent: "")
         fadeItem.submenu = makeFadeMenu()
         menu.addItem(fadeItem)
 
@@ -289,7 +289,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
     }
 
     private func makeFadeMenu() -> NSMenu {
-        let fadeMenu = NSMenu(title: "Fade After")
+        let fadeMenu = NSMenu(title: "Fade After…")
         let currentTimeout = GamepadSettings.fadeTimeout
 
         for option in GamepadSettings.fadeTimeoutOptions {
