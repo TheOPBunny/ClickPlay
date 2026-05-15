@@ -26,6 +26,7 @@ enum JoystickOperationMode: String, Codable, Equatable {
 }
 
 enum JoystickAxisLockMode: String, Codable, Equatable {
+    case off
     case scrollWheel
     case holdDirection
 }
