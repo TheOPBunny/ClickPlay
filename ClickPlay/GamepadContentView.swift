@@ -152,7 +152,8 @@ final class GamepadContentView: NSView {
                 closeButton.frame = NSRect(x: 10, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
                 minimizeButton.frame = NSRect(x: closeButton.frame.maxX + 8, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
                 menuButton.frame = NSRect(x: bounds.width - 34, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
-                titleLabel.frame = NSRect(x: 84, y: bounds.midY - 10, width: max(50, menuButton.frame.minX - 96), height: 20)
+                let titleInset = max(minimizeButton.frame.maxX + 18, bounds.maxX - menuButton.frame.minX + 18)
+                titleLabel.frame = NSRect(x: titleInset, y: bounds.midY - 10, width: max(50, bounds.width - (titleInset * 2)), height: 20)
                 separatorView.frame = NSRect(x: 12, y: 0, width: bounds.width - 24, height: 1)
                 separatorView.isHidden = bounds.height <= 32
             }
