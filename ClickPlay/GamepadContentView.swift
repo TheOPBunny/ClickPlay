@@ -25,7 +25,7 @@ final class GamepadContentView: NSView {
         private let closeButton = NSButton(frame: .zero)
         private let minimizeButton = NSButton(frame: .zero)
         private let menuButton = NSButton(frame: .zero)
-        private let titleLabel = NSTextField(labelWithString: "Profile")
+        private let titleLabel = NSTextField(labelWithString: "")
         private let separatorView = NSView(frame: .zero)
 
         override init(frame frameRect: NSRect) {
@@ -47,6 +47,10 @@ final class GamepadContentView: NSView {
 
         override func mouseUp(with event: NSEvent) {
             onDragEnded?()
+        }
+
+        func updateTitle(_ title: String) {
+            titleLabel.stringValue = title
         }
 
         func updateForegroundColor(_ color: NSColor) {
@@ -335,6 +339,7 @@ final class GamepadContentView: NSView {
     }
 
     private func updateHeader() {
+        headerBar.updateTitle(currentProfile.name)
         headerBar.updateForegroundColor(headerForegroundColor())
         headerBar.setMinimized(isMinimized)
     }

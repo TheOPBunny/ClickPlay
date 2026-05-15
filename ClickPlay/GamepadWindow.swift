@@ -52,7 +52,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     convenience init() {
         let screen = NSScreen.main ?? NSScreen.screens[0]
         var profile = ProfileStore.shared.activeResolvedProfile
-        profile.name = ProfileStore.shared.activeResolvedProfileTitle
+        profile.name = ProfileStore.shared.activeProfile.name
         let size = GamepadContentView.windowSize(for: profile, minimized: false)
         let origin = NSPoint(
             x: screen.visibleFrame.minX + (screen.visibleFrame.width - size.width) / 2,
@@ -147,7 +147,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
 
     func reloadProfile() {
         var profile = ProfileStore.shared.activeResolvedProfile
-        profile.name = ProfileStore.shared.activeResolvedProfileTitle
+        profile.name = ProfileStore.shared.activeProfile.name
         updateResizeConstraints()
         resizeForCurrentState(using: profile)
         (contentView as? GamepadContentView)?.reload(profile: profile, minimized: isMinimized)
@@ -162,7 +162,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     private func toggleMinimized() {
         isMinimized.toggle()
         var profile = ProfileStore.shared.activeResolvedProfile
-        profile.name = ProfileStore.shared.activeResolvedProfileTitle
+        profile.name = ProfileStore.shared.activeProfile.name
         updateResizeConstraints()
         resizeForCurrentState(using: profile)
         (contentView as? GamepadContentView)?.setMinimized(isMinimized)
