@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  If Click Play helps you, leaving a star is genuinely appreciated.
+  If Click Play helps you, leaving a star is greatly appreciated.
 </p>
 
 ## Table of Contents
@@ -30,7 +30,7 @@
 
 ## Introduction
 
-Click Play puts an always-on-top gamepad on your screen. Click and hold buttons with your mouse, and Click Play sends the matching keyboard inputs to the app or game you are playing.
+Click Play puts an always-on-top gamepad on your screen. Click buttons with your mouse, and Click Play sends the matching keyboard inputs to the app or game you are playing.
 
 It is built for games and workflows where a mouse-accessible overlay can stand in for keyboard controls. You can keep the game focused, place the gamepad where it works best, and customize layouts for different games.
 
@@ -39,7 +39,7 @@ It is built for games and workflows where a mouse-accessible overlay can stand i
 ## Installation
 
 1. Download the latest release from [GitHub Releases](https://github.com/TheOPBunny/ClickPlay/releases).
-2. Open the `.dmg`.
+2. Unzip the `.zip`.
 3. Drag **Click Play** into your **Applications** folder.
 4. Open **Click Play**.
 5. If macOS shows a security warning, click **Done**.
@@ -55,7 +55,7 @@ Click Play needs Accessibility permission so it can send keyboard inputs to othe
 After permission is granted:
 
 1. Use the menu bar icon to show or hide the gamepad.
-2. Click and hold a gamepad button to send its assigned input.
+2. Click or hold a gamepad button to send its assigned input.
 3. Open the editor from the menu bar or the gamepad menu with **Open Editor...**.
 4. Create or switch profiles for different games and layouts.
 
@@ -68,7 +68,7 @@ Profiles are saved locally in:
 ## Features
 
 - Always-on-top overlay that stays available while another app remains focused.
-- Click-and-hold buttons that map to keyboard input.
+- Clickable buttons that map to keyboard input.
 - Multiple profiles for different games or control schemes.
 - Layered profiles for switching between related layouts.
 - Joystick-style controls with directional key bindings.
@@ -96,7 +96,6 @@ For code changes, please preserve the core behavior that makes Click Play useful
 
 - The gamepad must remain usable while another app or game stays focused.
 - Button press, hold, and release behavior should stay reliable.
-- Dragging off a pressed button should release its input.
 - Saved profiles should remain backward compatible unless a migration is intentional.
 
 ## Support This Project
@@ -111,7 +110,7 @@ Your support goes directly toward development of Click Play, including:
 
 ## AI Disclosure
 
-Click Play is developed with AI-assisted tooling, including Codex. AI is used to help draft, refactor, debug, and document parts of the project, but project decisions and shipped changes are reviewed and owned by the maintainer.
+Click Play is developed with AI-assisted tooling, including Codex. AI is used to help draft, refactor, debug, and document parts of the project, but project decisions and shipped changes are reviewed and owned by me.
 
 ## License
 
