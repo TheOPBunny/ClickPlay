@@ -21,6 +21,7 @@
 - [Introduction](#introduction)
 - [Installation](#installation)
 - [Getting Started](#getting-started)
+- [Full Documentation](#full-documentation)
 - [Features](#features)
 - [Caveats](#caveats)
 - [Contributing](#contributing)
@@ -64,6 +65,10 @@ Profiles are saved locally in:
 ```text
 ~/Library/Application Support/Click Play/profiles.json
 ```
+
+## Full Documentation
+
+For a complete feature guide, codebase tour, build notes, planned features, and FAQ, see [Click Play Documentation](docs/index.md).
 
 ## Features
 
