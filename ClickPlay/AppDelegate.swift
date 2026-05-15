@@ -9,9 +9,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
     var statusItem: NSStatusItem?
     private var onboardingWindowController: NSWindowController?
     private var editorWindowController: EditorWindowController?
+    private var updateCheckWindowController: NSWindowController?
+    private var updateCheckViewModel: UpdateCheckViewModel?
 
     // Runtime state used to rebuild menus, avoid duplicate permission polling, and restore focus after editing.
     private let supportedOpacityValues: [Double] = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+    private let updateChecker = UpdateChecker.shared
+    private var availableUpdate: UpdateCheckResult?
     private var lastActiveNonSelfApplication: NSRunningApplication?
     private var workspaceActivationObserver: NSObjectProtocol?
     private var addProfileFromTemplateItem: NSMenuItem?
@@ -32,6 +36,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         setupMainMenu()
         setupStatusBar()
         startTrackingActiveApplications()
+        scheduleAutomaticUpdateCheck()
 
         // AXIsProcessTrusted() — NO prompt, just checks current state.
         // NOTE: If you see a re-prompt after every build, it's because Xcode's
@@ -213,6 +218,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         let editProfilesItem = NSMenuItem(title: "Open Editor…", action: #selector(showEditor), keyEquivalent: ",")
         editProfilesItem.target = self
         menu.addItem(editProfilesItem)
+        menu.addItem(NSMenuItem.separator())
+
+        let updateTitle = availableUpdate == nil ? "Check for Updates…" : "Update Available…"
+        let updateItem = NSMenuItem(title: updateTitle, action: #selector(checkForUpdates(_:)), keyEquivalent: "")
+        updateItem.target = self
+        menu.addItem(updateItem)
         menu.addItem(NSMenuItem.separator())
 
         let profilesItem = NSMenuItem(title: "Profiles", action: nil, keyEquivalent: "")
@@ -567,6 +578,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         getEditorWindowController().showEditorWindow()
     }
 
+    @MainActor
+    @objc func checkForUpdates(_ sender: Any?) {
+        let initialState = availableUpdate.map(UpdateCheckViewState.updateAvailable) ?? .checking
+        showUpdateCheckWindow(initialState: initialState)
+    }
+
     @objc func openAccessibility() {
         NSWorkspace.shared.open(
             URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
@@ -580,11 +597,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
     }
 
     func windowWillClose(_ notification: Notification) {
-        guard notification.object as? NSWindow === onboardingWindowController?.window else {
-            return
+        if notification.object as? NSWindow === onboardingWindowController?.window {
+            onboardingWindowController = nil
         }
 
-        onboardingWindowController = nil
+        if notification.object as? NSWindow === updateCheckWindowController?.window {
+            updateCheckWindowController = nil
+            updateCheckViewModel = nil
+        }
     }
 
     private func fadeTimeoutsMatch(_ lhs: TimeInterval?, _ rhs: TimeInterval?) -> Bool {
@@ -650,5 +670,77 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         }
         editorWindowController = controller
         return controller
+    }
+
+    private func scheduleAutomaticUpdateCheck() {
+        let checker = updateChecker
+
+        Task { [weak self] in
+            do {
+                guard let result = try await checker.checkForUpdatesIfNeeded(),
+                      result.isUpdateAvailable else {
+                    return
+                }
+
+                await MainActor.run { [weak self] in
+                    self?.handleUpdateCheckResult(result)
+                }
+            } catch {
+                debugLog("Automatic update check failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    @MainActor
+    private func handleUpdateCheckResult(_ result: UpdateCheckResult) {
+        availableUpdate = result.isUpdateAvailable ? result : nil
+        statusItem?.button?.toolTip = result.isUpdateAvailable ? "Click Play - Update available" : "Click Play"
+        rebuildMenu()
+    }
+
+    @MainActor
+    private func showUpdateCheckWindow(initialState: UpdateCheckViewState) {
+        updateCheckWindowController?.close()
+        updateCheckWindowController = nil
+        updateCheckViewModel = nil
+
+        let viewModel = UpdateCheckViewModel(
+            checker: updateChecker,
+            initialState: initialState,
+            onResult: { [weak self] result in
+                self?.handleUpdateCheckResult(result)
+            }
+        )
+        let view = UpdateCheckView(
+            viewModel: viewModel,
+            onDismiss: { [weak self] in
+                self?.closeUpdateCheckWindow()
+            }
+        )
+
+        let hostingController = NSHostingController(rootView: view)
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "Software Update"
+        window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
+        window.isReleasedWhenClosed = false
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.titlebarAppearsTransparent = true
+        window.setContentSize(NSSize(width: 440, height: 270))
+        window.center()
+        window.delegate = self
+
+        let windowController = NSWindowController(window: window)
+        updateCheckViewModel = viewModel
+        updateCheckWindowController = windowController
+        windowController.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @MainActor
+    private func closeUpdateCheckWindow() {
+        updateCheckWindowController?.close()
+        updateCheckWindowController = nil
+        updateCheckViewModel = nil
     }
 }
