@@ -35,7 +35,9 @@ Click Play puts an always-on-top gamepad on your screen. Click buttons with your
 
 It is built for games and workflows where a mouse-accessible overlay can stand in for keyboard controls. You can keep the game focused, place the gamepad where it works best, and customize layouts for different games.
 
-<!-- Gameplay/demo GIF planned for a future README update. -->
+<p align="center">
+  <video src="img/ClickPlay_sizzlereel.mp4" width="500" controls></video>
+</p>
 
 ## Installation
 
