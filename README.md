@@ -35,9 +35,7 @@ Click Play puts an always-on-top gamepad on your screen. Click buttons with your
 
 It is built for games and workflows where a mouse-accessible overlay can stand in for keyboard controls. You can keep the game focused, place the gamepad where it works best, and customize layouts for different games.
 
-<p align="center">
-  <video src="img/ClickPlay_sizzlereel.mp4" width="500" controls></video>
-</p>
+<video src="https://github.com/user-attachments/assets/162093be-0f05-4bc2-9494-4f6b93448975"></video>
 
 ## Installation
 
@@ -49,7 +47,7 @@ It is built for games and workflows where a mouse-accessible overlay can stand i
 6. Open **System Settings** > **Privacy & Security**, scroll to the bottom, then choose **Open Anyway** for Click Play.
 7. Confirm **Open Anyway** when macOS asks.
 
-Click Play is distributed outside the Mac App Store, so the first launch may require the extra macOS confirmation step.
+Click Play is distributed without Apple Developer signing, so the first launch requires getting past Gatekeeper.
 
 ## Getting Started
 
