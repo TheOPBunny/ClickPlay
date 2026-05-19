@@ -13,16 +13,19 @@ final class UpdateCheckViewModel: ObservableObject {
 
     private let checker: UpdateChecker
     private let onResult: (UpdateCheckResult) -> Void
+    private let onSkip: (UpdateCheckResult) -> Void
     private var hasStarted = false
 
     init(
         checker: UpdateChecker = .shared,
         initialState: UpdateCheckViewState = .checking,
-        onResult: @escaping (UpdateCheckResult) -> Void = { _ in }
+        onResult: @escaping (UpdateCheckResult) -> Void = { _ in },
+        onSkip: @escaping (UpdateCheckResult) -> Void = { _ in }
     ) {
         self.checker = checker
         self.state = initialState
         self.onResult = onResult
+        self.onSkip = onSkip
     }
 
     func startIfNeeded() {
@@ -49,6 +52,11 @@ final class UpdateCheckViewModel: ObservableObject {
             }
         }
     }
+
+    func skip(_ result: UpdateCheckResult) {
+        checker.skipVersion(result.latestVersion)
+        onSkip(result)
+    }
 }
 
 struct UpdateCheckView: View {
@@ -61,12 +69,12 @@ struct UpdateCheckView: View {
         VStack(spacing: 0) {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.horizontal, 34)
+                .padding(.horizontal, 18)
                 .padding(.top, 32)
                 .padding(.bottom, 24)
         }
-        .frame(width: 440)
-        .frame(minHeight: 270)
+        .frame(width: 460)
+        .frame(minHeight: 280)
         .background {
             ZStack {
                 Rectangle().fill(.ultraThinMaterial)
@@ -105,6 +113,11 @@ struct UpdateCheckView: View {
                 }
 
                 Button("Later") {
+                    onDismiss()
+                }
+
+                Button("Skip This Version") {
+                    viewModel.skip(result)
                     onDismiss()
                 }
 

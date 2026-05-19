@@ -710,6 +710,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
             initialState: initialState,
             onResult: { [weak self] result in
                 self?.handleUpdateCheckResult(result)
+            },
+            onSkip: { [weak self] result in
+                self?.handleSkippedUpdateResult(result)
             }
         )
         let view = UpdateCheckView(
@@ -736,6 +739,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         updateCheckWindowController = windowController
         windowController.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @MainActor
+    private func handleSkippedUpdateResult(_ result: UpdateCheckResult) {
+        guard availableUpdate?.latestVersion == result.latestVersion else {
+            return
+        }
+
+        availableUpdate = nil
+        statusItem?.button?.toolTip = "Click Play"
+        rebuildMenu()
     }
 
     @MainActor
