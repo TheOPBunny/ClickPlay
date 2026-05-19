@@ -108,10 +108,6 @@ struct UpdateCheckView: View {
                 title: "Update Available",
                 message: "Click Play \(result.latestVersion) is available. You have \(result.currentVersion)."
             ) {
-                Button("Check Again") {
-                    viewModel.start()
-                }
-
                 Button("Later") {
                     onDismiss()
                 }
@@ -134,10 +130,6 @@ struct UpdateCheckView: View {
                 title: "You're Up to Date",
                 message: "Click Play \(result.currentVersion) is the latest available version."
             ) {
-                Button("Check Again") {
-                    viewModel.start()
-                }
-
                 Button("Done") {
                     onDismiss()
                 }
