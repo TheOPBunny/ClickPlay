@@ -684,6 +684,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
 
                 await MainActor.run { [weak self] in
                     self?.handleUpdateCheckResult(result)
+                    self?.showUpdateCheckWindow(initialState: .updateAvailable(result))
                 }
             } catch {
                 debugLog("Automatic update check failed: \(error.localizedDescription)")
