@@ -86,6 +86,7 @@ This is a functional prototype that is growing into a richer editor-backed contr
 - If work begins on another branch by mistake, stop and resolve branch state before continuing.
 - Make a commit after every discrete change unless the user explicitly says not to.
 - Keep `main` as the stable branch unless the user explicitly asks for a merge or release step.
+- When updating `CHANGELOG.md`, include only code changes and write entries in simple, human language.
 
 ## Validation
 After making changes, validate the relevant behaviors:
