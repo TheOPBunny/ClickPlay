@@ -44,6 +44,7 @@ final class UpdateChecker {
     private let session: URLSession
     private let bundle: Bundle
     private let lastAutomaticCheckKey = "lastUpdateCheckDate"
+    private let skippedUpdateVersionKey = "skippedUpdateVersion"
     private let automaticCheckInterval: TimeInterval = 24 * 60 * 60
 
     init(
@@ -62,7 +63,16 @@ final class UpdateChecker {
         }
 
         defaults.set(now, forKey: lastAutomaticCheckKey)
-        return try await checkForUpdates()
+        let result = try await checkForUpdates()
+        guard !isSkippedUpdate(result) else {
+            return nil
+        }
+
+        return result
+    }
+
+    func skipVersion(_ version: String) {
+        defaults.set(version, forKey: skippedUpdateVersionKey)
     }
 
     func checkForUpdates() async throws -> UpdateCheckResult {
@@ -105,6 +115,14 @@ final class UpdateChecker {
         }
 
         return now.timeIntervalSince(lastCheck) >= automaticCheckInterval
+    }
+
+    private func isSkippedUpdate(_ result: UpdateCheckResult) -> Bool {
+        guard result.isUpdateAvailable else {
+            return false
+        }
+
+        return defaults.string(forKey: skippedUpdateVersionKey) == result.latestVersion
     }
 
     private static func normalizedVersion(from tag: String) -> String {
