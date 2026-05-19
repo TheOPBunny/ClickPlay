@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="img/ClickPlay.png" alt="Click Play" width="200">
+  <img src="docs/img/ClickPlay.png" alt="Click Play" width="200">
 </p>
 
 <h1 align="center">Click Play</h1>
