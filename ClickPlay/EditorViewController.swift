@@ -1,7 +1,9 @@
 import Cocoa
 
-final class ConfiguratorViewController: NSViewController, NSSplitViewDelegate {
+/// Shell for the editor window: sidebar profile list on the left, button canvas/editor on the right.
+final class EditorViewController: NSViewController, NSSplitViewDelegate {
 
+    // Split metrics and defaults are kept local so sidebar persistence does not leak into the button editor.
     private enum Metrics {
         static let minimumSidebarWidth: CGFloat = 160
         static let defaultSidebarWidth: CGFloat = 280
@@ -10,8 +12,8 @@ final class ConfiguratorViewController: NSViewController, NSSplitViewDelegate {
     }
 
     private enum DefaultsKey {
-        static let sidebarExpandedWidth = "Configurator.sidebarExpandedWidth"
-        static let sidebarCollapsed = "Configurator.sidebarCollapsed"
+        static let sidebarExpandedWidth = "Editor.sidebarExpandedWidth"
+        static let sidebarCollapsed = "Editor.sidebarCollapsed"
     }
 
     private let profileListViewController = ProfileListViewController()
@@ -24,6 +26,8 @@ final class ConfiguratorViewController: NSViewController, NSSplitViewDelegate {
     private var hasRestoredSidebarLayout = false
     private var isApplyingSidebarLayout = false
     private var lastObservedSplitViewWidth: CGFloat = 0
+
+    // MARK: - View Lifecycle
 
     override func loadView() {
         view = NSView(frame: NSRect(x: 0, y: 0, width: 980, height: 700))
@@ -47,6 +51,9 @@ final class ConfiguratorViewController: NSViewController, NSSplitViewDelegate {
 
         profileListViewController.onProfileSelected = { [weak self] profile in
             self?.editorViewController.load(profile: profile)
+        }
+        profileListViewController.onProfileSelectionRequested = { [weak self] in
+            self?.confirmSaveIfNeeded() ?? true
         }
 
         editorViewController.onProfileSaved = { [weak self] profile in
@@ -111,12 +118,99 @@ final class ConfiguratorViewController: NSViewController, NSSplitViewDelegate {
         }
     }
 
+    // MARK: - Editor Commands
+
     func savePanelLayout() {
         if hasRestoredSidebarLayout {
             syncSidebarStateFromCurrentWidth()
         }
         saveSidebarDefaults()
         editorViewController.savePanelLayout()
+    }
+
+    @discardableResult
+    func saveChanges() -> Bool {
+        editorViewController.saveChanges()
+    }
+
+    func confirmSaveIfNeeded() -> Bool {
+        editorViewController.confirmSaveIfNeeded()
+    }
+
+    func centerCanvasOnProfileContentWhenReady() {
+        editorViewController.centerCanvasOnProfileContentWhenReady()
+    }
+
+    func addProfile() {
+        guard confirmSaveIfNeeded() else {
+            return
+        }
+
+        profileListViewController.addBlankProfile()
+    }
+
+    func addLayer() {
+        guard confirmSaveIfNeeded() else {
+            return
+        }
+
+        profileListViewController.addBlankSubProfile()
+    }
+
+    func addDefaultTemplateProfile() {
+        guard confirmSaveIfNeeded() else {
+            return
+        }
+
+        profileListViewController.addDefaultTemplateProfile()
+    }
+
+    func addDefaultTemplateLayer() {
+        guard confirmSaveIfNeeded() else {
+            return
+        }
+
+        profileListViewController.addDefaultTemplateSubProfile()
+    }
+
+    func addProfileFromTemplate(id: UUID) {
+        guard confirmSaveIfNeeded() else {
+            return
+        }
+
+        profileListViewController.addProfileFromTemplate(id: id)
+    }
+
+    func addLayerFromTemplate(id: UUID) {
+        guard confirmSaveIfNeeded() else {
+            return
+        }
+
+        profileListViewController.addSubProfileFromTemplate(id: id)
+    }
+
+    func saveCurrentAsTemplate() {
+        profileListViewController.saveCurrentAsTemplate()
+    }
+
+    func showTemplateManager() {
+        profileListViewController.showTemplateManager()
+    }
+
+    func removeProfile() {
+        guard confirmSaveIfNeeded() else {
+            return
+        }
+
+        profileListViewController.deleteSelectedProfile()
+    }
+
+    func removeLayer() {
+        guard confirmSaveIfNeeded() else {
+            return
+        }
+
+        profileListViewController.deleteSelectedLayer()
     }
 
     private func toggleSidebar() {
@@ -146,9 +240,8 @@ final class ConfiguratorViewController: NSViewController, NSSplitViewDelegate {
     private func setSidebarWidth(_ width: CGFloat) {
         let clampedWidth = min(max(width, Metrics.minimumSidebarWidth), Metrics.maximumSidebarWidth)
         isApplyingSidebarLayout = true
+        defer { isApplyingSidebarLayout = false }
         splitView.setPosition(clampedWidth, ofDividerAt: 0)
-        splitView.layoutSubtreeIfNeeded()
-        isApplyingSidebarLayout = false
     }
 
     private func syncSidebarStateFromCurrentWidth() {

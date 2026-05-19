@@ -1,5 +1,6 @@
 import Cocoa
 
+/// Stores overlay-wide display settings separately from profile data so every profile shares the same fade behavior.
 enum GamepadSettings {
     static let fadeTimeoutDidChange = Notification.Name("GamepadFadeTimeoutDidChange")
 
@@ -38,17 +39,20 @@ enum GamepadSettings {
     }
 }
 
+/// Borderless, non-activating overlay panel that stays above other apps while avoiding keyboard focus.
 final class GamepadWindow: NSPanel, NSWindowDelegate {
 
+    // Window state is intentionally small: content owns button input, while the panel owns visibility and fading.
     private var isMinimized = false
     private var inactivityTimer: Timer?
     private var isFadedForInactivity = false
+    private var isJoystickCaptureActive = false
     private var globalMouseMonitor: Any?
 
     convenience init() {
         let screen = NSScreen.main ?? NSScreen.screens[0]
         var profile = ProfileStore.shared.activeResolvedProfile
-        profile.name = ProfileStore.shared.activeResolvedProfileTitle
+        profile.name = ProfileStore.shared.activeProfile.name
         let size = GamepadContentView.windowSize(for: profile, minimized: false)
         let origin = NSPoint(
             x: screen.visibleFrame.minX + (screen.visibleFrame.width - size.width) / 2,
@@ -84,6 +88,9 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         content.onHideOverlay = { [weak self] in
             self?.hideOverlay()
         }
+        content.onJoystickCaptureChanged = { [weak self] isCaptured in
+            self?.setJoystickCaptureActive(isCaptured)
+        }
         content.menuProvider = {
             (NSApp.delegate as? AppDelegate)?.makeGamepadMenu()
         }
@@ -92,9 +99,10 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         alphaValue = profile.opacity
         startInactivityMonitoring()
         noteUserActivity()
-        NSLog("[GamepadWindow] Created. level=\(level.rawValue) ignoresMouseEvents=\(ignoresMouseEvents) canBecomeKey=\(canBecomeKey)")
+        debugLog("[GamepadWindow] Created. level=\(level.rawValue) ignoresMouseEvents=\(ignoresMouseEvents) canBecomeKey=\(canBecomeKey)")
     }
 
+    // Keeping both false preserves the focused game/app while users interact with the overlay.
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
@@ -120,14 +128,26 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         super.sendEvent(event)
     }
 
+    // MARK: - Visibility and Profile Reloading
+
     func showGamepad() {
         orderFrontRegardless()
         noteUserActivity()
     }
 
+    func hideGamepad() {
+        releaseAllInputs()
+        inactivityTimer?.invalidate()
+        orderOut(nil)
+    }
+
+    func releaseAllInputs() {
+        (contentView as? GamepadContentView)?.releaseAllInputs()
+    }
+
     func reloadProfile() {
         var profile = ProfileStore.shared.activeResolvedProfile
-        profile.name = ProfileStore.shared.activeResolvedProfileTitle
+        profile.name = ProfileStore.shared.activeProfile.name
         updateResizeConstraints()
         resizeForCurrentState(using: profile)
         (contentView as? GamepadContentView)?.reload(profile: profile, minimized: isMinimized)
@@ -136,21 +156,21 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     }
 
     @objc private func hideOverlay() {
-        (contentView as? GamepadContentView)?.releaseAllInputs()
-        inactivityTimer?.invalidate()
-        orderOut(nil)
+        hideGamepad()
     }
 
     private func toggleMinimized() {
         isMinimized.toggle()
         var profile = ProfileStore.shared.activeResolvedProfile
-        profile.name = ProfileStore.shared.activeResolvedProfileTitle
+        profile.name = ProfileStore.shared.activeProfile.name
         updateResizeConstraints()
         resizeForCurrentState(using: profile)
         (contentView as? GamepadContentView)?.setMinimized(isMinimized)
         noteUserActivity()
-        NSLog("[GamepadWindow] toggleMinimized minimized=\(isMinimized)")
+        debugLog("[GamepadWindow] toggleMinimized minimized=\(isMinimized)")
     }
+
+    // MARK: - Resizing
 
     private func resizeForCurrentState(using profile: Profile) {
         updateResizeConstraints()
@@ -186,6 +206,8 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         persistCurrentWindowSize()
         updateResizeConstraints()
     }
+
+    // MARK: - Inactivity Fade
 
     private func startInactivityMonitoring() {
         NotificationCenter.default.addObserver(
@@ -228,7 +250,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     private func resetInactivityTimer() {
         inactivityTimer?.invalidate()
 
-        guard isVisible, let fadeTimeout = GamepadSettings.fadeTimeout else {
+        guard isVisible, !isJoystickCaptureActive, let fadeTimeout = GamepadSettings.fadeTimeout else {
             if isFadedForInactivity {
                 isFadedForInactivity = false
                 applyCurrentAlpha(animated: true)
@@ -242,7 +264,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     }
 
     private func fadeForInactivity() {
-        guard isVisible, !isFadedForInactivity else { return }
+        guard isVisible, !isJoystickCaptureActive, !isFadedForInactivity else { return }
         isFadedForInactivity = true
         applyCurrentAlpha(animated: true)
     }
@@ -271,6 +293,15 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         noteUserActivity()
     }
 
+    private func setJoystickCaptureActive(_ active: Bool) {
+        guard isJoystickCaptureActive != active else {
+            return
+        }
+
+        isJoystickCaptureActive = active
+        noteUserActivity()
+    }
+
     private func persistCurrentWindowSize() {
         guard !isMinimized else { return }
 
@@ -280,7 +311,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         )
         let padWidth = max(GamepadContentView.minimumPadSize.width, contentLayoutRect.width)
         ProfileStore.shared.updateActiveProfileDisplaySize(width: padWidth, height: padHeight)
-        NSLog("[GamepadWindow] Live resize ended width=\(padWidth) height=\(padHeight)")
+        debugLog("[GamepadWindow] Live resize ended width=\(padWidth) height=\(padHeight)")
     }
 
     private func maximumContentSize() -> NSSize {

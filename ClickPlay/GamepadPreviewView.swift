@@ -1,5 +1,6 @@
 import Cocoa
 
+/// Drawable editor object derived from ButtonConfig, with selection state added for canvas rendering.
 struct CanvasButtonObject {
     let id: GamepadButton
     var frame: CGRect
@@ -8,12 +9,23 @@ struct CanvasButtonObject {
     var labelFontSize: Double
     var labelBold: Bool
     var labelItalic: Bool
+    var labelColorHex: String
     var shape: ButtonShape
     var type: ButtonType
+    var systemEvent: SystemEvent?
+    var systemEventIconSize: SystemEventIconSize
     var isEnabled: Bool
     var isSelected: Bool
 }
 
+/// Lightweight group projection used by the preview for group selection and drag/resize bounds.
+struct CanvasButtonGroupObject {
+    let id: UUID
+    var name: String
+    var memberIDs: [GamepadButton]
+}
+
+/// Normalized geometry edits reported back to the editor so snapping and undo can stay model-based.
 struct ButtonEditorGeometry {
     var centerX: Double
     var centerY: Double
@@ -64,12 +76,15 @@ enum CanvasDragState {
     case none
     case move(ids: Set<GamepadButton>, startFrames: [GamepadButton: CGRect], startMouse: CGPoint)
     case resize(id: GamepadButton, corner: ResizeCorner, startFrame: CGRect, startMouse: CGPoint)
+    case moveGroup(id: UUID, startFrames: [GamepadButton: CGRect], startMouse: CGPoint)
+    case resizeGroup(id: UUID, corner: ResizeCorner, startBounds: CGRect, startFrames: [GamepadButton: CGRect], startMouse: CGPoint)
     case marqueeSelect(start: CGPoint, current: CGPoint)
 }
 
+/// Live editor preview that supports selection, dragging, resizing, marquee selection, and alignment guides.
 final class GamepadPreviewView: NSView {
 
-    var onSelectionChanged: ((Set<GamepadButton>) -> Void)?
+    var onSelectionChanged: ((Set<GamepadButton>, UUID?) -> Void)?
     var onGeometryChanged: (([GamepadButton: ButtonEditorGeometry]) -> CanvasGeometryChangeResult)?
     var onGeometryChangeCompleted: ((_ before: [GamepadButton: CGRect], _ after: [GamepadButton: CGRect]) -> Void)?
     var maximumWorkspaceSize = CGSize(width: 1000, height: 1000)
@@ -83,8 +98,11 @@ final class GamepadPreviewView: NSView {
         didSet { needsDisplay = true }
     }
 
+    // Rendered canvas objects are intentionally separate from Profile so in-progress geometry can be previewed safely.
     private var objects: [CanvasButtonObject] = []
+    private var groups: [CanvasButtonGroupObject] = []
     private var selectedIDs = Set<GamepadButton>()
+    private var selectedGroupID: UUID?
     private var dragState: CanvasDragState = .none
     private var currentDragStartFrames: [GamepadButton: CGRect] = [:]
     private var alignmentGuides: [CanvasAlignmentGuide] = []
@@ -106,13 +124,24 @@ final class GamepadPreviewView: NSView {
         true
     }
 
-    func reload(objects: [CanvasButtonObject], keepSelection: Bool) {
+    func reload(objects: [CanvasButtonObject], groups: [CanvasButtonGroupObject], keepSelection: Bool) {
         let retainedSelection = keepSelection ? selectedIDs : []
+        let retainedGroupID = keepSelection ? selectedGroupID : nil
         self.objects = objects
+        self.groups = groups
         selectedIDs = Set(objects.map(\.id)).intersection(retainedSelection)
+        if let retainedGroupID, group(for: retainedGroupID) != nil {
+            selectedGroupID = retainedGroupID
+        } else {
+            selectedGroupID = nil
+        }
         syncObjectSelection()
         needsDisplay = true
         window?.invalidateCursorRects(for: self)
+    }
+
+    func reload(objects: [CanvasButtonObject], keepSelection: Bool) {
+        reload(objects: objects, groups: groups, keepSelection: keepSelection)
     }
 
     func syncObject(_ object: CanvasButtonObject) {
@@ -140,8 +169,16 @@ final class GamepadPreviewView: NSView {
         setSelection(buttons)
     }
 
+    func select(group id: UUID?) {
+        setGroupSelection(id)
+    }
+
     func currentSelection() -> Set<GamepadButton> {
         selectedIDs
+    }
+
+    func currentGroupSelection() -> UUID? {
+        selectedGroupID
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -155,6 +192,11 @@ final class GamepadPreviewView: NSView {
             drawButton(object)
         }
 
+        if let selectedGroupID,
+           let bounds = groupBounds(for: selectedGroupID).map(canvasFrame(for:)) {
+            drawSelectedGroup(in: bounds)
+        }
+
         if case let .marqueeSelect(start, current) = dragState {
             drawMarquee(from: start, to: current)
         }
@@ -163,12 +205,21 @@ final class GamepadPreviewView: NSView {
     override func resetCursorRects() {
         super.resetCursorRects()
 
-        guard selectedIDs.count == 1, let selectedID = selectedIDs.first, let object = object(for: selectedID) else {
+        if let selectedGroupID,
+           let bounds = groupBounds(for: selectedGroupID).map(canvasFrame(for:)) {
+            for corner in ResizeCorner.allCases {
+                addCursorRect(handleRect(for: corner, objectFrame: bounds), cursor: corner.cursor)
+            }
             return
         }
 
-        for corner in ResizeCorner.allCases {
-            addCursorRect(handleRect(for: corner, objectFrame: canvasFrame(for: object.frame)), cursor: corner.cursor)
+        if selectedIDs.count == 1,
+           let selectedID = selectedIDs.first,
+           groupID(containing: selectedID) == nil,
+           let object = object(for: selectedID) {
+            for corner in ResizeCorner.allCases {
+                addCursorRect(handleRect(for: corner, objectFrame: canvasFrame(for: object.frame)), cursor: corner.cursor)
+            }
         }
     }
 
@@ -177,6 +228,21 @@ final class GamepadPreviewView: NSView {
         let canvasPoint = convert(event.locationInWindow, from: nil)
         let modelPoint = modelPoint(forCanvasPoint: canvasPoint)
         let isCommandClick = event.modifierFlags.contains(.command)
+
+        if let handleHit = groupResizeHandle(atCanvasPoint: canvasPoint),
+           let bounds = groupBounds(for: handleHit.groupID) {
+            let memberFrames = groupMemberFrames(for: handleHit.groupID)
+            setGroupSelection(handleHit.groupID)
+            currentDragStartFrames = memberFrames
+            dragState = .resizeGroup(
+                id: handleHit.groupID,
+                corner: handleHit.corner,
+                startBounds: bounds,
+                startFrames: memberFrames,
+                startMouse: modelPoint
+            )
+            return
+        }
 
         if let handleHit = resizeHandle(atCanvasPoint: canvasPoint), let object = object(for: handleHit.button) {
             setSelection([handleHit.button])
@@ -190,19 +256,63 @@ final class GamepadPreviewView: NSView {
             return
         }
 
+        if event.clickCount >= 2,
+           let button = button(at: modelPoint),
+           groupID(containing: button) != nil {
+            setSelection([button])
+            return
+        }
+
         if isCommandClick, let button = button(at: modelPoint) {
+            if let groupID = groupID(containing: button) {
+                setGroupSelection(groupID)
+                return
+            }
+
             toggleSelection(button)
             return
         }
 
+        if let selectedGroupID,
+           let button = button(at: modelPoint),
+           group(for: selectedGroupID)?.memberIDs.contains(button) == true {
+            beginGroupMove(groupID: selectedGroupID, startMouse: modelPoint)
+            return
+        }
+
+        if let selectedGroupID,
+           let bounds = groupBounds(for: selectedGroupID),
+           bounds.contains(modelPoint) {
+            beginGroupMove(groupID: selectedGroupID, startMouse: modelPoint)
+            return
+        }
+
         if let selectedHit = button(at: modelPoint, restrictedTo: selectedIDs) {
+            if let groupID = groupID(containing: selectedHit) {
+                setGroupSelection(groupID)
+                beginGroupMove(groupID: groupID, startMouse: modelPoint)
+                return
+            }
+
             beginMove(button: selectedHit, startMouse: modelPoint)
             return
         }
 
         if let button = button(at: modelPoint) {
+            if let groupID = groupID(containing: button) {
+                setGroupSelection(groupID)
+                beginGroupMove(groupID: groupID, startMouse: modelPoint)
+                return
+            }
+
             setSelection([button])
             beginMove(button: button, startMouse: modelPoint)
+            return
+        }
+
+        if let groupID = groupID(at: modelPoint) {
+            setGroupSelection(groupID)
+            beginGroupMove(groupID: groupID, startMouse: modelPoint)
             return
         }
 
@@ -255,6 +365,39 @@ final class GamepadPreviewView: NSView {
             )
             applyGeometryChange([id: geometry])
 
+        case let .moveGroup(_, startFrames, startMouse):
+            let delta = CGPoint(x: modelPoint.x - startMouse.x, y: modelPoint.y - startMouse.y)
+            var proposedGeometries: [GamepadButton: ButtonEditorGeometry] = [:]
+
+            for (id, startFrame) in startFrames {
+                let proposedFrame = startFrame.offsetBy(dx: delta.x, dy: delta.y)
+                proposedGeometries[id] = ButtonEditorGeometry(
+                    centerX: proposedFrame.midX,
+                    centerY: proposedFrame.midY,
+                    width: proposedFrame.width,
+                    height: proposedFrame.height,
+                    anchoredResize: nil
+                )
+            }
+
+            applyGeometryChange(proposedGeometries)
+
+        case let .resizeGroup(_, corner, startBounds, startFrames, startMouse):
+            let deltaX = modelPoint.x - startMouse.x
+            let deltaY = modelPoint.y - startMouse.y
+            let resizedBounds = frameForGeometry(resizedGeometry(
+                startFrame: startBounds,
+                corner: corner,
+                deltaX: deltaX,
+                deltaY: deltaY,
+                minimumSize: CGSize(width: 24, height: 24)
+            ))
+            applyGeometryChange(scaledGroupGeometries(
+                startBounds: startBounds,
+                resizedBounds: resizedBounds,
+                startFrames: startFrames
+            ))
+
         case let .marqueeSelect(start, _):
             dragState = .marqueeSelect(start: start, current: canvasPoint)
             needsDisplay = true
@@ -263,7 +406,7 @@ final class GamepadPreviewView: NSView {
 
     override func mouseUp(with event: NSEvent) {
         switch dragState {
-        case .move, .resize:
+        case .move, .resize, .moveGroup, .resizeGroup:
             let afterFrames = currentDragStartFrames.keys.reduce(into: [GamepadButton: CGRect]()) { result, id in
                 guard let object = object(for: id) else {
                     return
@@ -291,7 +434,9 @@ final class GamepadPreviewView: NSView {
 
     override func mouseMoved(with event: NSEvent) {
         let canvasPoint = convert(event.locationInWindow, from: nil)
-        if let hit = resizeHandle(atCanvasPoint: canvasPoint) {
+        if let hit = groupResizeHandle(atCanvasPoint: canvasPoint) {
+            hit.corner.cursor.set()
+        } else if let hit = resizeHandle(atCanvasPoint: canvasPoint) {
             hit.corner.cursor.set()
         } else {
             NSCursor.arrow.set()
@@ -310,6 +455,16 @@ final class GamepadPreviewView: NSView {
 
         currentDragStartFrames = startFrames
         dragState = .move(ids: ids, startFrames: startFrames, startMouse: startMouse)
+    }
+
+    private func beginGroupMove(groupID: UUID, startMouse: CGPoint) {
+        let startFrames = groupMemberFrames(for: groupID)
+        guard !startFrames.isEmpty else {
+            return
+        }
+
+        currentDragStartFrames = startFrames
+        dragState = .moveGroup(id: groupID, startFrames: startFrames, startMouse: startMouse)
     }
 
     private func applyGeometryChange(_ proposedGeometries: [GamepadButton: ButtonEditorGeometry]) {
@@ -339,8 +494,28 @@ final class GamepadPreviewView: NSView {
 
     private func setSelection(_ selection: Set<GamepadButton>) {
         selectedIDs = Set(objects.map(\.id)).intersection(selection)
+        selectedGroupID = nil
         syncObjectSelection()
-        onSelectionChanged?(selectedIDs)
+        onSelectionChanged?(selectedIDs, selectedGroupID)
+        needsDisplay = true
+        window?.invalidateCursorRects(for: self)
+    }
+
+    private func setGroupSelection(_ groupID: UUID?) {
+        guard let groupID, group(for: groupID) != nil else {
+            selectedGroupID = nil
+            selectedIDs = []
+            syncObjectSelection()
+            onSelectionChanged?(selectedIDs, selectedGroupID)
+            needsDisplay = true
+            window?.invalidateCursorRects(for: self)
+            return
+        }
+
+        selectedGroupID = groupID
+        selectedIDs = []
+        syncObjectSelection()
+        onSelectionChanged?(selectedIDs, selectedGroupID)
         needsDisplay = true
         window?.invalidateCursorRects(for: self)
     }
@@ -363,6 +538,47 @@ final class GamepadPreviewView: NSView {
 
     private func object(for id: GamepadButton) -> CanvasButtonObject? {
         objects.first { $0.id == id && $0.isEnabled }
+    }
+
+    private func group(for id: UUID) -> CanvasButtonGroupObject? {
+        groups.first { $0.id == id }
+    }
+
+    private func groupID(containing button: GamepadButton) -> UUID? {
+        groups.first { $0.memberIDs.contains(button) }?.id
+    }
+
+    private func groupID(at point: CGPoint) -> UUID? {
+        for group in groups.reversed() {
+            guard let bounds = groupBounds(for: group.id), bounds.contains(point) else {
+                continue
+            }
+
+            return group.id
+        }
+
+        return nil
+    }
+
+    private func groupMemberFrames(for groupID: UUID) -> [GamepadButton: CGRect] {
+        guard let group = group(for: groupID) else {
+            return [:]
+        }
+
+        return group.memberIDs.reduce(into: [GamepadButton: CGRect]()) { result, id in
+            guard let object = object(for: id) else {
+                return
+            }
+
+            result[id] = object.frame
+        }
+    }
+
+    private func groupBounds(for groupID: UUID) -> CGRect? {
+        let frames = groupMemberFrames(for: groupID).values
+        return frames.reduce(nil) { partial, frame in
+            partial?.union(frame) ?? frame
+        }
     }
 
     private func button(at point: CGPoint, restrictedTo ids: Set<GamepadButton>? = nil) -> GamepadButton? {
@@ -403,6 +619,9 @@ final class GamepadPreviewView: NSView {
         guard selectedIDs.count == 1, let selectedID = selectedIDs.first, let object = object(for: selectedID) else {
             return nil
         }
+        guard groupID(containing: selectedID) == nil else {
+            return nil
+        }
 
         let canvasFrame = canvasFrame(for: object.frame)
         for corner in ResizeCorner.allCases where handleRect(for: corner, objectFrame: canvasFrame).contains(point) {
@@ -410,6 +629,50 @@ final class GamepadPreviewView: NSView {
         }
 
         return nil
+    }
+
+    private func groupResizeHandle(atCanvasPoint point: CGPoint) -> (groupID: UUID, corner: ResizeCorner)? {
+        guard let selectedGroupID,
+              let bounds = groupBounds(for: selectedGroupID) else {
+            return nil
+        }
+
+        let canvasBounds = canvasFrame(for: bounds)
+        for corner in ResizeCorner.allCases where handleRect(for: corner, objectFrame: canvasBounds).contains(point) {
+            return (selectedGroupID, corner)
+        }
+
+        return nil
+    }
+
+    private func scaledGroupGeometries(
+        startBounds: CGRect,
+        resizedBounds: CGRect,
+        startFrames: [GamepadButton: CGRect]
+    ) -> [GamepadButton: ButtonEditorGeometry] {
+        guard startBounds.width > 0, startBounds.height > 0 else {
+            return [:]
+        }
+
+        let scaleX = resizedBounds.width / startBounds.width
+        let scaleY = resizedBounds.height / startBounds.height
+
+        return startFrames.reduce(into: [GamepadButton: ButtonEditorGeometry]()) { result, entry in
+            let (button, startFrame) = entry
+            let minimumSize = object(for: button).map { minimumEditorSize(for: $0.type) } ?? minimumEditorSize(for: .keyboard)
+            let width = max(minimumSize.width, startFrame.width * scaleX)
+            let height = max(minimumSize.height, startFrame.height * scaleY)
+            let x = resizedBounds.minX + ((startFrame.minX - startBounds.minX) * scaleX)
+            let y = resizedBounds.minY + ((startFrame.minY - startBounds.minY) * scaleY)
+
+            result[button] = ButtonEditorGeometry(
+                centerX: x + (width / 2),
+                centerY: y + (height / 2),
+                width: width,
+                height: height,
+                anchoredResize: nil
+            )
+        }
     }
 
     private func resizedGeometry(
@@ -489,6 +752,15 @@ final class GamepadPreviewView: NSView {
         }
     }
 
+    private func frameForGeometry(_ geometry: ButtonEditorGeometry) -> CGRect {
+        CGRect(
+            x: geometry.centerX - (geometry.width / 2),
+            y: geometry.centerY - (geometry.height / 2),
+            width: geometry.width,
+            height: geometry.height
+        )
+    }
+
     private func drawButton(_ object: CanvasButtonObject) {
         let canvasFrame = canvasFrame(for: object.frame)
         if object.type == .joystick {
@@ -500,7 +772,11 @@ final class GamepadPreviewView: NSView {
         NSColor(hex: object.colorHex).withAlphaComponent(0.85).setFill()
         path.fill()
 
-        drawLabel(for: object, in: canvasFrame)
+        if let systemEvent = object.systemEvent {
+            drawSystemEventSymbol(systemEvent, for: object, in: canvasFrame)
+        } else {
+            drawLabel(for: object, in: canvasFrame)
+        }
 
         guard object.isSelected else {
             return
@@ -512,8 +788,10 @@ final class GamepadPreviewView: NSView {
 
         drawSelectionGlow(for: object.shape, in: canvasFrame)
 
-        for corner in ResizeCorner.allCases {
-            drawResizeHandle(handleRect(for: corner, objectFrame: canvasFrame))
+        if groupID(containing: object.id) == nil {
+            for corner in ResizeCorner.allCases {
+                drawResizeHandle(handleRect(for: corner, objectFrame: canvasFrame))
+            }
         }
     }
 
@@ -575,7 +853,7 @@ final class GamepadPreviewView: NSView {
 
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
-            .foregroundColor: NSColor.white,
+            .foregroundColor: NSColor(hex: object.labelColorHex),
             .paragraphStyle: paragraphStyle,
         ]
         let attributedLabel = NSAttributedString(string: object.label, attributes: attributes)
@@ -589,6 +867,28 @@ final class GamepadPreviewView: NSView {
         attributedLabel.draw(in: drawRect)
     }
 
+    private func drawSystemEventSymbol(_ event: SystemEvent, for object: CanvasButtonObject, in frame: CGRect) {
+        let tint = ButtonConfig.systemEventSymbolColor(for: object.colorHex)
+        let symbolSize = max(10, min(frame.width, frame.height) * object.systemEventIconSize.symbolScale)
+        let fallbackObject = CanvasButtonObject(
+            id: object.id,
+            frame: object.frame,
+            label: event.fallbackSymbol,
+            colorHex: object.colorHex,
+            labelFontSize: Double(symbolSize),
+            labelBold: true,
+            labelItalic: false,
+            labelColorHex: tint.hexString,
+            shape: object.shape,
+            type: object.type,
+            systemEvent: nil,
+            systemEventIconSize: object.systemEventIconSize,
+            isEnabled: object.isEnabled,
+            isSelected: object.isSelected
+        )
+        drawLabel(for: fallbackObject, in: frame)
+    }
+
     private func drawSelectionGlow(for shape: ButtonShape, in frame: CGRect) {
         NSGraphicsContext.saveGraphicsState()
         NSColor.white.withAlphaComponent(0.22).setStroke()
@@ -598,10 +898,25 @@ final class GamepadPreviewView: NSView {
         NSGraphicsContext.restoreGraphicsState()
     }
 
+    private func drawSelectedGroup(in frame: CGRect) {
+        let path = NSBezierPath(roundedRect: frame.insetBy(dx: -4, dy: -4), xRadius: 8, yRadius: 8)
+        NSColor.systemBlue.withAlphaComponent(0.08).setFill()
+        path.fill()
+        NSColor.systemBlue.withAlphaComponent(0.95).setStroke()
+        path.lineWidth = 2
+        path.stroke()
+
+        for corner in ResizeCorner.allCases {
+            drawResizeHandle(handleRect(for: corner, objectFrame: frame))
+        }
+    }
+
     private func buttonPath(for shape: ButtonShape, in frame: CGRect) -> NSBezierPath {
         switch shape {
         case .roundedRectangle:
             return NSBezierPath(roundedRect: frame, xRadius: 6, yRadius: 6)
+        case .square:
+            return NSBezierPath(rect: frame)
         case .oval:
             return NSBezierPath(ovalIn: frame)
         }
@@ -621,7 +936,7 @@ final class GamepadPreviewView: NSView {
         }
 
         switch object.shape {
-        case .roundedRectangle:
+        case .roundedRectangle, .square:
             return true
         case .oval:
             guard object.frame.width > 0, object.frame.height > 0 else {

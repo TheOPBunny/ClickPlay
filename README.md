@@ -1,112 +1,122 @@
-# OnScreenGamepad
+<p align="center">
+  <img src="docs/img/ClickPlay.png" alt="Click Play" width="200">
+</p>
 
-An always-on-top macOS menu bar utility that combines:
+<h1 align="center">Click Play</h1>
 
-- a non-activating on-screen gamepad overlay that sends **real, low-level CGEvent key presses**
-- a built-in profile configurator/editor window for editing layouts, labels, colors, and key mappings
+<p align="center">
+  <em>Click Play to start.</em>
+</p>
 
-The merged `OnScreenGamepad` app is the supported product. The old standalone `GamepadConfigurator` project is retained only as an archived fallback and should not be used for normal development.
+<p align="center">
+  A macOS gamepad overlay for playing many keyboard-driven games with just your mouse.
+</p>
+
+<p align="center">
+  If Click Play helps you, leaving a star is greatly appreciated.
+</p>
+
+## Table of Contents
+
+- [Introduction](#introduction)
+- [Installation](#installation)
+- [Getting Started](#getting-started)
+- [Full Documentation](#full-documentation)
+- [Features](#features)
+- [Caveats](#caveats)
+- [Contributing](#contributing)
+- [Support This Project](#support-this-project)
+- [AI Disclosure](#ai-disclosure)
+- [License](#license)
+
+## Introduction
+
+Click Play puts an always-on-top gamepad on your screen. Click buttons with your mouse, and Click Play sends the matching keyboard inputs to the app or game you are playing.
+
+It is built for games and workflows where a mouse-accessible overlay can stand in for keyboard controls. You can keep the game focused, place the gamepad where it works best, and customize layouts for different games.
+
+<video src="https://github.com/user-attachments/assets/162093be-0f05-4bc2-9494-4f6b93448975"></video>
+
+## Installation
+
+1. Download the latest release from [GitHub Releases](https://github.com/TheOPBunny/ClickPlay/releases).
+2. Unzip the `.zip`.
+3. Drag **Click Play** into your **Applications** folder.
+4. Open **Click Play**.
+5. If macOS shows a security warning, click **Done**.
+6. Open **System Settings** > **Privacy & Security**, scroll to the bottom, then choose **Open Anyway** for Click Play.
+7. Confirm **Open Anyway** when macOS asks.
+
+Click Play is distributed without Apple Developer signing, so the first launch requires getting past Gatekeeper.
+
+## Getting Started
+
+Click Play needs Accessibility permission so it can send keyboard inputs to other apps on your behalf. On first launch, Click Play will guide you to the right macOS settings screen.
+
+After permission is granted:
+
+1. Use the menu bar icon to show or hide the gamepad.
+2. Click or hold a gamepad button to send its assigned input.
+3. Open the editor from the menu bar or the gamepad menu with **Open Editor...**.
+4. Create or switch profiles for different games and layouts.
+
+Profiles are saved locally in:
+
+```text
+~/Library/Application Support/Click Play/profiles.json
+```
+
+## Full Documentation
+
+For a complete feature guide, codebase tour, build notes, planned features, and FAQ, see [Click Play Documentation](docs/index.md).
 
 ## Features
 
-- **Always-on-top overlay** — floats above every app including full-screen games
-- **Low-level key injection** via `CGEvent` → delivered directly to the focused process
-- **Zero activation steal** — pressing buttons never brings the gamepad to front or steals focus
-- **Built-in profile editor** — open `Edit Profiles…` from the menu bar app to edit profiles in a standard AppKit window
-- **Profile switching** — switch the active overlay profile from the menu bar
-- **Draggable** — click and drag anywhere on the pad to reposition
-- **Profile-backed layout** — overlay button layout, opacity, size, labels, and key bindings are persisted in `profiles.json`
-- **All spaces** — follows you across Mission Control spaces
-- **Full-screen compatible** — stays visible in `NSWindowCollectionBehavior.fullScreenAuxiliary` mode
+- Always-on-top overlay that stays available while another app remains focused.
+- Clickable buttons that map to keyboard input.
+- Multiple profiles for different games or control schemes.
+- Layered profiles for switching between related layouts.
+- Joystick-style controls with directional key bindings.
+- Customizable button position, size, label, color, shape, and interaction mode.
+- Support for keyboard bindings, system events, right-click inputs, toggles, and turbo-style interactions.
+- Profile and template editing through the built-in Click Play Editor.
 
-## Setup & Build
+More documentation is planned as the project matures.
 
-### Requirements
-- macOS 13.0 Ventura or later
-- Xcode 15+
+## Caveats
 
-### Steps
+Click Play is still a prototype, and some limitations are expected:
 
-1. **Open project**
-   ```
-   open OnScreenGamepad.xcodeproj
-   ```
+- Games that capture the mouse may not work well with Click Play.
+- Input latency can be noticeable in some games and is still being investigated.
+- Fast-paced games and games that require many simultaneous inputs can be difficult to play with only a mouse.
+- Keyboard injection requires macOS Accessibility permission.
+- The current input approach requires the App Sandbox to remain disabled.
 
-2. **Set your Team** in Xcode → Target → Signing & Capabilities → Team
+## Contributing
 
-3. **Build & Run** (`⌘R`)
+Issues, ideas, and pull requests are welcome. This project is evolving quickly, so small, focused contributions are easiest to review.
 
-4. On first launch, macOS will ask for **Accessibility permission**.  
-   Go to **System Settings → Privacy & Security → Accessibility** and enable `OnScreenGamepad`.
+For code changes, please preserve the core behavior that makes Click Play useful:
 
-5. Relaunch the app. Use the 🎮 menu bar item to:
-   - show or hide the overlay
-   - switch profiles
-   - open `Edit Profiles…`
+- The gamepad must remain usable while another app or game stays focused.
+- Button press, hold, and release behavior should stay reliable.
+- Saved profiles should remain backward compatible unless a migration is intentional.
 
-### Important: App Sandbox must be OFF
+## Support This Project
 
-`CGEvent` injection to other processes requires the sandbox to be disabled.  
-This is already set in `OnScreenGamepad.entitlements`. Don't re-enable it or key injection will silently stop working.
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/N4N71ZKCBA)
 
-This means the app **cannot be submitted to the Mac App Store**. For personal use this is fine.
+Your support goes directly toward development of Click Play, including:
 
-## Default Button Map
+- Apple Developer Program membership.
+- Hardware for future Windows work.
+- Development tooling and AI-assisted coding costs.
 
-| Gamepad Button | Key Sent |
-|---|---|
-| D-Pad ↑ ↓ ← → | Arrow keys |
-| A | Z |
-| B | X |
-| X | A |
-| Y | S |
-| L / R | Q / W |
-| ZL / ZR | E / R |
-| START | Return |
-| SELECT | Space |
-| LS / RS | C / V |
+## AI Disclosure
 
-## Architecture
+Click Play is developed with AI-assisted tooling, including Codex. AI is used to help draft, refactor, debug, and document parts of the project, but project decisions and shipped changes are reviewed and owned by me.
 
-```
-main.swift
-AppDelegate.swift                    App entry, menu bar item, overlay/editor coordination
-GamepadWindow.swift                  Non-activating overlay panel
-GamepadContentView.swift             Overlay layout and drag behavior
-GamepadButtonView.swift              Per-button mouse handling and key lifecycle
-KeyInjector.swift                    Low-level CGEvent posting and held-key tracking
-ConfiguratorWindowController.swift   Standard editor window owner
-ConfiguratorEditorViewController.swift
-GamepadShared/Profile.swift          Profile and button config models
-GamepadShared/ProfileStore.swift     Shared persistence and active profile state
-GamepadShared/KeyMapping.swift       Stable gamepad button identities
-```
+## License
 
-## How Key Injection Works
-
-```swift
-// KeyInjector.swift — the core of it all
-let src = CGEventSource(stateID: .hidSystemState)
-let evt = CGEvent(keyboardEventSource: src, virtualKey: keyCode, keyDown: true)
-evt.post(tap: .cgAnnotatedSessionEventTap)
-```
-
-`CGEventSource(stateID: .hidSystemState)` makes the event look like it came from real hardware.  
-`.cgAnnotatedSessionEventTap` delivers it to whatever process currently has key focus — the gamepad window never needs to be active.
-
-## Troubleshooting
-
-| Problem | Fix |
-|---|---|
-| Keys not sending | Check Accessibility permission in System Settings |
-| Window not on top in a game | Some games use exclusive fullscreen — switch to Windowed or Borderless |
-| Buttons feel laggy | Normal if the target app has input throttling; the injection itself is synchronous |
-| Window disappeared | Click the 🎮 icon in the menu bar to bring it back |
-| Need to edit layout or bindings | Open `Edit Profiles…` from the 🎮 menu bar menu |
-
-## Customization Ideas
-
-- **Analog stick simulation** — add `NSPanGestureRecognizer` to a circular area and map direction to WASD
-- **Turbo / auto-repeat** — add a `Timer` in `KeyInjector` that re-fires `press()` while a button is held
-- **Profile sub-profiles / layering** — extend `ProfileStore` and the editor window
-- **Resize** — change `GamepadWindow.defaultSize` and adjust `layoutButtons()` coordinates proportionally
+Click Play is licensed under the [Apache License 2.0](LICENSE).

@@ -1,5 +1,6 @@
 import Cocoa
 
+/// Small reusable AppKit button that draws a native-looking sidebar toggle glyph for either side of a split view.
 final class SidebarToggleButton: NSButton {
 
     enum Side {
@@ -36,6 +37,7 @@ final class SidebarToggleButton: NSButton {
         ])
     }
 
+    // Drawing the glyph locally avoids an asset dependency while still producing a template image for dark/light mode.
     private func makeImage() -> NSImage {
         let image = NSImage(size: NSSize(width: 18, height: 18))
         image.lockFocus()

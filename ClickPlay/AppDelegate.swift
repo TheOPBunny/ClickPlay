@@ -1,13 +1,27 @@
 import Cocoa
+import SwiftUI
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+/// Coordinates app lifetime, the menu bar entry point, onboarding, and the gamepad/editor windows.
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate {
 
+    // Long-lived UI controllers are owned here so the status-bar app can reopen them without recreating state.
     var gamepadWindow: GamepadWindow?
     var statusItem: NSStatusItem?
-    private var configuratorWindowController: ConfiguratorWindowController?
-    private let supportedOpacityValues: [Double] = [0.25, 0.4, 0.55, 0.7, 0.85, 1.0]
+    private var onboardingWindowController: NSWindowController?
+    private var editorWindowController: EditorWindowController?
+    private var updateCheckWindowController: NSWindowController?
+    private var updateCheckViewModel: UpdateCheckViewModel?
+
+    // Runtime state used to rebuild menus, avoid duplicate permission polling, and restore focus after editing.
+    private let supportedOpacityValues: [Double] = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+    private let updateChecker = UpdateChecker.shared
+    private var availableUpdate: UpdateCheckResult?
     private var lastActiveNonSelfApplication: NSRunningApplication?
     private var workspaceActivationObserver: NSObjectProtocol?
+    private var addProfileFromTemplateItem: NSMenuItem?
+    private var addLayerFromTemplateItem: NSMenuItem?
+    private var isPollingForPermission = false
+    private let firstRunIntroCompletedKey = "firstRunIntroCompleted"
 
     deinit {
         if let workspaceActivationObserver {
@@ -15,11 +29,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // MARK: - Application Lifecycle
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         setupMainMenu()
         setupStatusBar()
         startTrackingActiveApplications()
+        scheduleAutomaticUpdateCheck()
 
         // AXIsProcessTrusted() — NO prompt, just checks current state.
         // NOTE: If you see a re-prompt after every build, it's because Xcode's
@@ -28,16 +45,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Signing & Capabilities, set Team and let it stabilize, then copy the
         // built .app to /Applications and run it from there instead of via ⌘R.
         let trusted = AXIsProcessTrusted()
-        NSLog("Click Play launched. Accessibility trusted: \(trusted)")
+        debugLog("Click Play launched. Accessibility trusted: \(trusted)")
 
         if trusted {
             launchGamepad()
         } else {
-            // Show the system prompt exactly once
-            AXIsProcessTrustedWithOptions(
-                [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-            )
-            pollForPermission()
+            showFirstRunOnboarding()
         }
     }
 
@@ -46,14 +59,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        configuratorWindowController?.flushPanelLayoutDefaults()
+        editorWindowController?.flushPanelLayoutDefaults()
+        gamepadWindow?.releaseAllInputs()
+        KeyInjector.shared.releaseAllHeldKeys()
     }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard editorWindowController?.confirmSaveIfNeeded() ?? true else {
+            return .terminateCancel
+        }
+
+        return .terminateNow
+    }
+
+    // MARK: - Menu Construction
 
     func setupMainMenu() {
         let mainMenu = NSMenu()
         let appItem = NSMenuItem()
+        let fileItem = NSMenuItem()
         let editItem = NSMenuItem()
         mainMenu.addItem(appItem)
+        mainMenu.addItem(fileItem)
         mainMenu.addItem(editItem)
 
         let appMenu = NSMenu(title: "Click Play")
@@ -66,9 +93,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         appItem.submenu = appMenu
 
+        let fileMenu = NSMenu(title: "File")
+        fileMenu.delegate = self
+        fileMenu.addItem(NSMenuItem(title: "Save Changes", action: #selector(saveEditorChanges(_:)), keyEquivalent: "s"))
+        fileMenu.addItem(NSMenuItem.separator())
+        fileMenu.addItem(NSMenuItem(title: "Add Profile", action: #selector(addEditorProfile(_:)), keyEquivalent: ""))
+        fileMenu.addItem(NSMenuItem(title: "Add Layer", action: #selector(addEditorLayer(_:)), keyEquivalent: ""))
+        let addProfileFromTemplateItem = NSMenuItem(title: "Add Profile from Template", action: nil, keyEquivalent: "")
+        addProfileFromTemplateItem.submenu = makeTemplateCreationMenu(kind: .profile)
+        self.addProfileFromTemplateItem = addProfileFromTemplateItem
+        fileMenu.addItem(addProfileFromTemplateItem)
+        let addLayerFromTemplateItem = NSMenuItem(title: "Add Layer from Template", action: nil, keyEquivalent: "")
+        addLayerFromTemplateItem.submenu = makeTemplateCreationMenu(kind: .layer)
+        self.addLayerFromTemplateItem = addLayerFromTemplateItem
+        fileMenu.addItem(addLayerFromTemplateItem)
+        fileMenu.addItem(NSMenuItem.separator())
+        fileMenu.addItem(NSMenuItem(title: "Save Current as Template…", action: #selector(saveCurrentEditorSelectionAsTemplate(_:)), keyEquivalent: ""))
+        fileMenu.addItem(NSMenuItem(title: "Manage Templates…", action: #selector(showTemplateManager(_:)), keyEquivalent: ""))
+        fileMenu.addItem(NSMenuItem.separator())
+        fileMenu.addItem(NSMenuItem(title: "Remove Profile", action: #selector(removeEditorProfile(_:)), keyEquivalent: ""))
+        fileMenu.addItem(NSMenuItem(title: "Remove Layer", action: #selector(removeEditorLayer(_:)), keyEquivalent: ""))
+        for item in fileMenu.items {
+            item.target = self
+        }
+        fileItem.submenu = fileMenu
+
         let editMenu = NSMenu(title: "Edit")
-        editMenu.addItem(NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
-        let redoItem = NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        editMenu.addItem(NSMenuItem(title: "Undo", action: NSSelectorFromString("undo:"), keyEquivalent: "z"))
+        let redoItem = NSMenuItem(title: "Redo", action: NSSelectorFromString("redo:"), keyEquivalent: "Z")
         redoItem.keyEquivalentModifierMask = [.command, .shift]
         editMenu.addItem(redoItem)
         editMenu.addItem(NSMenuItem.separator())
@@ -95,10 +147,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.mainMenu = mainMenu
     }
 
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu.title == "File" else {
+            return
+        }
+
+        addProfileFromTemplateItem?.submenu = makeTemplateCreationMenu(kind: .profile)
+        addLayerFromTemplateItem?.submenu = makeTemplateCreationMenu(kind: .layer)
+    }
+
+    // MARK: - Status Bar
+
     func setupStatusBar() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         guard let btn = statusItem?.button else {
-            NSLog("ERROR: Could not create status bar item")
+            errorLog("ERROR: Could not create status bar item")
             return
         }
         configureStatusBarIcon(for: btn)
@@ -122,9 +185,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         button.title = ""
         button.toolTip = "Click Play"
 
-        guard let iconURL = Bundle.main.url(forResource: "Click-Play-menubar-template", withExtension: "png"),
-              let icon = NSImage(contentsOf: iconURL) else {
-            NSLog("ERROR: Could not load Click Play menu bar icon")
+        guard let icon = NSImage(named: "Click-Play-menubar-template") else {
+            errorLog("ERROR: Could not load Click Play menu bar icon")
             button.title = "CP"
             return
         }
@@ -153,9 +215,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hideItem.target = self
         menu.addItem(hideItem)
 
-        let editProfilesItem = NSMenuItem(title: "Edit Profiles…", action: #selector(showConfigurator), keyEquivalent: ",")
+        let editProfilesItem = NSMenuItem(title: "Open Editor…", action: #selector(showEditor), keyEquivalent: ",")
         editProfilesItem.target = self
         menu.addItem(editProfilesItem)
+        menu.addItem(NSMenuItem.separator())
+
+        let updateTitle = availableUpdate == nil ? "Check for Updates…" : "Update Available…"
+        let updateItem = NSMenuItem(title: updateTitle, action: #selector(checkForUpdates(_:)), keyEquivalent: "")
+        updateItem.target = self
+        menu.addItem(updateItem)
         menu.addItem(NSMenuItem.separator())
 
         let profilesItem = NSMenuItem(title: "Profiles", action: nil, keyEquivalent: "")
@@ -174,6 +242,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         statusItem?.menu = menu
     }
+
+    // MARK: - Gamepad Menus
 
     private func makeProfilesMenu() -> NSMenu {
         let profilesMenu = NSMenu(title: "Profiles")
@@ -200,13 +270,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         transparencyItem.submenu = makeTransparencyMenu()
         menu.addItem(transparencyItem)
 
-        let fadeItem = NSMenuItem(title: "Fade After", action: nil, keyEquivalent: "")
+        let fadeItem = NSMenuItem(title: "Fade After…", action: nil, keyEquivalent: "")
         fadeItem.submenu = makeFadeMenu()
         menu.addItem(fadeItem)
 
         menu.addItem(NSMenuItem.separator())
 
-        let editProfilesItem = NSMenuItem(title: "Edit Profiles…", action: #selector(showConfigurator), keyEquivalent: "")
+        let editProfilesItem = NSMenuItem(title: "Open Editor…", action: #selector(showEditor), keyEquivalent: "")
         editProfilesItem.target = self
         menu.addItem(editProfilesItem)
 
@@ -230,7 +300,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func makeFadeMenu() -> NSMenu {
-        let fadeMenu = NSMenu(title: "Fade After")
+        let fadeMenu = NSMenu(title: "Fade After…")
         let currentTimeout = GamepadSettings.fadeTimeout
 
         for option in GamepadSettings.fadeTimeoutOptions {
@@ -244,6 +314,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return fadeMenu
     }
 
+    private func makeTemplateCreationMenu(kind: ProfileTemplateKind) -> NSMenu {
+        let menu = NSMenu(title: kind == .profile ? "Add Profile from Template" : "Add Layer from Template")
+        let templates = ProfileTemplateStore.shared.templates(kind: kind)
+        guard !templates.isEmpty else {
+            let emptyItem = NSMenuItem(title: "No Saved Templates", action: nil, keyEquivalent: "")
+            emptyItem.isEnabled = false
+            menu.addItem(emptyItem)
+            return menu
+        }
+
+        for template in templates {
+            let selector = kind == .profile
+                ? #selector(addProfileFromSavedTemplate(_:))
+                : #selector(addLayerFromSavedTemplate(_:))
+            let item = NSMenuItem(title: template.name, action: selector, keyEquivalent: "")
+            item.target = self
+            item.representedObject = template.id.uuidString
+            menu.addItem(item)
+        }
+
+        return menu
+    }
+
+    // MARK: - Gamepad Launch and Onboarding
+
     func launchGamepad() {
         DispatchQueue.main.async {
             if let gamepadWindow = self.gamepadWindow {
@@ -251,17 +346,100 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
 
-            NSLog("Launching gamepad window...")
+            debugLog("Launching gamepad window...")
             self.gamepadWindow = GamepadWindow()
             self.gamepadWindow?.orderFrontRegardless()
-            NSLog("Gamepad window frame: \(self.gamepadWindow?.frame ?? .zero)")
+            debugLog("Gamepad window frame: \(self.gamepadWindow?.frame ?? .zero)")
         }
     }
+
+    private func showFirstRunOnboarding() {
+        let introCompleted = UserDefaults.standard.bool(forKey: firstRunIntroCompletedKey)
+        showFirstRunOnboarding(startingAt: introCompleted ? .accessibility : .welcome)
+    }
+
+    private func showFirstRunOnboarding(startingAt initialStep: FirstRunOnboardingStep) {
+        if let onboardingWindow = onboardingWindowController?.window {
+            centerOnboardingWindow(onboardingWindow)
+            onboardingWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let onboardingView = FirstRunOnboardingView(
+            initialStep: initialStep,
+            onFinishedIntro: { [weak self] in
+                self?.markFirstRunIntroCompleted()
+            },
+            onGrantPermission: { [weak self] in
+                self?.requestAccessibilityPermission()
+            },
+            onLearnMore: {
+                NSWorkspace.shared.open(URL(string: "https://github.com/TheOPBunny/ClickPlay")!)
+            }
+        )
+
+        let hostingController = NSHostingController(rootView: onboardingView)
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "Click Play"
+        window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
+        window.isReleasedWhenClosed = false
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.titlebarAppearsTransparent = true
+        window.setContentSize(NSSize(width: 720, height: 620))
+        centerOnboardingWindow(window)
+        window.delegate = self
+
+        let windowController = NSWindowController(window: window)
+        onboardingWindowController = windowController
+        windowController.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func centerOnboardingWindow(_ window: NSWindow) {
+        let screen = NSScreen.main ?? window.screen ?? NSScreen.screens.first
+        guard let visibleFrame = screen?.visibleFrame else {
+            window.center()
+            return
+        }
+
+        let size = window.frame.size
+        let origin = NSPoint(
+            x: visibleFrame.midX - size.width / 2,
+            y: visibleFrame.midY - size.height / 2
+        )
+        window.setFrameOrigin(origin)
+    }
+
+    private func markFirstRunIntroCompleted() {
+        UserDefaults.standard.set(true, forKey: firstRunIntroCompletedKey)
+    }
+
+    private func requestAccessibilityPermission() {
+        markFirstRunIntroCompleted()
+        AXIsProcessTrustedWithOptions(
+            [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        )
+        startPollingForPermission()
+    }
+
+    private func startPollingForPermission() {
+        guard !isPollingForPermission else { return }
+
+        isPollingForPermission = true
+        pollForPermission()
+    }
+
+    // MARK: - Profile and Settings Actions
 
     func pollForPermission() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             if AXIsProcessTrusted() {
-                NSLog("Accessibility permission granted — launching gamepad.")
+                debugLog("Accessibility permission granted — launching gamepad.")
+                self?.isPollingForPermission = false
+                self?.onboardingWindowController?.close()
+                self?.onboardingWindowController = nil
                 self?.launchGamepad()
             } else {
                 self?.pollForPermission()
@@ -272,7 +450,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func switchProfile(_ sender: NSMenuItem) {
         guard let idStr = sender.representedObject as? String,
               let id = UUID(uuidString: idStr) else { return }
+        activateProfileIfAllowed(id)
+    }
+
+    @discardableResult
+    func activateProfileIfAllowed(_ id: UUID) -> Bool {
+        guard confirmEditorNavigationIfNeeded() else {
+            rebuildMenu()
+            return false
+        }
+
         ProfileStore.shared.setActive(id)
+        return true
+    }
+
+    @discardableResult
+    func activateSubProfileIfAllowed(_ id: UUID) -> Bool {
+        guard confirmEditorNavigationIfNeeded() else {
+            return false
+        }
+
+        ProfileStore.shared.setActiveSubProfile(id)
+        return true
     }
 
     @objc func setActiveProfileOpacity(_ sender: NSMenuItem) {
@@ -298,7 +497,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         GamepadSettings.fadeTimeout = nil
     }
 
+    // MARK: - Window and Editor Actions
+
     @objc func showGamepad() {
+        guard AXIsProcessTrusted() else {
+            showFirstRunOnboarding(startingAt: .accessibility)
+            return
+        }
+
         if gamepadWindow == nil {
             launchGamepad()
         } else {
@@ -307,12 +513,75 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func hideGamepad() {
-        gamepadWindow?.orderOut(nil)
+        gamepadWindow?.hideGamepad()
     }
 
-    @objc func showConfigurator() {
+    @objc func saveEditorChanges(_ sender: Any?) {
+        getEditorWindowController().showEditorWindow()
+        getEditorWindowController().saveChanges()
+    }
+
+    @objc func addEditorProfile(_ sender: Any?) {
+        getEditorWindowController().showEditorWindow()
+        getEditorWindowController().addProfile()
+    }
+
+    @objc func addEditorLayer(_ sender: Any?) {
+        getEditorWindowController().showEditorWindow()
+        getEditorWindowController().addLayer()
+    }
+
+    @objc func addDefaultTemplateProfile(_ sender: Any?) {
+        getEditorWindowController().showEditorWindow()
+        getEditorWindowController().addDefaultTemplateProfile()
+    }
+
+    @objc func addDefaultTemplateLayer(_ sender: Any?) {
+        getEditorWindowController().showEditorWindow()
+        getEditorWindowController().addDefaultTemplateLayer()
+    }
+
+    @objc func addProfileFromSavedTemplate(_ sender: NSMenuItem) {
+        guard let templateID = templateID(from: sender) else { return }
+        getEditorWindowController().showEditorWindow()
+        getEditorWindowController().addProfileFromTemplate(id: templateID)
+    }
+
+    @objc func addLayerFromSavedTemplate(_ sender: NSMenuItem) {
+        guard let templateID = templateID(from: sender) else { return }
+        getEditorWindowController().showEditorWindow()
+        getEditorWindowController().addLayerFromTemplate(id: templateID)
+    }
+
+    @objc func saveCurrentEditorSelectionAsTemplate(_ sender: Any?) {
+        getEditorWindowController().showEditorWindow()
+        getEditorWindowController().saveCurrentAsTemplate()
+    }
+
+    @objc func showTemplateManager(_ sender: Any?) {
+        getEditorWindowController().showEditorWindow()
+        getEditorWindowController().showTemplateManager()
+    }
+
+    @objc func removeEditorProfile(_ sender: Any?) {
+        getEditorWindowController().showEditorWindow()
+        getEditorWindowController().removeProfile()
+    }
+
+    @objc func removeEditorLayer(_ sender: Any?) {
+        getEditorWindowController().showEditorWindow()
+        getEditorWindowController().removeLayer()
+    }
+
+    @objc func showEditor() {
         updateLastActiveApplicationIfNeeded(NSWorkspace.shared.frontmostApplication)
-        getConfiguratorWindowController().showEditorWindow()
+        getEditorWindowController().showEditorWindow()
+    }
+
+    @MainActor
+    @objc func checkForUpdates(_ sender: Any?) {
+        let initialState = availableUpdate.map(UpdateCheckViewState.updateAvailable) ?? .checking
+        showUpdateCheckWindow(initialState: initialState)
     }
 
     @objc func openAccessibility() {
@@ -321,8 +590,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
+    // MARK: - Helpers
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        if notification.object as? NSWindow === onboardingWindowController?.window {
+            onboardingWindowController = nil
+        }
+
+        if notification.object as? NSWindow === updateCheckWindowController?.window {
+            updateCheckWindowController = nil
+            updateCheckViewModel = nil
+        }
     }
 
     private func fadeTimeoutsMatch(_ lhs: TimeInterval?, _ rhs: TimeInterval?) -> Bool {
@@ -334,6 +616,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         default:
             return false
         }
+    }
+
+    private func confirmEditorNavigationIfNeeded() -> Bool {
+        editorWindowController?.confirmSaveIfNeeded() ?? true
+    }
+
+    private func templateID(from sender: NSMenuItem) -> UUID? {
+        guard let idString = sender.representedObject as? String else {
+            return nil
+        }
+
+        return UUID(uuidString: idString)
     }
 
     private func startTrackingActiveApplications() {
@@ -365,16 +659,88 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         application.activate(options: [.activateIgnoringOtherApps])
     }
 
-    private func getConfiguratorWindowController() -> ConfiguratorWindowController {
-        if let configuratorWindowController {
-            return configuratorWindowController
+    private func getEditorWindowController() -> EditorWindowController {
+        if let editorWindowController {
+            return editorWindowController
         }
 
-        let controller = ConfiguratorWindowController()
+        let controller = EditorWindowController()
         controller.onClose = { [weak self] in
             self?.restorePreviousApplicationFocus()
         }
-        configuratorWindowController = controller
+        editorWindowController = controller
         return controller
+    }
+
+    private func scheduleAutomaticUpdateCheck() {
+        let checker = updateChecker
+
+        Task { [weak self] in
+            do {
+                guard let result = try await checker.checkForUpdatesIfNeeded(),
+                      result.isUpdateAvailable else {
+                    return
+                }
+
+                await MainActor.run { [weak self] in
+                    self?.handleUpdateCheckResult(result)
+                }
+            } catch {
+                debugLog("Automatic update check failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    @MainActor
+    private func handleUpdateCheckResult(_ result: UpdateCheckResult) {
+        availableUpdate = result.isUpdateAvailable ? result : nil
+        statusItem?.button?.toolTip = result.isUpdateAvailable ? "Click Play - Update available" : "Click Play"
+        rebuildMenu()
+    }
+
+    @MainActor
+    private func showUpdateCheckWindow(initialState: UpdateCheckViewState) {
+        updateCheckWindowController?.close()
+        updateCheckWindowController = nil
+        updateCheckViewModel = nil
+
+        let viewModel = UpdateCheckViewModel(
+            checker: updateChecker,
+            initialState: initialState,
+            onResult: { [weak self] result in
+                self?.handleUpdateCheckResult(result)
+            }
+        )
+        let view = UpdateCheckView(
+            viewModel: viewModel,
+            onDismiss: { [weak self] in
+                self?.closeUpdateCheckWindow()
+            }
+        )
+
+        let hostingController = NSHostingController(rootView: view)
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "Software Update"
+        window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
+        window.isReleasedWhenClosed = false
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.titlebarAppearsTransparent = true
+        window.setContentSize(NSSize(width: 440, height: 270))
+        window.center()
+        window.delegate = self
+
+        let windowController = NSWindowController(window: window)
+        updateCheckViewModel = viewModel
+        updateCheckWindowController = windowController
+        windowController.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @MainActor
+    private func closeUpdateCheckWindow() {
+        updateCheckWindowController?.close()
+        updateCheckWindowController = nil
+        updateCheckViewModel = nil
     }
 }

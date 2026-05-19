@@ -1,5 +1,6 @@
 import Cocoa
 
+/// Clickable recorder control that captures one or more keyboard bindings for editor fields.
 final class KeyRecorderButton: NSView {
 
     var onKeyRecorded: (([ButtonKeyBinding]) -> Void)?
@@ -14,6 +15,7 @@ final class KeyRecorderButton: NSView {
     private(set) var recordedModifiers: NSEvent.ModifierFlags = []
     private(set) var recordedBindings: [ButtonKeyBinding] = [ButtonKeyBinding(keyCode: 49, keyModifiers: 0)]
 
+    // Recording state tracks modifier-only keys separately so shortcuts like Shift and Shift+A both serialize correctly.
     private var isRecording = false {
         didSet {
             updateAppearance()
@@ -23,6 +25,11 @@ final class KeyRecorderButton: NSView {
     private let button = NSButton()
     private let recordingDot = NSView()
     private var monitor: Any?
+    private var pendingModifierOnlyBindings: [Int: ButtonKeyBinding] = [:]
+    private var pressedModifierKeyCodes = Set<Int>()
+    private var modifierKeyCodesUsedInChord = Set<Int>()
+
+    // MARK: - View Setup
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -61,6 +68,8 @@ final class KeyRecorderButton: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    // MARK: - Public Value API
+
     func setKey(code: Int, modifiers: NSEvent.ModifierFlags = []) {
         setKeyBindings([ButtonKeyBinding(keyCode: code, keyModifiers: Int(modifiers.rawValue))])
     }
@@ -88,17 +97,26 @@ final class KeyRecorderButton: NSView {
         isRecording ? stopRecording(commitPendingBindings: true) : startRecording()
     }
 
+    // MARK: - Recording
+
     private func startRecording() {
         stopRecording(commitPendingBindings: false)
         recordedBindings = []
+        pendingModifierOnlyBindings = [:]
+        pressedModifierKeyCodes = []
+        modifierKeyCodesUsedInChord = []
         isRecording = true
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            self?.handleKey(event)
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
+            self?.handle(event)
             return nil
         }
     }
 
     private func stopRecording(commitPendingBindings: Bool) {
+        if commitPendingBindings {
+            commitPendingModifierOnlyBindings()
+        }
+
         let capturedBindings = recordedBindings
         isRecording = false
 
@@ -106,6 +124,10 @@ final class KeyRecorderButton: NSView {
             NSEvent.removeMonitor(monitor)
             self.monitor = nil
         }
+
+        pendingModifierOnlyBindings = [:]
+        pressedModifierKeyCodes = []
+        modifierKeyCodesUsedInChord = []
 
         guard commitPendingBindings, !capturedBindings.isEmpty else {
             updateAppearance()
@@ -117,14 +139,76 @@ final class KeyRecorderButton: NSView {
         onKeyRecorded?(capturedBindings)
     }
 
-    private func handleKey(_ event: NSEvent) {
-        let modifierOnlyCodes: Set<UInt16> = [54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
-        guard !modifierOnlyCodes.contains(event.keyCode) else {
+    private func handle(_ event: NSEvent) {
+        switch event.type {
+        case .keyDown:
+            handleKeyDown(event)
+        case .flagsChanged:
+            handleFlagsChanged(event)
+        default:
+            return
+        }
+    }
+
+    private func handleKeyDown(_ event: NSEvent) {
+        let keyCode = Int(event.keyCode)
+        guard !ButtonConfig.isModifierKey(code: keyCode) else {
             return
         }
 
         let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
-        recordedBindings.append(ButtonKeyBinding(keyCode: Int(event.keyCode), keyModifiers: Int(modifiers.rawValue)))
+        if !modifiers.isEmpty {
+            modifierKeyCodesUsedInChord.formUnion(pressedModifierKeyCodes)
+        }
+
+        recordedBindings.append(ButtonKeyBinding(keyCode: keyCode, keyModifiers: Int(modifiers.rawValue)))
+        updateAppearance()
+    }
+
+    private func handleFlagsChanged(_ event: NSEvent) {
+        let keyCode = Int(event.keyCode)
+        guard let modifierFlag = ButtonConfig.modifierFlag(forKeyCode: keyCode) else {
+            return
+        }
+
+        if modifierFlag == .capsLock {
+            appendModifierOnlyBinding(keyCode: keyCode)
+            updateAppearance()
+            return
+        }
+
+        let wasPressed = pressedModifierKeyCodes.contains(keyCode)
+        let isPressed = event.modifierFlags.contains(modifierFlag)
+
+        if isPressed && !wasPressed {
+            pressedModifierKeyCodes.insert(keyCode)
+            pendingModifierOnlyBindings[keyCode] = ButtonKeyBinding(keyCode: keyCode, keyModifiers: 0)
+        } else if wasPressed {
+            if !modifierKeyCodesUsedInChord.contains(keyCode) {
+                appendModifierOnlyBinding(keyCode: keyCode)
+            }
+
+            pendingModifierOnlyBindings.removeValue(forKey: keyCode)
+            pressedModifierKeyCodes.remove(keyCode)
+            modifierKeyCodesUsedInChord.remove(keyCode)
+        }
+
+        updateAppearance()
+    }
+
+    private func appendModifierOnlyBinding(keyCode: Int) {
+        let binding = pendingModifierOnlyBindings[keyCode] ?? ButtonKeyBinding(keyCode: keyCode, keyModifiers: 0)
+        recordedBindings.append(binding)
+    }
+
+    private func commitPendingModifierOnlyBindings() {
+        for keyCode in pendingModifierOnlyBindings.keys.sorted() where !modifierKeyCodesUsedInChord.contains(keyCode) {
+            appendModifierOnlyBinding(keyCode: keyCode)
+        }
+
+        pendingModifierOnlyBindings = [:]
+        pressedModifierKeyCodes = []
+        modifierKeyCodesUsedInChord = []
         updateAppearance()
     }
 

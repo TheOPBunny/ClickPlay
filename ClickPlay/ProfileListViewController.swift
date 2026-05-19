@@ -1,9 +1,13 @@
 import Cocoa
 
-final class ProfileListViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
+/// Sidebar controller for top-level profiles and nested layers, including rename, drag/drop, templates, and undo.
+final class ProfileListViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate, NSMenuItemValidation, NSTextFieldDelegate {
 
     var onProfileSelected: ((Profile) -> Void)?
+    var onProfileSelectionRequested: (() -> Bool)?
+    private typealias SidebarClipboard = (profile: Profile, isLayer: Bool)
 
+    // NSOutlineView compares object identity, so SidebarItem supplies stable equality for profile/layer rows.
     private final class SidebarItem: NSObject {
         let profileID: UUID
         let parentID: UUID?
@@ -16,16 +20,50 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         var isSubProfile: Bool {
             parentID != nil
         }
+
+        override var hash: Int {
+            var hasher = Hasher()
+            hasher.combine(profileID)
+            hasher.combine(parentID)
+            return hasher.finalize()
+        }
+
+        override func isEqual(_ object: Any?) -> Bool {
+            guard let other = object as? SidebarItem else {
+                return false
+            }
+
+            return profileID == other.profileID && parentID == other.parentID
+        }
+    }
+
+    private struct ProfileDeleteUndoContext {
+        var profile: Profile
+        var index: Int
+        var activeProfileID: UUID
+    }
+
+    private struct LayerDeleteUndoContext {
+        var layer: Profile
+        var parentID: UUID
+        var index: Int
+        var activeProfileID: UUID
+        var activeSubProfileID: UUID?
     }
 
     private let outlineView = NSOutlineView()
     private let scrollView = NSScrollView()
     private let titleLabel = NSTextField(labelWithString: "Profiles")
-    private let bar = NSStackView()
+    private let dropIndicatorView = NSView()
+    private let sidebarUndoManager = UndoManager()
     private var isReloadingSelection = false
-    private var isCollapsed = false
+    private var localClipboard: SidebarClipboard?
     private var templateManagerWindowController: NSWindowController?
+    private var lastSelectionChangeTime = Date.distantPast
+    private let renameAfterSelectionDelay: TimeInterval = 0.65
+    private let sidebarDragType = NSPasteboard.PasteboardType("com.clickplay.sidebar-profile-item")
 
+    // The sidebar always mirrors ProfileStore; mutations go through the store so the gamepad reloads consistently.
     private var profiles: [Profile] {
         ProfileStore.shared.profiles
     }
@@ -34,19 +72,32 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         view = NSView(frame: NSRect(x: 0, y: 0, width: 200, height: 400))
     }
 
+    override var undoManager: UndoManager? {
+        sidebarUndoManager
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
 
         let nameColumn = NSTableColumn(identifier: .init("name"))
         nameColumn.title = "Profiles"
+        nameColumn.isEditable = true
 
         outlineView.addTableColumn(nameColumn)
         outlineView.outlineTableColumn = nameColumn
         outlineView.headerView = nil
         outlineView.dataSource = self
         outlineView.delegate = self
+        outlineView.target = self
+        outlineView.action = #selector(outlineClicked(_:))
         outlineView.rowHeight = 28
         outlineView.usesAlternatingRowBackgroundColors = true
+        outlineView.registerForDraggedTypes([sidebarDragType])
+        outlineView.setDraggingSourceOperationMask(.move, forLocal: true)
+        configureDropIndicator()
+        let contextMenu = NSMenu()
+        contextMenu.delegate = self
+        outlineView.menu = contextMenu
 
         scrollView.documentView = outlineView
         scrollView.hasVerticalScroller = true
@@ -65,42 +116,21 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         header.edgeInsets = NSEdgeInsets(top: 4, left: 6, bottom: 4, right: 6)
         header.translatesAutoresizingMaskIntoConstraints = false
 
-        bar.addArrangedSubview(makeButton(title: "+", action: #selector(showAddProfileMenu(_:))))
-        bar.addArrangedSubview(makeButton(title: "⎘", action: #selector(duplicateSelection)))
-        bar.addArrangedSubview(makeButton(title: "−", action: #selector(deleteSelection)))
-        bar.addArrangedSubview(makeButton(title: "...", action: #selector(showTemplateMenu(_:))))
-        bar.addArrangedSubview(NSView())
-        bar.orientation = .horizontal
-        bar.spacing = 4
-        bar.translatesAutoresizingMaskIntoConstraints = false
-
         view.addSubview(header)
         view.addSubview(scrollView)
-        view.addSubview(bar)
 
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: view.topAnchor),
             header.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             header.heightAnchor.constraint(equalToConstant: 32),
-            bar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 4),
-            bar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -4),
-            bar.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -4),
-            bar.heightAnchor.constraint(equalToConstant: 26),
             scrollView.topAnchor.constraint(equalTo: header.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: bar.topAnchor, constant: -4),
+            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
 
         reload()
-    }
-
-    func setCollapsed(_ collapsed: Bool) {
-        isCollapsed = collapsed
-        titleLabel.isHidden = collapsed
-        scrollView.isHidden = collapsed
-        bar.isHidden = collapsed
     }
 
     func reload() {
@@ -145,10 +175,154 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         let resolvedName = item.isSubProfile
             ? subProfile(with: item.profileID, parentID: item.parentID)?.name
             : profile(with: item.profileID)?.name
-        let label = NSTextField(labelWithString: resolvedName ?? "")
-        label.font = item.isSubProfile ? .systemFont(ofSize: 13) : .boldSystemFont(ofSize: 13)
-        label.lineBreakMode = .byTruncatingTail
-        return label
+        let identifier = NSUserInterfaceItemIdentifier("ProfileNameCell")
+        let cell = outlineView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView ?? NSTableCellView()
+        cell.identifier = identifier
+
+        let textField: NSTextField
+        if let existingTextField = cell.textField {
+            textField = existingTextField
+        } else {
+            textField = NSTextField()
+            textField.isBordered = false
+            textField.drawsBackground = false
+            textField.translatesAutoresizingMaskIntoConstraints = false
+            cell.addSubview(textField)
+            cell.textField = textField
+            NSLayoutConstraint.activate([
+                textField.leadingAnchor.constraint(equalTo: cell.leadingAnchor),
+                textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor),
+                textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+            ])
+        }
+
+        textField.stringValue = resolvedName ?? ""
+        textField.font = item.isSubProfile ? .systemFont(ofSize: 13) : .boldSystemFont(ofSize: 13)
+        textField.lineBreakMode = .byTruncatingTail
+        textField.isEditable = true
+        textField.delegate = self
+        return cell
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, setObjectValue object: Any?, for tableColumn: NSTableColumn?, byItem item: Any?) {
+        guard let item = item as? SidebarItem,
+              let name = object as? String else {
+            return
+        }
+
+        rename(item, to: name)
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        guard let textField = obj.object as? NSTextField else {
+            return
+        }
+
+        commitRename(from: textField)
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
+        guard let item = item as? SidebarItem else {
+            return nil
+        }
+
+        let pasteboardItem = NSPasteboardItem()
+        pasteboardItem.setString(dragPayload(for: item), forType: sidebarDragType)
+        return pasteboardItem
+    }
+
+    func outlineView(
+        _ outlineView: NSOutlineView,
+        validateDrop info: NSDraggingInfo,
+        proposedItem item: Any?,
+        proposedChildIndex index: Int
+    ) -> NSDragOperation {
+        guard let draggedItem = draggedSidebarItem(from: info.draggingPasteboard) else {
+            hideDropIndicator()
+            return []
+        }
+
+        if draggedItem.isSubProfile {
+            guard let target = normalizedLayerDropTarget(
+                for: draggedItem,
+                proposedItem: item,
+                proposedChildIndex: index,
+                draggingInfo: info
+            ) else {
+                hideDropIndicator()
+                return []
+            }
+
+            outlineView.setDropItem(target.parentItem, dropChildIndex: target.childIndex)
+            showDropIndicator(parentItem: target.parentItem, childIndex: target.childIndex)
+            return .move
+        }
+
+        guard let targetIndex = normalizedProfileDropIndex(
+            proposedItem: item,
+            proposedChildIndex: index,
+            draggingInfo: info
+        ) else {
+            hideDropIndicator()
+            return []
+        }
+
+        outlineView.setDropItem(nil, dropChildIndex: targetIndex)
+        showDropIndicator(parentItem: nil, childIndex: targetIndex)
+        return .move
+    }
+
+    func outlineView(
+        _ outlineView: NSOutlineView,
+        acceptDrop info: NSDraggingInfo,
+        item: Any?,
+        childIndex index: Int
+    ) -> Bool {
+        hideDropIndicator()
+
+        guard let draggedItem = draggedSidebarItem(from: info.draggingPasteboard) else {
+            return false
+        }
+
+        if draggedItem.isSubProfile {
+            guard let target = normalizedLayerDropTarget(
+                for: draggedItem,
+                proposedItem: item,
+                proposedChildIndex: index,
+                draggingInfo: info
+            ),
+                  ProfileStore.shared.moveSubProfile(
+                    draggedItem.profileID,
+                    in: target.parentItem.profileID,
+                    to: target.childIndex
+                  ) else {
+                return false
+            }
+
+            onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+            return true
+        }
+
+        guard let targetIndex = normalizedProfileDropIndex(
+            proposedItem: item,
+            proposedChildIndex: index,
+            draggingInfo: info
+        ),
+              ProfileStore.shared.moveProfile(draggedItem.profileID, to: targetIndex) else {
+            return false
+        }
+
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        return true
+    }
+
+    func outlineView(
+        _ outlineView: NSOutlineView,
+        draggingSession session: NSDraggingSession,
+        endedAt screenPoint: NSPoint,
+        operation: NSDragOperation
+    ) {
+        hideDropIndicator()
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
@@ -157,6 +331,13 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         }
 
         guard let item = outlineView.item(atRow: outlineView.selectedRow) as? SidebarItem else {
+            return
+        }
+
+        lastSelectionChangeTime = Date()
+
+        guard onProfileSelectionRequested?() ?? true else {
+            restoreActiveSelection()
             return
         }
 
@@ -171,58 +352,25 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
     }
 
-    private func makeButton(title: String, action: Selector) -> NSButton {
-        let button = NSButton(title: title, target: self, action: action)
-        button.bezelStyle = .smallSquare
-        return button
-    }
-
-    @objc private func showAddProfileMenu(_ sender: NSButton) {
-        let menu = NSMenu()
-
-        let templateProfileItem = NSMenuItem(title: "New Profile from Template", action: nil, keyEquivalent: "")
-        templateProfileItem.submenu = makeTemplateSubmenu(kind: .profile)
-        menu.addItem(templateProfileItem)
-
-        let blankProfileItem = NSMenuItem(title: "New Blank Profile", action: #selector(addBlankProfile), keyEquivalent: "")
-        blankProfileItem.target = self
-        menu.addItem(blankProfileItem)
-
-        menu.addItem(NSMenuItem.separator())
-
-        let templateLayerItem = NSMenuItem(title: "New Layer from Template", action: nil, keyEquivalent: "")
-        templateLayerItem.submenu = makeTemplateSubmenu(kind: .layer)
-        templateLayerItem.isEnabled = selectedParentID() != nil
-        menu.addItem(templateLayerItem)
-
-        let blankLayerItem = NSMenuItem(title: "New Blank Layer", action: #selector(addBlankSubProfile), keyEquivalent: "")
-        blankLayerItem.target = self
-        blankLayerItem.isEnabled = selectedParentID() != nil
-        menu.addItem(blankLayerItem)
-
-        menu.popUp(positioning: nil, at: CGPoint(x: 0, y: sender.bounds.maxY + 2), in: sender)
-    }
-
-    @objc private func addBlankProfile() {
+    @objc func addBlankProfile() {
         let profile = Profile.makeBlank(name: "Profile \(profiles.count + 1)").asTopLevelContainer()
         add(profile: profile)
     }
 
-    @objc private func addBlankSubProfile() {
+    @objc func addBlankSubProfile() {
         addSubProfile(fromTemplate: false)
     }
 
-    @objc private func addDefaultTemplateProfile() {
+    @objc func addDefaultTemplateProfile() {
         let profile = Profile.makeStarterTemplate(name: "Profile \(profiles.count + 1)").asTopLevelContainer()
         add(profile: profile)
     }
 
-    @objc private func addDefaultTemplateSubProfile() {
+    @objc func addDefaultTemplateSubProfile() {
         addSubProfile(fromTemplate: true)
     }
 
-    @objc private func addProfileFromSavedTemplate(_ sender: NSMenuItem) {
-        guard let templateID = representedTemplateID(sender) else { return }
+    func addProfileFromTemplate(id templateID: UUID) {
         let existingNames = Set(profiles.map(\.name))
         let baseName = ProfileTemplateStore.shared.templates(kind: .profile)
             .first { $0.id == templateID }?.name ?? "Profile"
@@ -233,12 +381,9 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         add(profile: profile)
     }
 
-    @objc private func addSubProfileFromSavedTemplate(_ sender: NSMenuItem) {
+    func addSubProfileFromTemplate(id templateID: UUID) {
         guard let parentID = selectedParentID(),
-              let templateID = representedTemplateID(sender),
-              let parentProfile = profile(with: parentID) else {
-            return
-        }
+              let parentProfile = profile(with: parentID) else { return }
         let existingNames = Set(parentProfile.subProfiles.map(\.name))
         let baseName = ProfileTemplateStore.shared.templates(kind: .layer)
             .first { $0.id == templateID }?.name ?? "Layer"
@@ -251,22 +396,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
     }
 
-    @objc private func showTemplateMenu(_ sender: NSButton) {
-        let menu = NSMenu()
-
-        let saveItem = NSMenuItem(title: "Save Current as Template...", action: #selector(saveCurrentAsTemplate), keyEquivalent: "")
-        saveItem.target = self
-        saveItem.isEnabled = selectedSidebarItem() != nil
-        menu.addItem(saveItem)
-
-        let manageItem = NSMenuItem(title: "Manage Templates...", action: #selector(showTemplateManager), keyEquivalent: "")
-        manageItem.target = self
-        menu.addItem(manageItem)
-
-        menu.popUp(positioning: nil, at: CGPoint(x: 0, y: sender.bounds.maxY + 2), in: sender)
-    }
-
-    @objc private func saveCurrentAsTemplate() {
+    @objc func saveCurrentAsTemplate() {
         guard let item = selectedSidebarItem(),
               let selectedProfile = profile(for: item) else {
             return
@@ -281,7 +411,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         ProfileTemplateStore.shared.saveTemplate(named: name, kind: kind, profile: selectedProfile)
     }
 
-    @objc private func showTemplateManager() {
+    @objc func showTemplateManager() {
         if let templateManagerWindowController {
             templateManagerWindowController.showWindow(self)
             templateManagerWindowController.window?.makeKeyAndOrderFront(self)
@@ -322,7 +452,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
     }
 
-    @objc private func duplicateSelection() {
+    @objc func duplicateSelection() {
         guard let item = outlineView.item(atRow: outlineView.selectedRow) as? SidebarItem else {
             return
         }
@@ -343,19 +473,144 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
     }
 
-    @objc private func deleteSelection() {
-        guard let item = outlineView.item(atRow: outlineView.selectedRow) as? SidebarItem else {
+    @objc func deleteSelection() {
+        guard let item = outlineView.item(atRow: outlineView.selectedRow) as? SidebarItem,
+              canDeleteSelection,
+              let selectedProfile = profile(for: item),
+              confirmDelete(profile: selectedProfile, isLayer: item.isSubProfile) else {
             return
         }
 
         if let parentID = item.parentID {
+            guard let parentProfile = profile(with: parentID),
+                  let index = parentProfile.subProfiles.firstIndex(where: { $0.id == item.profileID }) else {
+                return
+            }
+            let undoContext = LayerDeleteUndoContext(
+                layer: selectedProfile,
+                parentID: parentID,
+                index: index,
+                activeProfileID: ProfileStore.shared.activeProfileID,
+                activeSubProfileID: parentProfile.activeSubProfileID
+            )
             ProfileStore.shared.deleteSubProfile(item.profileID, in: parentID)
+            registerLayerDeleteUndo(undoContext)
             onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
             return
         }
 
+        guard let index = profiles.firstIndex(where: { $0.id == item.profileID }) else {
+            return
+        }
+        let undoContext = ProfileDeleteUndoContext(
+            profile: selectedProfile,
+            index: index,
+            activeProfileID: ProfileStore.shared.activeProfileID
+        )
         ProfileStore.shared.delete(item.profileID)
+        registerProfileDeleteUndo(undoContext)
         onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+    }
+
+    @objc func cut(_ sender: Any?) {
+        guard copySelectionToLocalClipboard() else {
+            return
+        }
+
+        deleteSelection()
+    }
+
+    @objc func copy(_ sender: Any?) {
+        _ = copySelectionToLocalClipboard()
+    }
+
+    @objc func paste(_ sender: Any?) {
+        guard let localClipboard else {
+            return
+        }
+
+        if localClipboard.isLayer {
+            guard let parentID = selectedParentID() else {
+                return
+            }
+
+            var layer = localClipboard.profile.copyWithNewIDs()
+            layer.subProfiles = []
+            layer.activeSubProfileID = nil
+            _ = ProfileStore.shared.addSubProfile(layer, to: parentID)
+            onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+            return
+        }
+
+        let profile = localClipboard.profile.copyWithNewIDs().asTopLevelContainer()
+        add(profile: profile)
+    }
+
+    @objc func delete(_ sender: Any?) {
+        deleteSelection()
+    }
+
+    @objc func rename(_ sender: Any?) {
+        beginRenameSelected()
+    }
+
+    @objc func undo(_ sender: Any?) {
+        sidebarUndoManager.undo()
+    }
+
+    @objc func redo(_ sender: Any?) {
+        sidebarUndoManager.redo()
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(undo(_:)):
+            menuItem.title = sidebarUndoManager.undoMenuItemTitle
+            return sidebarUndoManager.canUndo
+        case #selector(redo(_:)):
+            menuItem.title = sidebarUndoManager.redoMenuItemTitle
+            return sidebarUndoManager.canRedo
+        case #selector(cut(_:)), #selector(delete(_:)):
+            return canDeleteSelection
+        case #selector(copy(_:)):
+            return selectedSidebarItem() != nil
+        case #selector(paste(_:)):
+            return localClipboard != nil
+        default:
+            return true
+        }
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        if outlineView.clickedRow >= 0 {
+            outlineView.selectRowIndexes(IndexSet(integer: outlineView.clickedRow), byExtendingSelection: false)
+        }
+
+        menu.removeAllItems()
+        addContextItem("Cut", action: #selector(cut(_:)), to: menu, enabled: canDeleteSelection)
+        addContextItem("Copy", action: #selector(copy(_:)), to: menu, enabled: selectedSidebarItem() != nil)
+        addContextItem("Paste", action: #selector(paste(_:)), to: menu, enabled: localClipboard != nil)
+        menu.addItem(NSMenuItem.separator())
+        addContextItem("Duplicate", action: #selector(duplicateSelection), to: menu, enabled: selectedSidebarItem() != nil)
+        addContextItem("Delete", action: #selector(deleteSelection), to: menu, enabled: canDeleteSelection)
+        menu.addItem(NSMenuItem.separator())
+        addContextItem("Rename", action: #selector(rename(_:)), to: menu, enabled: selectedSidebarItem() != nil)
+    }
+
+    func deleteSelectedProfile() {
+        guard let item = selectedSidebarItem(), !item.isSubProfile else {
+            return
+        }
+
+        deleteSelection()
+    }
+
+    func deleteSelectedLayer() {
+        guard let item = selectedSidebarItem(), item.isSubProfile else {
+            return
+        }
+
+        deleteSelection()
     }
 
     private func expandAllProfiles() {
@@ -386,6 +641,12 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         outlineView.deselectAll(nil)
     }
 
+    private func restoreActiveSelection() {
+        isReloadingSelection = true
+        selectActiveSubProfile()
+        isReloadingSelection = false
+    }
+
     private func selectedParentID() -> UUID? {
         guard let item = outlineView.item(atRow: outlineView.selectedRow) as? SidebarItem else {
             return ProfileStore.shared.activeProfileID
@@ -398,6 +659,322 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         outlineView.item(atRow: outlineView.selectedRow) as? SidebarItem
     }
 
+    private var canDeleteSelection: Bool {
+        guard let item = selectedSidebarItem() else {
+            return false
+        }
+
+        if item.isSubProfile, let parentID = item.parentID {
+            return (profile(with: parentID)?.subProfiles.count ?? 0) > 1
+        }
+
+        return profiles.count > 1
+    }
+
+    private func addContextItem(_ title: String, action: Selector, to menu: NSMenu, enabled: Bool) {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        item.isEnabled = enabled
+        menu.addItem(item)
+    }
+
+    private func copySelectionToLocalClipboard() -> Bool {
+        guard let item = selectedSidebarItem(),
+              let profile = profile(for: item) else {
+            return false
+        }
+
+        localClipboard = (profile, item.isSubProfile)
+        return true
+    }
+
+    private func beginRenameSelected() {
+        let selectedRow = outlineView.selectedRow
+        guard selectedRow >= 0 else {
+            return
+        }
+
+        outlineView.editColumn(0, row: selectedRow, with: nil, select: true)
+    }
+
+    private func commitRename(from textField: NSTextField) {
+        let row = outlineView.row(for: textField)
+        guard row >= 0,
+              let item = outlineView.item(atRow: row) as? SidebarItem else {
+            return
+        }
+
+        rename(item, to: textField.stringValue)
+    }
+
+    private func rename(_ item: SidebarItem, to name: String) {
+        if let parentID = item.parentID {
+            ProfileStore.shared.renameSubProfile(item.profileID, in: parentID, to: name)
+            return
+        }
+
+        ProfileStore.shared.rename(item.profileID, to: name)
+    }
+
+    @objc private func outlineClicked(_ sender: NSOutlineView) {
+        guard sender.clickedRow >= 0,
+              sender.clickedColumn >= 0,
+              sender.window?.currentEvent?.clickCount == 1,
+              sender.clickedRow == sender.selectedRow,
+              clickedNameCellContainsCurrentEvent(row: sender.clickedRow),
+              Date().timeIntervalSince(lastSelectionChangeTime) >= renameAfterSelectionDelay else {
+            return
+        }
+
+        beginRenameSelected()
+    }
+
+    private func clickedNameCellContainsCurrentEvent(row: Int) -> Bool {
+        guard let event = outlineView.window?.currentEvent else {
+            return false
+        }
+
+        let eventPoint = outlineView.convert(event.locationInWindow, from: nil)
+        return outlineView.frameOfCell(atColumn: 0, row: row).contains(eventPoint)
+    }
+
+    private func configureDropIndicator() {
+        dropIndicatorView.wantsLayer = true
+        dropIndicatorView.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
+        dropIndicatorView.layer?.cornerRadius = 1.5
+        dropIndicatorView.isHidden = true
+        dropIndicatorView.autoresizingMask = [.width]
+        outlineView.addSubview(dropIndicatorView)
+    }
+
+    private func normalizedProfileDropIndex(
+        proposedItem item: Any?,
+        proposedChildIndex index: Int,
+        draggingInfo: NSDraggingInfo
+    ) -> Int? {
+        closestProfileDropIndex(to: outlineDropY(for: draggingInfo))
+    }
+
+    private func normalizedLayerDropTarget(
+        for draggedItem: SidebarItem,
+        proposedItem item: Any?,
+        proposedChildIndex index: Int,
+        draggingInfo: NSDraggingInfo
+    ) -> (parentItem: SidebarItem, childIndex: Int)? {
+        guard let parentID = draggedItem.parentID,
+              let parentProfile = profile(with: parentID) else {
+            return nil
+        }
+
+        guard let childIndex = closestLayerDropIndex(
+            in: parentProfile,
+            to: outlineDropY(for: draggingInfo)
+        ) else {
+            return nil
+        }
+
+        let parentItem = visibleSidebarItem(profileID: parentID, parentID: nil)
+            ?? SidebarItem(profileID: parentID, parentID: nil)
+        return (parentItem, childIndex)
+    }
+
+    private func outlineDropY(for draggingInfo: NSDraggingInfo) -> CGFloat {
+        let dropPoint = outlineView.convert(draggingInfo.draggingLocation, from: nil)
+        return dropPoint.y
+    }
+
+    private func closestProfileDropIndex(to y: CGFloat) -> Int? {
+        var candidates: [(index: Int, y: CGFloat)] = []
+
+        for (index, profile) in profiles.enumerated() {
+            let rowItem = SidebarItem(profileID: profile.id, parentID: nil)
+            if let edgeY = rowEdgeY(for: rowItem, edge: .before) {
+                candidates.append((index, edgeY))
+            }
+        }
+
+        if let lastProfile = profiles.last,
+           let lastRow = lastVisibleDescendantRow(of: lastProfile.id) {
+            candidates.append((profiles.count, rowEdgeY(forRow: lastRow, edge: .after)))
+        }
+
+        return closestCandidate(to: y, candidates: candidates)
+    }
+
+    private func closestLayerDropIndex(in parentProfile: Profile, to y: CGFloat) -> Int? {
+        var candidates: [(index: Int, y: CGFloat)] = []
+
+        for (index, subProfile) in parentProfile.subProfiles.enumerated() {
+            let rowItem = SidebarItem(profileID: subProfile.id, parentID: parentProfile.id)
+            if let edgeY = rowEdgeY(for: rowItem, edge: .before) {
+                candidates.append((index, edgeY))
+            }
+        }
+
+        if let lastSubProfile = parentProfile.subProfiles.last {
+            let rowItem = SidebarItem(profileID: lastSubProfile.id, parentID: parentProfile.id)
+            if let edgeY = rowEdgeY(for: rowItem, edge: .after) {
+                candidates.append((parentProfile.subProfiles.count, edgeY))
+            }
+        }
+
+        return closestCandidate(to: y, candidates: candidates)
+    }
+
+    private func closestCandidate(to y: CGFloat, candidates: [(index: Int, y: CGFloat)]) -> Int? {
+        candidates.min { left, right in
+            abs(left.y - y) < abs(right.y - y)
+        }?.index
+    }
+
+    private func showDropIndicator(parentItem: SidebarItem?, childIndex: Int) {
+        guard let y = dropIndicatorY(parentItem: parentItem, childIndex: childIndex) else {
+            hideDropIndicator()
+            return
+        }
+
+        let height = 3.0
+        let inset = 6.0
+        dropIndicatorView.frame = NSRect(
+            x: inset,
+            y: y - (height / 2),
+            width: max(outlineView.bounds.width - (inset * 2), 0),
+            height: height
+        )
+        dropIndicatorView.isHidden = false
+        outlineView.addSubview(dropIndicatorView, positioned: .above, relativeTo: nil)
+    }
+
+    private func hideDropIndicator() {
+        dropIndicatorView.isHidden = true
+    }
+
+    private func dropIndicatorY(parentItem: SidebarItem?, childIndex: Int) -> CGFloat? {
+        if let parentItem {
+            guard let parentProfile = profile(with: parentItem.profileID),
+                  !parentProfile.subProfiles.isEmpty else {
+                return nil
+            }
+
+            if childIndex < parentProfile.subProfiles.count {
+                let rowItem = SidebarItem(profileID: parentProfile.subProfiles[childIndex].id, parentID: parentProfile.id)
+                return rowEdgeY(for: rowItem, edge: .before)
+            }
+
+            guard let lastSubProfile = parentProfile.subProfiles.last else {
+                return nil
+            }
+
+            let rowItem = SidebarItem(profileID: lastSubProfile.id, parentID: parentProfile.id)
+            return rowEdgeY(for: rowItem, edge: .after)
+        }
+
+        guard !profiles.isEmpty else {
+            return nil
+        }
+
+        if childIndex < profiles.count {
+            let rowItem = SidebarItem(profileID: profiles[childIndex].id, parentID: nil)
+            return rowEdgeY(for: rowItem, edge: .before)
+        }
+
+        guard let lastRow = lastVisibleDescendantRow(of: profiles[profiles.count - 1].id) else {
+            return nil
+        }
+
+        return rowEdgeY(forRow: lastRow, edge: .after)
+    }
+
+    private enum DropIndicatorEdge {
+        case before
+        case after
+    }
+
+    private func rowEdgeY(for item: SidebarItem, edge: DropIndicatorEdge) -> CGFloat? {
+        let row = row(for: item)
+        guard row >= 0 else {
+            return nil
+        }
+
+        return rowEdgeY(forRow: row, edge: edge)
+    }
+
+    private func rowEdgeY(forRow row: Int, edge: DropIndicatorEdge) -> CGFloat {
+        let rowFrame = outlineView.rect(ofRow: row)
+        switch (outlineView.isFlipped, edge) {
+        case (true, .before), (false, .after):
+            return rowFrame.minY
+        case (true, .after), (false, .before):
+            return rowFrame.maxY
+        }
+    }
+
+    private func row(for sidebarItem: SidebarItem) -> Int {
+        for row in 0..<outlineView.numberOfRows {
+            guard let item = outlineView.item(atRow: row) as? SidebarItem,
+                  item.profileID == sidebarItem.profileID,
+                  item.parentID == sidebarItem.parentID else {
+                continue
+            }
+
+            return row
+        }
+
+        return -1
+    }
+
+    private func visibleSidebarItem(profileID: UUID, parentID: UUID?) -> SidebarItem? {
+        for row in 0..<outlineView.numberOfRows {
+            guard let item = outlineView.item(atRow: row) as? SidebarItem,
+                  item.profileID == profileID,
+                  item.parentID == parentID else {
+                continue
+            }
+
+            return item
+        }
+
+        return nil
+    }
+
+    private func lastVisibleDescendantRow(of profileID: UUID) -> Int? {
+        var lastRow: Int?
+
+        for row in 0..<outlineView.numberOfRows {
+            guard let item = outlineView.item(atRow: row) as? SidebarItem else {
+                continue
+            }
+
+            if item.profileID == profileID || item.parentID == profileID {
+                lastRow = row
+            }
+        }
+
+        return lastRow
+    }
+
+    private func dragPayload(for item: SidebarItem) -> String {
+        [
+            item.profileID.uuidString,
+            item.parentID?.uuidString ?? "",
+        ].joined(separator: "|")
+    }
+
+    private func draggedSidebarItem(from pasteboard: NSPasteboard) -> SidebarItem? {
+        guard let payload = pasteboard.string(forType: sidebarDragType) else {
+            return nil
+        }
+
+        let components = payload.split(separator: "|", omittingEmptySubsequences: false)
+        guard components.count == 2,
+              let profileID = UUID(uuidString: String(components[0])) else {
+            return nil
+        }
+
+        let parentID = components[1].isEmpty ? nil : UUID(uuidString: String(components[1]))
+        return SidebarItem(profileID: profileID, parentID: parentID)
+    }
+
     private func profile(for item: SidebarItem) -> Profile? {
         if let parentID = item.parentID {
             return subProfile(with: item.profileID, parentID: parentID)
@@ -406,42 +983,69 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         return profile(with: item.profileID)
     }
 
-    private func makeTemplateSubmenu(kind: ProfileTemplateKind) -> NSMenu {
-        let menu = NSMenu()
-        let templates = ProfileTemplateStore.shared.templates(kind: kind)
-
-        let defaultSelector = kind == .profile
-            ? #selector(addDefaultTemplateProfile)
-            : #selector(addDefaultTemplateSubProfile)
-        let defaultItem = NSMenuItem(title: "Default Template", action: defaultSelector, keyEquivalent: "")
-        defaultItem.target = self
-        menu.addItem(defaultItem)
-
-        guard !templates.isEmpty else {
-            menu.addItem(NSMenuItem.separator())
-            let emptyItem = NSMenuItem(title: "No Saved Templates", action: nil, keyEquivalent: "")
-            emptyItem.isEnabled = false
-            menu.addItem(emptyItem)
-            return menu
-        }
-
-        menu.addItem(NSMenuItem.separator())
-        for template in templates {
-            let selector = kind == .profile
-                ? #selector(addProfileFromSavedTemplate(_:))
-                : #selector(addSubProfileFromSavedTemplate(_:))
-            let item = NSMenuItem(title: template.name, action: selector, keyEquivalent: "")
-            item.target = self
-            item.representedObject = template.id.uuidString
-            menu.addItem(item)
-        }
-
-        return menu
+    private func confirmDelete(profile: Profile, isLayer: Bool) -> Bool {
+        let itemKind = isLayer ? "Layer" : "Profile"
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Delete \(itemKind)?"
+        alert.informativeText = "\"\(profile.name)\" will be removed. You can undo this from the Edit menu."
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
-    private func representedTemplateID(_ sender: NSMenuItem) -> UUID? {
-        guard let idString = sender.representedObject as? String else { return nil }
-        return UUID(uuidString: idString)
+    private func registerProfileDeleteUndo(_ context: ProfileDeleteUndoContext) {
+        sidebarUndoManager.registerUndo(withTarget: self) { target in
+            target.restoreDeletedProfile(context)
+        }
+        sidebarUndoManager.setActionName("Delete Profile")
+    }
+
+    private func restoreDeletedProfile(_ context: ProfileDeleteUndoContext) {
+        ProfileStore.shared.restoreProfile(
+            context.profile,
+            at: context.index,
+            activeProfileID: context.activeProfileID
+        )
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        sidebarUndoManager.registerUndo(withTarget: self) { target in
+            target.redoProfileDelete(context)
+        }
+        sidebarUndoManager.setActionName("Delete Profile")
+    }
+
+    private func redoProfileDelete(_ context: ProfileDeleteUndoContext) {
+        ProfileStore.shared.delete(context.profile.id)
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        registerProfileDeleteUndo(context)
+    }
+
+    private func registerLayerDeleteUndo(_ context: LayerDeleteUndoContext) {
+        sidebarUndoManager.registerUndo(withTarget: self) { target in
+            target.restoreDeletedLayer(context)
+        }
+        sidebarUndoManager.setActionName("Delete Layer")
+    }
+
+    private func restoreDeletedLayer(_ context: LayerDeleteUndoContext) {
+        ProfileStore.shared.restoreSubProfile(
+            context.layer,
+            in: context.parentID,
+            at: context.index,
+            activeProfileID: context.activeProfileID,
+            activeSubProfileID: context.activeSubProfileID
+        )
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        sidebarUndoManager.registerUndo(withTarget: self) { target in
+            target.redoLayerDelete(context)
+        }
+        sidebarUndoManager.setActionName("Delete Layer")
+    }
+
+    private func redoLayerDelete(_ context: LayerDeleteUndoContext) {
+        ProfileStore.shared.deleteSubProfile(context.layer.id, in: context.parentID)
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        registerLayerDeleteUndo(context)
     }
 
     private func uniqueName(_ baseName: String, existingNames: Set<String>) -> String {
@@ -495,9 +1099,10 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
     }
 }
 
+/// Modal controller for renaming and deleting saved profile/layer/group templates.
 private final class TemplateManagerViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
 
-    private let segmentedControl = NSSegmentedControl(labels: ["Profiles", "Layers"], trackingMode: .selectOne, target: nil, action: nil)
+    private let segmentedControl = NSSegmentedControl(labels: ["Profiles", "Layers", "Groups"], trackingMode: .selectOne, target: nil, action: nil)
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
     private let renameButton = NSButton(title: "Rename", target: nil, action: nil)
@@ -506,7 +1111,14 @@ private final class TemplateManagerViewController: NSViewController, NSTableView
     private var templatesDidChangeObserver: NSObjectProtocol?
 
     private var selectedKind: ProfileTemplateKind {
-        segmentedControl.selectedSegment == 1 ? .layer : .profile
+        switch segmentedControl.selectedSegment {
+        case 1:
+            return .layer
+        case 2:
+            return .group
+        default:
+            return .profile
+        }
     }
 
     private var visibleTemplates: [ProfileTemplate] {
@@ -564,7 +1176,7 @@ private final class TemplateManagerViewController: NSViewController, NSTableView
         NSLayoutConstraint.activate([
             segmentedControl.topAnchor.constraint(equalTo: view.topAnchor, constant: 14),
             segmentedControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14),
-            segmentedControl.widthAnchor.constraint(equalToConstant: 180),
+            segmentedControl.widthAnchor.constraint(equalToConstant: 240),
 
             scrollView.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 12),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14),

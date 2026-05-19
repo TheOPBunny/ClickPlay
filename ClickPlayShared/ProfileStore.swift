@@ -1,10 +1,13 @@
 import Foundation
 
+/// Template category determines whether saved content becomes a full profile, a nested layer, or a grouped selection.
 enum ProfileTemplateKind: String, Codable {
     case profile
     case layer
+    case group
 }
 
+/// Template payload persisted outside the live profile list.
 struct ProfileTemplate: Codable, Identifiable {
     var id: UUID
     var name: String
@@ -16,16 +19,26 @@ private enum AppStorage {
     static let currentDirectoryName = "Click Play"
     static let legacyDirectoryName = "OnScreenGamepad"
 
+    // Storage lookup also performs the one-time copy from the prototype's old support directory.
     static func fileURL(named fileName: String) -> URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let currentDir = appSupport.appendingPathComponent(currentDirectoryName)
         let legacyURL = appSupport.appendingPathComponent(legacyDirectoryName).appendingPathComponent(fileName)
         let currentURL = currentDir.appendingPathComponent(fileName)
 
-        try? FileManager.default.createDirectory(at: currentDir, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(at: currentDir, withIntermediateDirectories: true)
+        } catch {
+            NSLog("[AppStorage] ERROR: Could not create storage directory \(currentDir.path): \(error)")
+        }
+
         if !FileManager.default.fileExists(atPath: currentURL.path),
            FileManager.default.fileExists(atPath: legacyURL.path) {
-            try? FileManager.default.copyItem(at: legacyURL, to: currentURL)
+            do {
+                try FileManager.default.copyItem(at: legacyURL, to: currentURL)
+            } catch {
+                NSLog("[AppStorage] ERROR: Could not copy legacy \(fileName): \(error)")
+            }
         }
 
         return currentURL
@@ -38,6 +51,9 @@ final class ProfileTemplateStore {
 
     static let shared = ProfileTemplateStore()
     static let templatesDidChange = Notification.Name("templatesDidChange")
+    private static let defaultProfileTemplateID = UUID(uuidString: "4C8E916B-6C57-4F1B-8B77-2593598E02B3")!
+    private static let gamepadLayerTemplateID = UUID(uuidString: "4C5B2AF7-8D11-4C64-9E19-A36F1F9E8F61")!
+    private static let keyboardLayerTemplateID = UUID(uuidString: "76740C26-1DD9-4C10-A4C5-2E26B908A4E8")!
 
     private(set) var templates: [ProfileTemplate] = []
 
@@ -49,8 +65,10 @@ final class ProfileTemplateStore {
         load()
     }
 
+    // MARK: - Template CRUD
+
     func templates(kind: ProfileTemplateKind) -> [ProfileTemplate] {
-        templates.filter { $0.kind == kind }
+        allTemplates.filter { $0.kind == kind }
     }
 
     @discardableResult
@@ -67,12 +85,14 @@ final class ProfileTemplateStore {
     }
 
     func renameTemplate(id: UUID, to name: String) {
+        guard !isBuiltInTemplateID(id) else { return }
         guard let index = templates.firstIndex(where: { $0.id == id }) else { return }
         templates[index].name = normalizedName(name, fallback: templates[index].name)
         save()
     }
 
     func deleteTemplate(id: UUID) {
+        guard !isBuiltInTemplateID(id) else { return }
         let previousCount = templates.count
         templates.removeAll { $0.id == id }
         guard templates.count != previousCount else { return }
@@ -80,14 +100,14 @@ final class ProfileTemplateStore {
     }
 
     func makeProfile(fromTemplateID id: UUID, name: String) -> Profile? {
-        guard let template = templates.first(where: { $0.id == id && $0.kind == .profile }) else { return nil }
+        guard let template = allTemplates.first(where: { $0.id == id && $0.kind == .profile }) else { return nil }
         var profile = template.profile.copyWithNewIDs(nameSuffix: "").asTopLevelContainer()
         profile.name = normalizedName(name, fallback: template.name)
         return profile.normalizedActiveSubProfileSelection()
     }
 
     func makeLayer(fromTemplateID id: UUID, name: String) -> Profile? {
-        guard let template = templates.first(where: { $0.id == id && $0.kind == .layer }) else { return nil }
+        guard let template = allTemplates.first(where: { $0.id == id && $0.kind == .layer }) else { return nil }
         var layer = template.profile.copyWithNewIDs(nameSuffix: "")
         layer.name = normalizedName(name, fallback: template.name)
         layer.subProfiles = []
@@ -95,19 +115,68 @@ final class ProfileTemplateStore {
         return layerByRemovingSubProfileSwitches(from: layer).normalizedForSaving()
     }
 
+    func makeGroup(fromTemplateID id: UUID) -> Profile? {
+        guard let template = allTemplates.first(where: { $0.id == id && $0.kind == .group }) else { return nil }
+        return template.profile.copyWithFreshButtonIDs()
+    }
+
+    private var allTemplates: [ProfileTemplate] {
+        builtInTemplates + templates
+    }
+
+    private var builtInTemplates: [ProfileTemplate] {
+        let layers = Profile.makeDefaultLayerTemplates()
+        return [
+            ProfileTemplate(
+                id: Self.defaultProfileTemplateID,
+                name: "Default",
+                kind: .profile,
+                profile: Profile.makeDefault()
+            ),
+            ProfileTemplate(
+                id: Self.gamepadLayerTemplateID,
+                name: "Gamepad",
+                kind: .layer,
+                profile: layers.first { $0.name == "Gamepad" } ?? Profile.makeBlank(name: "Gamepad")
+            ),
+            ProfileTemplate(
+                id: Self.keyboardLayerTemplateID,
+                name: "Keyboard",
+                kind: .layer,
+                profile: layers.first { $0.name == "Keyboard" } ?? Profile.makeBlank(name: "Keyboard")
+            ),
+        ]
+    }
+
+    private func isBuiltInTemplateID(_ id: UUID) -> Bool {
+        id == Self.defaultProfileTemplateID
+            || id == Self.gamepadLayerTemplateID
+            || id == Self.keyboardLayerTemplateID
+    }
+
     private func load() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let saved = try? JSONDecoder().decode(SavedData.self, from: data) else {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
             templates = []
             return
         }
-        templates = saved.templates
+
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let saved = try JSONDecoder().decode(SavedData.self, from: data)
+            templates = saved.templates
+        } catch {
+            NSLog("[ProfileTemplateStore] ERROR: Could not load templates from \(fileURL.path): \(error)")
+            templates = []
+        }
     }
 
     private func save() {
         let saved = SavedData(templates: templates)
-        if let data = try? JSONEncoder().encode(saved) {
-            try? data.write(to: fileURL)
+        do {
+            let data = try JSONEncoder().encode(saved)
+            try data.write(to: fileURL, options: .atomic)
+        } catch {
+            NSLog("[ProfileTemplateStore] ERROR: Could not save templates to \(fileURL.path): \(error)")
         }
         NotificationCenter.default.post(name: ProfileTemplateStore.templatesDidChange, object: nil)
     }
@@ -121,6 +190,11 @@ final class ProfileTemplateStore {
             layer.subProfiles = []
             layer.activeSubProfileID = nil
             return layerByRemovingSubProfileSwitches(from: layer).normalizedForSaving()
+        case .group:
+            var groupProfile = layerByRemovingSubProfileSwitches(from: profile)
+            groupProfile.subProfiles = []
+            groupProfile.activeSubProfileID = nil
+            return groupProfile.normalizedForSaving()
         }
     }
 
@@ -143,6 +217,8 @@ final class ProfileTemplateStore {
             return "Profile Template"
         case .layer:
             return "Layer Template"
+        case .group:
+            return "Group Template"
         }
     }
 
@@ -186,29 +262,42 @@ final class ProfileStore {
     // MARK: - Persistence
 
     private func load(defaultProfile: Profile) {
-        guard let data = try? Data(contentsOf: fileURL),
-              let saved = try? JSONDecoder().decode(SavedData.self, from: data) else {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
             profiles = [reconciledSubProfileSwitchButtons(in: defaultProfile.asTopLevelContainer())]
             activeProfileID = defaultProfile.id
             return
         }
-        profiles = (saved.profiles.isEmpty ? [defaultProfile] : saved.profiles).map {
-            reconciledSubProfileSwitchButtons(in: $0.asTopLevelContainer())
-        }
-        activeProfileID = saved.activeProfileID ?? profiles[0].id
-        if !profiles.contains(where: { $0.id == activeProfileID }) {
-            activeProfileID = profiles[0].id
+
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let saved = try JSONDecoder().decode(SavedData.self, from: data)
+            profiles = (saved.profiles.isEmpty ? [defaultProfile] : saved.profiles).map {
+                reconciledSubProfileSwitchButtons(in: $0.asTopLevelContainer())
+            }
+            activeProfileID = saved.activeProfileID ?? profiles[0].id
+            if !profiles.contains(where: { $0.id == activeProfileID }) {
+                activeProfileID = profiles[0].id
+            }
+        } catch {
+            NSLog("[ProfileStore] ERROR: Could not load profiles from \(fileURL.path): \(error)")
+            profiles = [reconciledSubProfileSwitchButtons(in: defaultProfile.asTopLevelContainer())]
+            activeProfileID = defaultProfile.id
         }
     }
 
     func save() {
-        profiles = profiles.map { reconciledSubProfileSwitchButtons(in: $0.normalizedActiveSubProfileSelection()) }
+        profiles = profiles.map { reconciledSubProfileSwitchButtons(in: $0.normalizedActiveSubProfileSelection()).withSanitizedButtonGroups() }
         let saved = SavedData(profiles: profiles, activeProfileID: activeProfileID)
-        if let data = try? JSONEncoder().encode(saved) {
-            try? data.write(to: fileURL)
+        do {
+            let data = try JSONEncoder().encode(saved)
+            try data.write(to: fileURL, options: .atomic)
+        } catch {
+            NSLog("[ProfileStore] ERROR: Could not save profiles to \(fileURL.path): \(error)")
         }
         NotificationCenter.default.post(name: ProfileStore.profilesDidChange, object: nil)
     }
+
+    // MARK: - Profile Resolution
 
     func resolvedProfile(for profile: Profile) -> Profile {
         guard !profile.subProfiles.isEmpty else {
@@ -246,7 +335,7 @@ final class ProfileStore {
         activeResolvedProfile
     }
 
-    // MARK: - Mutations
+    // MARK: - Top-Level Profile Mutations
 
     func setActive(_ id: UUID) {
         guard profiles.contains(where: { $0.id == id }) else {
@@ -272,11 +361,49 @@ final class ProfileStore {
         save()
     }
 
+    func rename(_ id: UUID, to name: String) {
+        guard let idx = profiles.firstIndex(where: { $0.id == id }) else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, profiles[idx].name != trimmed else { return }
+        profiles[idx].name = trimmed
+        save()
+    }
+
     func delete(_ id: UUID) {
         guard profiles.count > 1 else { return }
         profiles.removeAll { $0.id == id }
         if activeProfileID == id { activeProfileID = profiles[0].id }
         save()
+    }
+
+    func restoreProfile(_ profile: Profile, at index: Int, activeProfileID restoredActiveProfileID: UUID) {
+        let restoredProfile = profile.asTopLevelContainer()
+        profiles.removeAll { $0.id == restoredProfile.id }
+        let insertionIndex = min(max(index, 0), profiles.count)
+        profiles.insert(restoredProfile, at: insertionIndex)
+        activeProfileID = profiles.contains { $0.id == restoredActiveProfileID }
+            ? restoredActiveProfileID
+            : restoredProfile.id
+        save()
+    }
+
+    @discardableResult
+    func moveProfile(_ id: UUID, to index: Int) -> Bool {
+        guard let sourceIndex = profiles.firstIndex(where: { $0.id == id }) else {
+            return false
+        }
+
+        let movingProfile = profiles.remove(at: sourceIndex)
+        let adjustedIndex = index > sourceIndex ? index - 1 : index
+        let destinationIndex = min(max(adjustedIndex, 0), profiles.count)
+        guard destinationIndex != sourceIndex else {
+            profiles.insert(movingProfile, at: sourceIndex)
+            return false
+        }
+
+        profiles.insert(movingProfile, at: destinationIndex)
+        save()
+        return true
     }
 
     @discardableResult
@@ -294,6 +421,8 @@ final class ProfileStore {
         profiles[idx].displayPadHeight = height
         save()
     }
+
+    // MARK: - Sub-Profile Mutations
 
     func setActiveSubProfile(_ subProfileID: UUID, in parentProfileID: UUID) {
         guard let parentIndex = profiles.firstIndex(where: { $0.id == parentProfileID }) else {
@@ -349,13 +478,33 @@ final class ProfileStore {
         save()
     }
 
+    func renameSubProfile(_ subProfileID: UUID, in parentProfileID: UUID, to name: String) {
+        guard let parentIndex = profiles.firstIndex(where: { $0.id == parentProfileID }),
+              let childIndex = profiles[parentIndex].subProfiles.firstIndex(where: { $0.id == subProfileID }) else {
+            return
+        }
+
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, profiles[parentIndex].subProfiles[childIndex].name != trimmed else { return }
+        let previousNames = subProfileNames(in: profiles[parentIndex])
+        profiles[parentIndex].subProfiles[childIndex].name = trimmed
+        profiles[parentIndex] = reconciledSubProfileSwitchButtons(
+            in: profiles[parentIndex],
+            previousNames: previousNames
+        )
+        save()
+    }
+
     @discardableResult
     func addSubProfile(to parentProfileID: UUID, fromTemplate: Bool) -> Profile? {
         guard let parentIndex = profiles.firstIndex(where: { $0.id == parentProfileID }) else { return nil }
         let nextIndex = profiles[parentIndex].subProfiles.count + 1
         var subProfile = fromTemplate
-            ? Profile.makeStarterTemplate(name: "Layer \(nextIndex)")
+            ? (Profile.makeDefaultLayerTemplates().first?.copyWithNewIDs(nameSuffix: "") ?? Profile.makeBlank())
             : Profile.makeBlank(name: "Layer \(nextIndex)")
+        if fromTemplate {
+            subProfile.name = "Layer \(nextIndex)"
+        }
         subProfile.subProfiles = []
         subProfile.activeSubProfileID = nil
         profiles[parentIndex].subProfiles.append(subProfile)
@@ -396,6 +545,28 @@ final class ProfileStore {
         return duplicatedSubProfile
     }
 
+    @discardableResult
+    func moveSubProfile(_ subProfileID: UUID, in parentProfileID: UUID, to index: Int) -> Bool {
+        guard let parentIndex = profiles.firstIndex(where: { $0.id == parentProfileID }),
+              let sourceIndex = profiles[parentIndex].subProfiles.firstIndex(where: { $0.id == subProfileID }) else {
+            return false
+        }
+
+        let movingSubProfile = profiles[parentIndex].subProfiles.remove(at: sourceIndex)
+        let adjustedIndex = index > sourceIndex ? index - 1 : index
+        let destinationIndex = min(max(adjustedIndex, 0), profiles[parentIndex].subProfiles.count)
+        guard destinationIndex != sourceIndex else {
+            profiles[parentIndex].subProfiles.insert(movingSubProfile, at: sourceIndex)
+            return false
+        }
+
+        profiles[parentIndex].subProfiles.insert(movingSubProfile, at: destinationIndex)
+        profiles[parentIndex] = reconciledSubProfileSwitchButtons(in: profiles[parentIndex])
+        activeProfileID = parentProfileID
+        save()
+        return true
+    }
+
     func deleteSubProfile(_ subProfileID: UUID, in parentProfileID: UUID) {
         guard let parentIndex = profiles.firstIndex(where: { $0.id == parentProfileID }),
               profiles[parentIndex].subProfiles.count > 1 else {
@@ -408,6 +579,29 @@ final class ProfileStore {
         }
         profiles[parentIndex] = reconciledSubProfileSwitchButtons(in: profiles[parentIndex])
         activeProfileID = parentProfileID
+        save()
+    }
+
+    func restoreSubProfile(
+        _ subProfile: Profile,
+        in parentProfileID: UUID,
+        at index: Int,
+        activeProfileID restoredActiveProfileID: UUID,
+        activeSubProfileID restoredActiveSubProfileID: UUID?
+    ) {
+        guard let parentIndex = profiles.firstIndex(where: { $0.id == parentProfileID }) else { return }
+
+        var restoredSubProfile = subProfile
+        restoredSubProfile.subProfiles = []
+        restoredSubProfile.activeSubProfileID = nil
+        profiles[parentIndex].subProfiles.removeAll { $0.id == restoredSubProfile.id }
+        let insertionIndex = min(max(index, 0), profiles[parentIndex].subProfiles.count)
+        profiles[parentIndex].subProfiles.insert(restoredSubProfile, at: insertionIndex)
+        profiles[parentIndex].activeSubProfileID = restoredActiveSubProfileID
+        profiles[parentIndex] = reconciledSubProfileSwitchButtons(in: profiles[parentIndex])
+        activeProfileID = profiles.contains { $0.id == restoredActiveProfileID }
+            ? restoredActiveProfileID
+            : parentProfileID
         save()
     }
 
@@ -601,19 +795,6 @@ final class ProfileStore {
 
     private func subProfileNames(in profile: Profile) -> [UUID: String] {
         Dictionary(uniqueKeysWithValues: profile.subProfiles.map { ($0.id, $0.name) })
-    }
-
-    private func activeSubProfileIndex(in profile: Profile) -> Int? {
-        guard !profile.subProfiles.isEmpty else {
-            return nil
-        }
-
-        if let activeSubProfileID = profile.activeSubProfileID,
-           let index = profile.subProfiles.firstIndex(where: { $0.id == activeSubProfileID }) {
-            return index
-        }
-
-        return 0
     }
 
     private struct SavedData: Codable {
