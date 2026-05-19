@@ -4,44 +4,72 @@ Click Play is a macOS mouse-driven gamepad and control overlay for keyboard-driv
 
 ## Table of Contents
 
-- [About Project](#about-project)
+- [About the Project](#about-the-project)
 - [Features](#features)
 - [Codebase](#codebase)
-- [Planned Features](#planned-features)
+- [Planned Features and Ideas](#planned-features-and-ideas)
 - [FAQ](#faq)
-- [About Me](#about-me)
 
-## About Project
+## About the Project
 
-Click Play runs as a macOS status-bar app. Its main experience is an always-on-top, non-activating overlay that can sit above games or other apps without taking keyboard focus away from them.
+Click Play runs as a macOS status-bar app. Its main experience is an always-on-top, non-activating overlay that can sit above games or other apps without taking focus away from them.
 
 Users build profiles made of buttons, joystick controls, layers, templates, colors, labels, and bindings. Those controls can inject keyboard events, trigger supported system events, switch layers, or behave as toggle/turbo controls.
 
-The app is currently a functional prototype that is growing into a richer editor-backed control system. It uses AppKit for lifecycle, status-bar, windowing, editor, and overlay behavior, with SwiftUI used where it fits well for onboarding and update-check screens.
+The app is currently a functional prototype that is growing into a richer editor-backed control system. It uses AppKit for lifecycle, status-bar, windowing, editor, and overlay behavior, with SwiftUI used where it fits well.
 
 Click Play uses `CGEvent` for keyboard injection. That means macOS Accessibility permission is required, and the App Sandbox must remain disabled for the current input approach.
 
 ## Features
 
-### Always-On-Top Overlay
+### Menu Bar
+
+The menu-bar item provides entry points for showing or hiding the gamepad, opening the editor, checking for updates, switching profiles, and opening Accessibility settings.
+
+<p align="center">
+    <img src="img/ClickPlay-menubar.gif" alt="Menu Bar" width="400" />
+</p>
+
+### Gamepad Overlay
+
+This is how you play games with Click Play. The overlay reads your profiles and turns them into an interactive gamepad with the customizable buttons and virtual joysticks you configured. The header lets you close or minimize the gamepad and open a drop-down menu where you can:
+
+- Change profiles.
+- Change gamepad overlay transparency.
+- Set the fade timer.
+- Open the editor.
+
+#### Always-On-Top Overlay
 
 The gamepad is displayed in a borderless overlay panel above normal app windows. It is designed to remain usable while another app or game stays focused.
 
-### Non-Activating Window Behavior
+#### Non-Activating Window Behavior
 
-The overlay is intentionally non-activating: interacting with Click Play should not make the overlay the key or main window. This is central to using it over games and other focused apps.
+The overlay is intentionally non-activating: interacting with Click Play should not make the overlay the key or main window. This is central to using it over games and other focused apps. Put simply, interacting with Click Play does not steal focus from the game, and clicks do not pass through the gamepad window, so you do not unintentionally send inputs in-game.
 
-### Accessibility Permission Flow
+#### Transparency and Fade
 
-On first launch, Click Play checks whether Accessibility permission has been granted. If permission is missing, the onboarding flow guides the user toward granting it before launching the gamepad.
+You can control transparency from the gamepad overlay's menu. Transparency is stored per profile or layer.
 
-### Status Bar Menu
+A global fade timeout can fade the overlay after inactivity, with menu options such as never, 3 seconds, 5 seconds, 10 seconds, and 30 seconds.
 
-The status-bar item provides entry points for showing or hiding the gamepad, opening the editor, checking for updates, switching profiles, and opening Accessibility settings.
+### Click Play Editor
+
+The Click Play Editor is used to create, arrange, configure, duplicate, delete, and save profiles, layers, buttons, groups, and templates. It has a profile sidebar, live preview canvas, and inspector panel. You can open the editor from either the menu bar or the gamepad overlay's menu.
 
 ### Profiles
 
 Profiles store complete gamepad layouts. A profile includes pad dimensions, background styling, opacity, compatibility mode, button ordering, button configs, groups, and nested layers.
+
+To create a profile, go to **File** > **Add Profile** or **File** > **Add Profile from Template**.
+
+<p align="center">
+    <img src="img/ClickPlay-newprofile.gif" alt="Add Profile" width="400" />
+</p>
+
+You can rename, rearrange, cut, copy, paste, and delete profiles from the profile panel.
+
+Click Play comes preloaded with a basic profile to help you get started.
 
 Profiles are saved locally in:
 
@@ -51,15 +79,29 @@ Profiles are saved locally in:
 
 ### Layers
 
-Layers are nested profiles inside a top-level profile. They let a layout switch between related control surfaces without leaving the parent profile.
+Layers are nested profiles inside a top-level profile. They let you switch between related control schemes without leaving the parent profile. For example, you can have one layer for movement and another for combat, then switch between them without going through a menu.
 
-### Built-In Editor
+You can rename, rearrange, cut, copy, paste, and delete layers from the profile panel.
 
-The Click Play Editor is used to create, arrange, configure, duplicate, delete, and save profiles, layers, buttons, groups, and templates. It has a profile sidebar, live preview canvas, and inspector panel.
+To add a layer, go to **File** > **Add Layer** or **File** > **Add Layer from Template**.
+
+<p align="center">
+    <img src="img/ClickPlay-addlayer.gif" alt="Add Layer" width="400" />
+</p>
+
+#### Layer Switches
+
+Special layer-switch controls can activate a nested layer from the overlay.
+
+<p align="center">
+    <img src="img/ClickPlay-layers.gif" alt="Layers" width="400" />
+</p>
 
 ### Templates
 
-Templates allow users to save reusable profiles, layers, or button groups. Built-in templates provide starter layouts, while user templates are persisted separately from live profiles.
+You can save profiles, layers, or button groups as templates. Built-in templates provide starter layouts, and you can create your own reusable templates. You can add profile or layer templates as described above, or create new ones with **File** > **Save Current as Template**, which saves the currently selected profile or layer as a template.
+
+You can rename or delete templates with **File** > **Manage Templates**.
 
 Templates are saved locally in:
 
@@ -67,87 +109,115 @@ Templates are saved locally in:
 ~/Library/Application Support/Click Play/templates.json
 ```
 
-### Button Customization
+### Preview Canvas
 
-Buttons can be positioned, resized, labeled, enabled or disabled, colored, styled, and assigned different shapes. Button labels can have custom size, bold/italic state, and color.
-
-### Key Recording
-
-The editor includes a key recorder for capturing keyboard bindings. It supports ordinary keys, modifier chords, modifier-only bindings, and multi-key binding lists.
-
-### Multi-Key Bindings
-
-Controls can use multiple key bindings. Multi-key activation can be sequential or simultaneous depending on the configuration.
-
-### Right-Click Inputs
-
-Controls can define separate right-click bindings and interaction modes. If no right-click binding is set, a control can fall back to its primary left-click binding.
-
-### Momentary Press/Hold/Release
-
-Click-and-hold is a foundational input primitive, not the whole product identity. For momentary controls, mouse down maps to key down and mouse up or drag-off maps to key up. This release behavior protects against stale held keys.
-
-### Toggle-Hold Mode
-
-Toggle-hold controls let a click toggle an input between held and released states. The visual state reflects that active mode.
-
-### Turbo Mode
-
-Turbo controls repeatedly activate an input while active. This is useful for games or workflows that benefit from repeated taps.
-
-### Joystick Controls
-
-Joystick-style controls map directional movement to directional key bindings. Joysticks support capture-style and click-drag interaction modes.
-
-### Joystick Axis and Scroll Behavior
-
-Joystick controls include axis-lock options, hold durations, unlock behavior, scroll-wheel handling, and optional scroll-triggered input actions.
-
-### System Events
-
-Buttons can trigger supported system events, including brightness, volume, media, Launchpad, and Mission Control actions.
-
-### Sub-Profile Switches
-
-Special layer-switch controls can activate a nested layer from the overlay. These are persisted as generated `subProfileSwitch:` button identities.
-
-### Opacity and Fade
-
-Profiles can control overlay opacity. A global fade timeout can fade the overlay after inactivity, with menu options such as never, 3 seconds, 5 seconds, 10 seconds, and 30 seconds.
+The editor preview canvas renders the gamepad controls and supports selecting, dragging, resizing, grouping, snapping, and alignment. You can toggle a grid over the canvas from the editor's top toolbar.
 
 ### Grouping, Snapping, and Alignment
 
 The editor supports button grouping, group color changes, snapping, alignment commands, distribution commands, equal sizing, and marquee selection.
 
-### Preview Canvas
+#### Grouping
 
-The editor preview canvas renders the gamepad layout and supports selecting, dragging, resizing, group manipulation, alignment guides, and centered/legacy coordinate behavior.
+Select multiple controls to group them. Once grouped, they move and resize together. You can also change the color of every control in the group from the inspector panel. Controls can still be edited by double-clicking them in the canvas. You can save groups as templates to reuse across profiles.
 
-### Local Persistence
+Grouping controls are in the editor’s top toolbar.
 
-Profiles and templates are stored in the user's Application Support directory. The storage helper also performs a one-time compatibility copy from the legacy `OnScreenGamepad` support directory when current files do not exist.
+You can add a saved group from the **Add...** drop-down in the top-right of the editor. Once a group is added, click it to edit its properties in the inspector panel.
 
-### First-Run Onboarding
+#### Snapping
 
-The first-run SwiftUI onboarding flow introduces Click Play, shows bundled intro videos, and then moves the user to the Accessibility permission step.
+With snapping enabled, you can line up controls more easily. You can enable snapping in the editor's top toolbar.
+
+#### Alignment
+
+Drag on the canvas to select multiple controls. Once selected, go to the **Edit** menu to choose alignment and spacing options.
+
+### Button Customization
+
+Buttons can be assigned keys, positioned, resized, labeled, colored, styled, and given different shapes. Button labels can have custom size, bold or italic styling, and color.
+
+You can add a button from the **Add...** drop-down in the top-right of the editor. Once a button is added, click it to edit its properties in the inspector panel.
+
+### Key Recording
+
+The editor includes a key recorder for capturing keyboard bindings. It supports ordinary keys, modifier keys, and key combos.
+
+To record a key or combo, click the recorder box to start recording, press any key or combo with your keyboard, then click the recorder box again to stop recording. Press **Clear** to unassign recorded keys.
+
+If you are unable to use a hardware keyboard, you can use macOS's built-in Accessibility Keyboard to record keys.
+
+### Combos
+
+Buttons can use key combo bindings. Key combo activation can be sequential or simultaneous depending on the configuration in the inspector.
+
+- Sequential: keys are sent in order, one at a time.
+- Simultaneous: all recorded keys are sent at the same time.
+
+### Right-Click Inputs
+
+Buttons can have separate right-click bindings and interaction modes. If configured, a separate key recorder will become available. If no right-click binding is set, a button can fall back to its primary left-click binding.
+
+### Momentary Press/Hold/Release
+
+For momentary controls, mouse down maps to key down and mouse up or drag-off maps to key up. This release behavior protects against stale held keys.
+
+### Toggle-Hold Mode
+
+Toggle-hold controls let a click toggle an input between held and released states. A button has a red outline when it is in this state.
+
+### Turbo Mode
+
+Turbo controls repeatedly activate an input while active. This is useful for games that benefit from repeated inputs. A button has a green outline when it is in this state.
+
+### Compatibility Mode
+
+Compatibility Mode makes the `keyDown` state last for a minimum of 33 ms. This helps games accept inputs by keeping `keyDown` inside the game's input polling range. It can be useful if your mouse sends very short clicks that cause games to ignore inputs. This usually should not be an issue with standard hardware mice, but it can help with specialty mice, such as the Permobil Bluetooth mouse feature in some wheelchairs.
+
+### Joystick Controls
+
+Joystick-style controls map directional movement to directional key bindings. Each direction can be mapped to any key. Joysticks support capture-style and click-drag interaction modes.
+
+- Capture: left-click a joystick to enter joystick mode. Your mouse will be captured, and all movement will be mapped to the joystick. To release the mouse and leave joystick mode, right-click. Use this mode if you have a joystick-style mouse or are unable to click and hold the left mouse button for a longer duration.
+- Click-drag: click and drag anywhere on the joystick surface for directional inputs. This is the default mode.
+
+You can add a joystick from the **Add...** drop-down in the top-right of the editor. Once a joystick is added, click it to edit its properties in the inspector panel.
+
+### Joystick Axis and Scroll Behavior
+
+- Axis Lock: keep the joystick held in one direction without continuous input.
+- Scroll wheel: use the scroll wheel to toggle axis lock in the up or down direction.
+- Hold direction: keep the joystick held in a single direction for a configurable amount of time to axis lock in that direction. Move the joystick again to unlock.
+- Off: disable axis lock.
+- Scroll Wheel: if not used for axis lock, scroll up and scroll down can be assigned a key or combo. If configured, a separate key recorder will become available.
+
+### System Events
+
+Buttons can trigger supported system events, including brightness, volume, media, Launchpad, and Mission Control actions.
+
+You can add a system event from the **Add...** drop-down in the top-right of the editor. Once a system event button is added, click it to edit its properties in the inspector panel.
 
 ### Update Checks
 
-Click Play can check GitHub Releases for the latest version. Automatic checks are throttled, and manual checks can be opened from the status-bar menu.
+Click Play checks GitHub Releases for the latest version. Updates are checked automatically once per day, or you can check manually from the menu bar item.
 
 ### Caveats
 
-Some games that capture the mouse may not work well with Click Play. Input latency can vary by game and system. Because keyboard injection uses `CGEvent`, Accessibility permission is required and App Sandbox must remain disabled for the current implementation.
+Games that capture the mouse may not work well with Click Play. The only workaround I have found so far is to play in a Parallels VM with the "Don't optimize for games" mouse setting, but that is very demanding on the system and performance takes a hit. A Parallels subscription is also required.
+
+Input latency can vary by game and system. In my most recent test, I measured about the same amount of latency as a DualShock 4 over Bluetooth, so you may not notice any. Let me know what it feels like for you; I will keep trying to improve it as much as I can.
+
+Because keyboard injection uses `CGEvent`, Accessibility permission is required, and App Sandbox must remain disabled for the current implementation.
 
 ## Codebase
 
 ### Project Layout
 
+- `Click Play.xcodeproj/`: Xcode project, workspace metadata, and shared scheme.
 - `ClickPlay/`: main macOS app source, AppKit windows/controllers/views, SwiftUI onboarding/update views, entitlements, Info.plist, and app icon metadata.
 - `ClickPlayShared/`: shared profile, template, persistence, and button identity models.
 - `Media.xcassets/`: onboarding videos and menu bar/logo assets.
-- `img/`: README and documentation image assets.
-- `Click Play.xcodeproj/`: Xcode project, workspace metadata, and shared scheme.
+- `docs/`: Documentation and repo image assets.
 - `README.md`: concise public landing page and quick-start guide.
 - `LICENSE`: Apache License 2.0.
 - `AGENTS.md`: contributor and agent instructions for safe development.
@@ -159,6 +229,8 @@ Open `Click Play.xcodeproj` in Xcode and build the `Click Play` scheme, or run:
 ```sh
 xcodebuild -project "Click Play.xcodeproj" -scheme "Click Play" -configuration Debug build
 ```
+
+To get the app bundle from Xcode, go to **Product** > **Archive** > **Distribute App** > **Custom** > **Copy App**.
 
 Project facts:
 
@@ -273,7 +345,7 @@ Owns profile and template persistence. It loads/saves JSON files, migrates from 
 
 Asset catalog containing first-run intro videos and image assets such as menu bar and logo variants.
 
-#### `img/ClickPlay.png`
+#### `docs/img/ClickPlay.png`
 
 README and documentation image for the Click Play logo/preview.
 
@@ -281,44 +353,34 @@ README and documentation image for the Click Play logo/preview.
 
 Xcode project files, workspace metadata, and shared scheme for the `Click Play` app target.
 
-## Planned Features
+## Planned Features and Ideas
 
+Some of these are early ideas and have not reached the planning phase yet, so I cannot guarantee if or when they will be implemented.
+
+- UI overhaul for the Click Play Editor.
 - Continue investigating and reducing input latency where possible.
 - Add richer demo media and more complete user-facing docs as the project matures.
 - Improve release packaging, signing, and first-launch polish.
-- Expand profile, layer, template, and preset workflows.
 - Add more built-in templates for common game/control styles.
 - Explore future platform work, including possible Windows support.
+- Controller emulation. This may be possible, but the hard part would be getting entitlements from Apple for CoreHID or IOKit. Without the entitlement, there is no feasible way to ship this feature.
+- Built-in mouse dwell features.
+- Compatibility chart.
+- Voice controls.
 
 ## FAQ
 
 ### What is Click Play for?
 
-Click Play is for games and workflows where a mouse-accessible overlay can stand in for keyboard controls. It is especially useful when you want custom on-screen controls while another app remains focused.
+Click Play is for games and workflows where a mouse-accessible overlay can stand in for keyboard controls. It is especially useful when you want custom on-screen controls while another app or game remains focused.
 
-### Why does Click Play need Accessibility permission?
+### Why develop for macOS instead of Windows or Linux, where gaming is more prevalent?
 
-macOS requires Accessibility permission for apps that send input events to other apps. Click Play uses this permission to post keyboard events with `CGEvent`.
+Good question. macOS's built-in accessibility features are much more developed than other platforms and have enabled me to use a computer. That is why Click Play is developed for macOS first: it is the platform I can use most easily.
 
-### Why must App Sandbox stay disabled?
+### Why use Click Play instead of macOS's Accessibility Keyboard?
 
-The current keyboard injection approach relies on behavior that is not compatible with App Sandbox. Sandbox support would require a different input strategy.
-
-### Where are profiles stored?
-
-Profiles are stored at:
-
-```text
-~/Library/Application Support/Click Play/profiles.json
-```
-
-### Where are templates stored?
-
-Templates are stored at:
-
-```text
-~/Library/Application Support/Click Play/templates.json
-```
+The Accessibility Keyboard is very powerful, but it is a keyboard first and does not have dedicated gaming features. Click Play draws heavy inspiration from the Accessibility Keyboard while keeping a focus on gaming and adding relevant features.
 
 ### What is the difference between a profile and a layer?
 
@@ -332,24 +394,6 @@ A profile is an active saved layout. A template is reusable saved content that c
 
 Games that aggressively capture the mouse or block synthetic input may not cooperate with Click Play. Fast-paced games can also expose latency or simultaneous-input limits.
 
-### Is click-and-hold the main feature?
-
-No. Click-and-hold is an important input safety primitive because it ensures controls press and release cleanly. Click Play as a whole is a customizable control-surface app with profiles, layers, joystick controls, templates, styling, editor tools, and system events.
-
-### How do I build the app locally?
-
-Use Xcode with the `Click Play` scheme, or run:
-
-```sh
-xcodebuild -project "Click Play.xcodeproj" -scheme "Click Play" -configuration Debug build
-```
-
-Use stable signing and a stable app path if you want Accessibility permission to persist across rebuilds.
-
 ### Does Click Play have tests?
 
 There is currently no separate test target in the project. For now, validation is mostly build checks plus manual verification of overlay, input, editor, profile, template, joystick, and permission behavior.
-
-## About Me
-
-TODO: Add maintainer bio, project motivation, links, and preferred contact/support information.
