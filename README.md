@@ -27,6 +27,7 @@
 - [Contributing](#contributing)
 - [Support This Project](#support-this-project)
 - [AI Disclosure](#ai-disclosure)
+- [Acknowledgments](#acknowledgments)
 - [License](#license)
 
 ## Introduction
@@ -116,6 +117,13 @@ Your support goes directly toward development of Click Play, including:
 ## AI Disclosure
 
 Click Play is developed with AI-assisted tooling, including Codex. AI is used to help draft, refactor, debug, and document parts of the project, but project decisions and shipped changes are reviewed and owned by me.
+
+## Acknowledgments
+
+The following assets were modified to create Click Play's icon:
+
+- [Mouse Pointer](https://www.svgrepo.com/svg/352295/mouse-pointer) by [FortAwesome](https://www.svgrepo.com/author/FortAwesome/) - [CC-BY 4.0 License](https://creativecommons.org/licenses/by/4.0/)
+- [Gamepad Minimalistic 3](https://www.svgrepo.com/svg/525923/gamepad-minimalistic) by [Solar Icons](https://www.svgrepo.com/author/Solar%20Icons/) - [CC-BY 4.0 License](https://creativecommons.org/licenses/by/4.0/)
 
 ## License
 
