@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The editor canvas now supports zooming in and out from the toolbar and View menu.
 - The editor remembers the last canvas zoom level across launches.
 
+### Changed
+
+- Canvas movement and sizing now stay aligned to whole-pixel positions while editing controls.
+
 ## [1.1.0] - 2026-05-19
 
 ### Added
