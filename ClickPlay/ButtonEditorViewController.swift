@@ -121,7 +121,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 width: max(scaledWorkspaceSize.width, visibleSize.width),
                 height: max(scaledWorkspaceSize.height, visibleSize.height)
             )
-            let nextWorkspaceOrigin = CGPoint(x: max(0, (nextSize.width - scaledWorkspaceSize.width) / 2), y: 0)
+            let nextWorkspaceOrigin = CGPoint(
+                x: max(0, (nextSize.width - scaledWorkspaceSize.width) / 2),
+                y: max(0, (nextSize.height - scaledWorkspaceSize.height) / 2)
+            )
 
             if frame.size != nextSize {
                 frame = CGRect(origin: .zero, size: nextSize)
