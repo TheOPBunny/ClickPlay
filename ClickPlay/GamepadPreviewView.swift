@@ -339,7 +339,7 @@ final class GamepadPreviewView: NSView {
             return
 
         case let .move(ids, startFrames, startMouse):
-            let delta = CGPoint(x: modelPoint.x - startMouse.x, y: modelPoint.y - startMouse.y)
+            let delta = wholePixelDelta(from: startMouse, to: modelPoint)
             var proposedGeometries: [GamepadButton: ButtonEditorGeometry] = [:]
 
             for id in ids {
@@ -360,20 +360,19 @@ final class GamepadPreviewView: NSView {
             applyGeometryChange(proposedGeometries)
 
         case let .resize(id, corner, startFrame, startMouse):
-            let deltaX = modelPoint.x - startMouse.x
-            let deltaY = modelPoint.y - startMouse.y
+            let delta = wholePixelDelta(from: startMouse, to: modelPoint)
             let minimumSize = object(for: id).map { minimumEditorSize(for: $0.type) } ?? minimumEditorSize(for: .keyboard)
             let geometry = resizedGeometry(
                 startFrame: startFrame,
                 corner: corner,
-                deltaX: deltaX,
-                deltaY: deltaY,
+                deltaX: delta.x,
+                deltaY: delta.y,
                 minimumSize: minimumSize
             )
             applyGeometryChange([id: geometry])
 
         case let .moveGroup(_, startFrames, startMouse):
-            let delta = CGPoint(x: modelPoint.x - startMouse.x, y: modelPoint.y - startMouse.y)
+            let delta = wholePixelDelta(from: startMouse, to: modelPoint)
             var proposedGeometries: [GamepadButton: ButtonEditorGeometry] = [:]
 
             for (id, startFrame) in startFrames {
@@ -390,13 +389,12 @@ final class GamepadPreviewView: NSView {
             applyGeometryChange(proposedGeometries)
 
         case let .resizeGroup(_, corner, startBounds, startFrames, startMouse):
-            let deltaX = modelPoint.x - startMouse.x
-            let deltaY = modelPoint.y - startMouse.y
+            let delta = wholePixelDelta(from: startMouse, to: modelPoint)
             let resizedBounds = frameForGeometry(resizedGeometry(
                 startFrame: startBounds,
                 corner: corner,
-                deltaX: deltaX,
-                deltaY: deltaY,
+                deltaX: delta.x,
+                deltaY: delta.y,
                 minimumSize: CGSize(width: 24, height: 24)
             ))
             applyGeometryChange(scaledGroupGeometries(
@@ -472,6 +470,13 @@ final class GamepadPreviewView: NSView {
 
         currentDragStartFrames = startFrames
         dragState = .moveGroup(id: groupID, startFrames: startFrames, startMouse: startMouse)
+    }
+
+    private func wholePixelDelta(from start: CGPoint, to current: CGPoint) -> CGPoint {
+        CGPoint(
+            x: round(current.x - start.x),
+            y: round(current.y - start.y)
+        )
     }
 
     private func applyGeometryChange(_ proposedGeometries: [GamepadButton: ButtonEditorGeometry]) {
