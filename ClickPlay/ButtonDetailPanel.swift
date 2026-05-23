@@ -234,10 +234,10 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         labelItalicCheckbox.state = config.labelItalic ? .on : .off
         labelColorWell.color = NSColor(hex: config.labelColorHex)
         colorWell.color = NSColor(hex: config.colorHex)
-        xField.stringValue = String(format: "%.1f", config.x)
-        yField.stringValue = String(format: "%.1f", config.y)
-        widthField.stringValue = String(format: "%.1f", config.editorWidth > 0 ? config.editorWidth : config.width)
-        heightField.stringValue = String(format: "%.1f", config.editorHeight > 0 ? config.editorHeight : config.height)
+        xField.stringValue = geometryValueString(config.x)
+        yField.stringValue = geometryValueString(config.y)
+        widthField.stringValue = geometryValueString(config.editorWidth > 0 ? config.editorWidth : config.width)
+        heightField.stringValue = geometryValueString(config.editorHeight > 0 ? config.editorHeight : config.height)
         shapePopup.selectItem(withTag: config.shape.tag)
         interactionModePopup.selectItem(withTag: config.interactionMode.tag)
         multiKeyActivationModePopup.selectItem(withTag: config.multiKeyActivationMode.tag)
@@ -280,8 +280,8 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         }
 
         self.config = config
-        xField.stringValue = String(format: "%.1f", x)
-        yField.stringValue = String(format: "%.1f", y)
+        xField.stringValue = geometryValueString(x)
+        yField.stringValue = geometryValueString(y)
     }
 
     func refreshSize(width: Double, height: Double) {
@@ -291,8 +291,8 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
 
         config?.editorWidth = width
         config?.editorHeight = height
-        widthField.stringValue = String(format: "%.1f", width)
-        heightField.stringValue = String(format: "%.1f", height)
+        widthField.stringValue = geometryValueString(width)
+        heightField.stringValue = geometryValueString(height)
     }
 
     private func setup() {
@@ -1035,8 +1035,8 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         config.labelItalic = labelItalicCheckbox.state == .on
         config.labelColorHex = labelColorWell.color.hexString
         config.colorHex = colorWell.color.hexString
-        config.x = Double(xField.stringValue) ?? config.x
-        config.y = Double(yField.stringValue) ?? config.y
+        config.x = geometryValue(from: xField.stringValue, fallback: config.x)
+        config.y = geometryValue(from: yField.stringValue, fallback: config.y)
         config.editorWidth = sizeValue(from: widthField.stringValue, fallback: config.editorWidth > 0 ? config.editorWidth : config.width)
         config.editorHeight = sizeValue(from: heightField.stringValue, fallback: config.editorHeight > 0 ? config.editorHeight : config.height)
         config.shape = ButtonShape(tag: shapePopup.selectedTag()) ?? .roundedRectangle
@@ -1132,8 +1132,8 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         let minimumSize = ButtonSizing.minimumSize(for: config.type)
         config.editorWidth = max(config.editorWidth, minimumSize.width)
         config.editorHeight = max(config.editorHeight, minimumSize.height)
-        widthField.stringValue = String(format: "%.1f", config.editorWidth)
-        heightField.stringValue = String(format: "%.1f", config.editorHeight)
+        widthField.stringValue = geometryValueString(config.editorWidth)
+        heightField.stringValue = geometryValueString(config.editorHeight)
 
         self.config = config
         updateMultiKeyActivationModeVisibility()
@@ -1531,7 +1531,24 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
             return fallback
         }
 
-        return parsedValue
+        return parsedValue.rounded()
+    }
+
+    private func geometryValue(from stringValue: String, fallback: Double) -> Double {
+        guard let parsedValue = Double(stringValue), parsedValue.isFinite else {
+            return fallback
+        }
+
+        return parsedValue.rounded()
+    }
+
+    private func geometryValueString(_ value: Double) -> String {
+        let roundedValue = value.rounded()
+        if abs(value - roundedValue) < 0.0001 {
+            return String(format: "%.0f", roundedValue)
+        }
+
+        return String(format: "%.1f", value)
     }
 
     private func durationValue(from stringValue: String, fallback: Double) -> Double {

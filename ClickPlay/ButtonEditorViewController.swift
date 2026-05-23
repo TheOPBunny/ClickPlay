@@ -1889,7 +1889,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 continue
             }
 
-            let appliedGeometry = clampedGeometry(proposedGeometry, type: config.type)
+            let appliedGeometry = pixelAlignedGeometry(proposedGeometry, type: config.type)
             config.x = appliedGeometry.centerX
             config.y = appliedGeometry.centerY
             config.editorWidth = appliedGeometry.width
@@ -2327,10 +2327,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 continue
             }
 
-            config.x = frame.midX
-            config.y = frame.midY
-            config.editorWidth = frame.width
-            config.editorHeight = frame.height
+            let geometry = geometryForFrame(frame)
+            config.x = geometry.centerX
+            config.y = geometry.centerY
+            config.editorWidth = geometry.width
+            config.editorHeight = geometry.height
             profile.buttons[button.rawValue] = configByApplyingGeometryClamp(config)
         }
 
@@ -2462,10 +2463,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 continue
             }
 
-            config.x = frame.midX
-            config.y = frame.midY
-            config.editorWidth = frame.width
-            config.editorHeight = frame.height
+            let geometry = geometryForFrame(frame)
+            config.x = geometry.centerX
+            config.y = geometry.centerY
+            config.editorWidth = geometry.width
+            config.editorHeight = geometry.height
             profile.buttons[button.rawValue] = configByApplyingGeometryClamp(config)
         }
 
@@ -2641,7 +2643,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             height: config.editorHeight > 0 ? config.editorHeight : config.height,
             anchoredResize: nil
         )
-        let clamped = clampedGeometry(geometry, type: config.type)
+        let clamped = pixelAlignedGeometry(geometry, type: config.type)
         config.x = clamped.centerX
         config.y = clamped.centerY
         config.editorWidth = clamped.width
@@ -2861,6 +2863,16 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         )
     }
 
+    private func geometryForFrame(_ frame: CGRect, anchoredResize: AnchoredButtonResize? = nil) -> ButtonEditorGeometry {
+        ButtonEditorGeometry(
+            centerX: frame.midX,
+            centerY: frame.midY,
+            width: frame.width,
+            height: frame.height,
+            anchoredResize: anchoredResize
+        )
+    }
+
     private func minimumEditorSize(for button: GamepadButton) -> (width: Double, height: Double) {
         guard let config = profile.buttons[button.rawValue] else {
             return ButtonSizing.minimumSize(for: .keyboard)
@@ -2900,6 +2912,61 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 anchoredResize: geometry.anchoredResize
             )
         }
+    }
+
+    private func pixelAlignedGeometry(_ geometry: ButtonEditorGeometry, type: ButtonType) -> ButtonEditorGeometry {
+        let clamped = clampedGeometry(geometry, type: type)
+        let alignedFrame = pixelAlignedFrame(
+            frameForGeometry(clamped),
+            type: type,
+            anchoredResize: clamped.anchoredResize
+        )
+        let alignedGeometry = geometryForFrame(alignedFrame, anchoredResize: clamped.anchoredResize)
+        return clampedGeometry(alignedGeometry, type: type)
+    }
+
+    private func pixelAlignedFrame(
+        _ frame: CGRect,
+        type: ButtonType,
+        anchoredResize: AnchoredButtonResize?
+    ) -> CGRect {
+        let minimumSize = ButtonSizing.minimumSize(for: type)
+        let workspaceBounds = editorWorkspaceBounds()
+        let width = min(max(round(frame.width), CGFloat(minimumSize.width)), workspaceBounds.width)
+        let height = min(max(round(frame.height), CGFloat(minimumSize.height)), workspaceBounds.height)
+        let originX: CGFloat
+        let originY: CGFloat
+
+        if let anchoredResize {
+            let anchorX = round(CGFloat(anchoredResize.anchorX))
+            let anchorY = round(CGFloat(anchoredResize.anchorY))
+            originX = anchoredResize.resizesFromLeft
+                ? anchorX - width
+                : anchorX
+            originY = anchoredResize.resizesFromBottom
+                ? anchorY - height
+                : anchorY
+        } else {
+            originX = round(frame.minX)
+            originY = round(frame.minY)
+        }
+
+        return CGRect(
+            x: pixelAlignedOrigin(originX, min: workspaceBounds.minX, max: workspaceBounds.maxX - width),
+            y: pixelAlignedOrigin(originY, min: workspaceBounds.minY, max: workspaceBounds.maxY - height),
+            width: width,
+            height: height
+        )
+    }
+
+    private func pixelAlignedOrigin(_ value: CGFloat, min minimum: CGFloat, max maximum: CGFloat) -> CGFloat {
+        let alignedMinimum = ceil(minimum)
+        let alignedMaximum = floor(maximum)
+        guard alignedMinimum <= alignedMaximum else {
+            return clamp(value, min: minimum, max: maximum)
+        }
+
+        return clamp(value, min: alignedMinimum, max: alignedMaximum)
     }
 
     private func clampedAnchoredGeometry(
