@@ -88,6 +88,13 @@ final class GamepadPreviewView: NSView {
     var onGeometryChanged: (([GamepadButton: ButtonEditorGeometry]) -> CanvasGeometryChangeResult)?
     var onGeometryChangeCompleted: ((_ before: [GamepadButton: CGRect], _ after: [GamepadButton: CGRect]) -> Void)?
     var maximumWorkspaceSize = CGSize(width: 1000, height: 1000)
+    var zoomScale: CGFloat = 1 {
+        didSet {
+            zoomScale = max(zoomScale, 0.01)
+            needsDisplay = true
+            window?.invalidateCursorRects(for: self)
+        }
+    }
     var workspaceOrigin = CGPoint.zero {
         didSet {
             needsDisplay = true
@@ -332,7 +339,7 @@ final class GamepadPreviewView: NSView {
             return
 
         case let .move(ids, startFrames, startMouse):
-            let delta = CGPoint(x: modelPoint.x - startMouse.x, y: modelPoint.y - startMouse.y)
+            let delta = wholePixelDelta(from: startMouse, to: modelPoint)
             var proposedGeometries: [GamepadButton: ButtonEditorGeometry] = [:]
 
             for id in ids {
@@ -353,20 +360,19 @@ final class GamepadPreviewView: NSView {
             applyGeometryChange(proposedGeometries)
 
         case let .resize(id, corner, startFrame, startMouse):
-            let deltaX = modelPoint.x - startMouse.x
-            let deltaY = modelPoint.y - startMouse.y
+            let delta = wholePixelDelta(from: startMouse, to: modelPoint)
             let minimumSize = object(for: id).map { minimumEditorSize(for: $0.type) } ?? minimumEditorSize(for: .keyboard)
             let geometry = resizedGeometry(
                 startFrame: startFrame,
                 corner: corner,
-                deltaX: deltaX,
-                deltaY: deltaY,
+                deltaX: delta.x,
+                deltaY: delta.y,
                 minimumSize: minimumSize
             )
             applyGeometryChange([id: geometry])
 
         case let .moveGroup(_, startFrames, startMouse):
-            let delta = CGPoint(x: modelPoint.x - startMouse.x, y: modelPoint.y - startMouse.y)
+            let delta = wholePixelDelta(from: startMouse, to: modelPoint)
             var proposedGeometries: [GamepadButton: ButtonEditorGeometry] = [:]
 
             for (id, startFrame) in startFrames {
@@ -383,13 +389,12 @@ final class GamepadPreviewView: NSView {
             applyGeometryChange(proposedGeometries)
 
         case let .resizeGroup(_, corner, startBounds, startFrames, startMouse):
-            let deltaX = modelPoint.x - startMouse.x
-            let deltaY = modelPoint.y - startMouse.y
+            let delta = wholePixelDelta(from: startMouse, to: modelPoint)
             let resizedBounds = frameForGeometry(resizedGeometry(
                 startFrame: startBounds,
                 corner: corner,
-                deltaX: deltaX,
-                deltaY: deltaY,
+                deltaX: delta.x,
+                deltaY: delta.y,
                 minimumSize: CGSize(width: 24, height: 24)
             ))
             applyGeometryChange(scaledGroupGeometries(
@@ -465,6 +470,13 @@ final class GamepadPreviewView: NSView {
 
         currentDragStartFrames = startFrames
         dragState = .moveGroup(id: groupID, startFrames: startFrames, startMouse: startMouse)
+    }
+
+    private func wholePixelDelta(from start: CGPoint, to current: CGPoint) -> CGPoint {
+        CGPoint(
+            x: round(current.x - start.x),
+            y: round(current.y - start.y)
+        )
     }
 
     private func applyGeometryChange(_ proposedGeometries: [GamepadButton: ButtonEditorGeometry]) {
@@ -842,7 +854,7 @@ final class GamepadPreviewView: NSView {
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
         let fontManager = NSFontManager.shared
-        var font = NSFont.systemFont(ofSize: object.labelFontSize)
+        var font = NSFont.systemFont(ofSize: object.labelFontSize * zoomScale)
 
         if object.labelBold {
             font = fontManager.convert(font, toHaveTrait: .boldFontMask)
@@ -1034,22 +1046,29 @@ final class GamepadPreviewView: NSView {
     }
 
     private func canvasFrame(for modelFrame: CGRect) -> CGRect {
-        var canvasFrame = modelFrame.offsetBy(dx: workspaceOrigin.x, dy: workspaceOrigin.y)
+        var canvasFrame = CGRect(
+            x: modelFrame.minX * zoomScale + workspaceOrigin.x,
+            y: modelFrame.minY * zoomScale + workspaceOrigin.y,
+            width: modelFrame.width * zoomScale,
+            height: modelFrame.height * zoomScale
+        )
         guard usesCenteredOrigin else {
             return canvasFrame
         }
 
-        canvasFrame = modelFrame.offsetBy(
-            dx: maximumWorkspaceSize.width / 2,
-            dy: maximumWorkspaceSize.height / 2
+        canvasFrame = CGRect(
+            x: (modelFrame.minX + maximumWorkspaceSize.width / 2) * zoomScale,
+            y: (modelFrame.minY + maximumWorkspaceSize.height / 2) * zoomScale,
+            width: modelFrame.width * zoomScale,
+            height: modelFrame.height * zoomScale
         )
         return canvasFrame.offsetBy(dx: workspaceOrigin.x, dy: workspaceOrigin.y)
     }
 
     private func modelPoint(forCanvasPoint point: CGPoint) -> CGPoint {
         let workspacePoint = CGPoint(
-            x: point.x - workspaceOrigin.x,
-            y: point.y - workspaceOrigin.y
+            x: (point.x - workspaceOrigin.x) / zoomScale,
+            y: (point.y - workspaceOrigin.y) / zoomScale
         )
         guard usesCenteredOrigin else {
             return workspacePoint
@@ -1063,18 +1082,18 @@ final class GamepadPreviewView: NSView {
 
     private func canvasX(forModelX x: CGFloat) -> CGFloat {
         guard usesCenteredOrigin else {
-            return x + workspaceOrigin.x
+            return x * zoomScale + workspaceOrigin.x
         }
 
-        return x + (maximumWorkspaceSize.width / 2) + workspaceOrigin.x
+        return (x + (maximumWorkspaceSize.width / 2)) * zoomScale + workspaceOrigin.x
     }
 
     private func canvasY(forModelY y: CGFloat) -> CGFloat {
         guard usesCenteredOrigin else {
-            return y + workspaceOrigin.y
+            return y * zoomScale + workspaceOrigin.y
         }
 
-        return y + (maximumWorkspaceSize.height / 2) + workspaceOrigin.y
+        return (y + (maximumWorkspaceSize.height / 2)) * zoomScale + workspaceOrigin.y
     }
 }
 

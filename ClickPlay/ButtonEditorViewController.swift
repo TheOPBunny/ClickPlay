@@ -51,6 +51,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         static let inspectorExpandedWidth = "Editor.inspectorExpandedWidth"
         static let inspectorCollapsed = "Editor.inspectorCollapsed"
         static let snappingEnabled = "Editor.snappingEnabled"
+        static let canvasZoomScale = "Editor.canvasZoomScale"
     }
 
     /// Scroll document that draws the fixed editor workspace and positions the live preview inside it.
@@ -65,13 +66,22 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 needsDisplay = true
             }
         }
+        var zoomScale: CGFloat = 1 {
+            didSet {
+                zoomScale = max(zoomScale, 0.01)
+                previewView.zoomScale = zoomScale
+                needsDisplay = true
+            }
+        }
         private(set) var workspaceOrigin = CGPoint.zero
 
-        init(previewView: GamepadPreviewView, workspaceSize: CGSize) {
+        init(previewView: GamepadPreviewView, workspaceSize: CGSize, zoomScale: CGFloat) {
             self.previewView = previewView
             self.workspaceSize = workspaceSize
+            self.zoomScale = zoomScale
             super.init(frame: .zero)
             wantsLayer = true
+            previewView.zoomScale = zoomScale
             addSubview(previewView)
         }
 
@@ -87,9 +97,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
             guard showsGrid else { return }
 
-            let workspaceRect = CGRect(origin: workspaceOrigin, size: workspaceSize)
-            drawGrid(in: workspaceRect, spacing: 10, color: NSColor.white.withAlphaComponent(0.05))
-            drawGrid(in: workspaceRect, spacing: 50, color: NSColor.white.withAlphaComponent(0.10))
+            let scaledWorkspaceSize = scaledWorkspaceSize(for: workspaceSize)
+            let workspaceRect = CGRect(origin: workspaceOrigin, size: scaledWorkspaceSize)
+            drawGrid(in: workspaceRect, spacing: 10 * zoomScale, color: NSColor.white.withAlphaComponent(0.05))
+            drawGrid(in: workspaceRect, spacing: 50 * zoomScale, color: NSColor.white.withAlphaComponent(0.10))
 
             let workspaceBorder = NSBezierPath(rect: workspaceRect.insetBy(dx: 0.5, dy: 0.5))
             NSColor.white.withAlphaComponent(0.18).setStroke()
@@ -104,11 +115,16 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
         func updateCanvasSize(visibleSize: CGSize, workspaceSize: CGSize) {
             self.workspaceSize = workspaceSize
+            previewView.zoomScale = zoomScale
+            let scaledWorkspaceSize = scaledWorkspaceSize(for: workspaceSize)
             let nextSize = CGSize(
-                width: max(workspaceSize.width, visibleSize.width),
-                height: workspaceSize.height
+                width: max(scaledWorkspaceSize.width, visibleSize.width),
+                height: max(scaledWorkspaceSize.height, visibleSize.height)
             )
-            let nextWorkspaceOrigin = CGPoint(x: max(0, (nextSize.width - workspaceSize.width) / 2), y: 0)
+            let nextWorkspaceOrigin = CGPoint(
+                x: max(0, (nextSize.width - scaledWorkspaceSize.width) / 2),
+                y: max(0, (nextSize.height - scaledWorkspaceSize.height) / 2)
+            )
 
             if frame.size != nextSize {
                 frame = CGRect(origin: .zero, size: nextSize)
@@ -120,7 +136,15 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             needsDisplay = true
         }
 
+        private func scaledWorkspaceSize(for workspaceSize: CGSize) -> CGSize {
+            CGSize(width: workspaceSize.width * zoomScale, height: workspaceSize.height * zoomScale)
+        }
+
         private func drawGrid(in rect: CGRect, spacing: CGFloat, color: NSColor) {
+            guard spacing > 0 else {
+                return
+            }
+
             let path = NSBezierPath()
 
             var x = rect.minX
@@ -152,6 +176,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private static let pasteOffset: Double = 18
     private static let snapThreshold: CGFloat = 5
     private static let pasteboardType = NSPasteboard.PasteboardType("com.clickplay.canvas-buttons")
+    private static let canvasZoomLevels: [CGFloat] = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3]
 
     private var maximumWorkspaceSize = ButtonEditorViewController.workspaceSize(for: NSScreen.main)
     private var profile = ProfileStore.shared.activeResolvedProfile
@@ -172,6 +197,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private var shouldScrollToProfileContent = false
     private var pendingProfileContentScrollRetries = 0
     private var hasLoadedEditableProfile = false
+    private var canvasZoomScale: CGFloat = 1
     private var templatesDidChangeObserver: NSObjectProtocol?
     private var screenParametersObserver: NSObjectProtocol?
     private var editorMouseDownMonitor: Any?
@@ -182,11 +208,15 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private let groupButton = NSButton(title: "Group", target: nil, action: nil)
     private let ungroupButton = NSButton(title: "Ungroup", target: nil, action: nil)
     private let saveGroupButton = NSButton(title: "Save Group", target: nil, action: nil)
+    private let zoomOutButton = NSButton(title: "-", target: nil, action: nil)
+    private let zoomResetButton = NSButton(title: "100%", target: nil, action: nil)
+    private let zoomInButton = NSButton(title: "+", target: nil, action: nil)
     private let addPopupButton = NSPopUpButton(frame: .zero, pullsDown: true)
     private let previewView = GamepadPreviewView()
     private lazy var previewCanvasView = PreviewCanvasView(
         previewView: previewView,
-        workspaceSize: maximumWorkspaceSize
+        workspaceSize: maximumWorkspaceSize,
+        zoomScale: canvasZoomScale
     )
     private let previewScrollView = NSScrollView()
     private lazy var detailPanel = ButtonDetailPanel(
@@ -481,6 +511,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     private func buildLayout() {
         previewView.maximumWorkspaceSize = maximumWorkspaceSize
+        previewView.zoomScale = canvasZoomScale
+        previewCanvasView.zoomScale = canvasZoomScale
         compatibilityModeCheckbox.target = self
         compatibilityModeCheckbox.action = #selector(compatibilityModeChanged)
         showGridCheckbox.state = .on
@@ -489,13 +521,20 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         snappingCheckbox.target = self
         snappingCheckbox.action = #selector(snappingChanged)
 
-        [groupButton, ungroupButton, saveGroupButton].forEach { button in
+        [groupButton, ungroupButton, saveGroupButton, zoomOutButton, zoomResetButton, zoomInButton].forEach { button in
             button.bezelStyle = .rounded
             button.target = self
         }
         groupButton.action = #selector(groupSelectedButtons)
         ungroupButton.action = #selector(ungroupSelectedGroup)
         saveGroupButton.action = #selector(saveSelectedGroupAsTemplate)
+        zoomOutButton.action = #selector(zoomOut(_:))
+        zoomOutButton.toolTip = "Zoom Out"
+        zoomResetButton.action = #selector(actualSize(_:))
+        zoomResetButton.toolTip = "Actual Size"
+        zoomInButton.action = #selector(zoomIn(_:))
+        zoomInButton.toolTip = "Zoom In"
+        updateZoomControls()
         rebuildAddMenu()
         addPopupButton.target = self
         addPopupButton.action = #selector(addPopupChanged)
@@ -520,6 +559,9 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             groupButton,
             ungroupButton,
             saveGroupButton,
+            zoomOutButton,
+            zoomResetButton,
+            zoomInButton,
             NSView(),
             rightInspectorToggleButton,
             addPopupButton,
@@ -787,6 +829,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         let defaults = UserDefaults.standard
         isInspectorCollapsed = defaults.bool(forKey: DefaultsKey.inspectorCollapsed)
         snappingCheckbox.state = defaults.object(forKey: DefaultsKey.snappingEnabled) as? Bool == false ? .off : .on
+        canvasZoomScale = nearestSupportedZoomScale(to: defaults.double(forKey: DefaultsKey.canvasZoomScale))
 
         let savedWidth = defaults.double(forKey: DefaultsKey.inspectorExpandedWidth)
         if savedWidth > 0 {
@@ -907,6 +950,26 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         editorUndoManager.redo()
     }
 
+    @objc func zoomIn(_ sender: Any?) {
+        guard let nextScale = nextZoomScale(after: canvasZoomScale) else {
+            return
+        }
+
+        setCanvasZoomScale(nextScale, persist: true)
+    }
+
+    @objc func zoomOut(_ sender: Any?) {
+        guard let nextScale = nextZoomScale(before: canvasZoomScale) else {
+            return
+        }
+
+        setCanvasZoomScale(nextScale, persist: true)
+    }
+
+    @objc func actualSize(_ sender: Any?) {
+        setCanvasZoomScale(1, persist: true)
+    }
+
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
         case #selector(undo(_:)):
@@ -929,6 +992,12 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             return selectedIDs.count >= 2 && !isTextInputFirstResponder
         case #selector(distributeHorizontally(_:)), #selector(distributeVertically(_:)):
             return selectedIDs.count >= 3 && !isTextInputFirstResponder
+        case #selector(zoomIn(_:)):
+            return nextZoomScale(after: canvasZoomScale) != nil
+        case #selector(zoomOut(_:)):
+            return nextZoomScale(before: canvasZoomScale) != nil
+        case #selector(actualSize(_:)):
+            return canvasZoomScale != 1
         default:
             return true
         }
@@ -1047,6 +1116,57 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     @objc private func snappingChanged() {
         UserDefaults.standard.set(snappingCheckbox.state == .on, forKey: DefaultsKey.snappingEnabled)
+    }
+
+    private func setCanvasZoomScale(_ scale: CGFloat, persist: Bool) {
+        let nextScale = nearestSupportedZoomScale(to: scale)
+        guard nextScale != canvasZoomScale else {
+            updateZoomControls()
+            return
+        }
+
+        let anchorPoint = visibleCanvasAnchorPoint()
+        canvasZoomScale = nextScale
+        previewCanvasView.zoomScale = nextScale
+        previewView.zoomScale = nextScale
+        updatePreviewCanvasLayout()
+        updateZoomControls()
+
+        if persist {
+            UserDefaults.standard.set(Double(nextScale), forKey: DefaultsKey.canvasZoomScale)
+        }
+
+        if let anchorPoint {
+            scrollPreviewToCanvasRect(CGRect(origin: canvasPoint(forModelPoint: anchorPoint), size: .zero))
+        }
+    }
+
+    private func updateZoomControls() {
+        zoomOutButton.isEnabled = nextZoomScale(before: canvasZoomScale) != nil
+        zoomInButton.isEnabled = nextZoomScale(after: canvasZoomScale) != nil
+        zoomResetButton.title = "\(Int(round(canvasZoomScale * 100)))%"
+    }
+
+    private func nextZoomScale(after scale: CGFloat) -> CGFloat? {
+        Self.canvasZoomLevels.first { $0 > scale + 0.001 }
+    }
+
+    private func nextZoomScale(before scale: CGFloat) -> CGFloat? {
+        Self.canvasZoomLevels.reversed().first { $0 < scale - 0.001 }
+    }
+
+    private func nearestSupportedZoomScale(to scale: CGFloat) -> CGFloat {
+        guard scale > 0 else {
+            return 1
+        }
+
+        return Self.canvasZoomLevels.min { lhs, rhs in
+            abs(lhs - scale) < abs(rhs - scale)
+        } ?? 1
+    }
+
+    private func nearestSupportedZoomScale(to scale: Double) -> CGFloat {
+        nearestSupportedZoomScale(to: CGFloat(scale))
     }
 
     private func rebuildAddMenu() {
@@ -1462,6 +1582,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     private func updatePreviewCanvasLayout() {
         previewCanvasView.showsGrid = showGridCheckbox.state == .on
+        previewCanvasView.zoomScale = canvasZoomScale
         previewCanvasView.updateCanvasSize(
             visibleSize: previewScrollView.contentView.bounds.size,
             workspaceSize: maximumWorkspaceSize
@@ -1768,7 +1889,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 continue
             }
 
-            let appliedGeometry = clampedGeometry(proposedGeometry, type: config.type)
+            let appliedGeometry = pixelAlignedGeometry(proposedGeometry, type: config.type)
             config.x = appliedGeometry.centerX
             config.y = appliedGeometry.centerY
             config.editorWidth = appliedGeometry.width
@@ -2206,10 +2327,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 continue
             }
 
-            config.x = frame.midX
-            config.y = frame.midY
-            config.editorWidth = frame.width
-            config.editorHeight = frame.height
+            let geometry = geometryForFrame(frame)
+            config.x = geometry.centerX
+            config.y = geometry.centerY
+            config.editorWidth = geometry.width
+            config.editorHeight = geometry.height
             profile.buttons[button.rawValue] = configByApplyingGeometryClamp(config)
         }
 
@@ -2341,10 +2463,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 continue
             }
 
-            config.x = frame.midX
-            config.y = frame.midY
-            config.editorWidth = frame.width
-            config.editorHeight = frame.height
+            let geometry = geometryForFrame(frame)
+            config.x = geometry.centerX
+            config.y = geometry.centerY
+            config.editorWidth = geometry.width
+            config.editorHeight = geometry.height
             profile.buttons[button.rawValue] = configByApplyingGeometryClamp(config)
         }
 
@@ -2520,7 +2643,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             height: config.editorHeight > 0 ? config.editorHeight : config.height,
             anchoredResize: nil
         )
-        let clamped = clampedGeometry(geometry, type: config.type)
+        let clamped = pixelAlignedGeometry(geometry, type: config.type)
         config.x = clamped.centerX
         config.y = clamped.centerY
         config.editorWidth = clamped.width
@@ -2740,6 +2863,16 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         )
     }
 
+    private func geometryForFrame(_ frame: CGRect, anchoredResize: AnchoredButtonResize? = nil) -> ButtonEditorGeometry {
+        ButtonEditorGeometry(
+            centerX: frame.midX,
+            centerY: frame.midY,
+            width: frame.width,
+            height: frame.height,
+            anchoredResize: anchoredResize
+        )
+    }
+
     private func minimumEditorSize(for button: GamepadButton) -> (width: Double, height: Double) {
         guard let config = profile.buttons[button.rawValue] else {
             return ButtonSizing.minimumSize(for: .keyboard)
@@ -2779,6 +2912,61 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 anchoredResize: geometry.anchoredResize
             )
         }
+    }
+
+    private func pixelAlignedGeometry(_ geometry: ButtonEditorGeometry, type: ButtonType) -> ButtonEditorGeometry {
+        let clamped = clampedGeometry(geometry, type: type)
+        let alignedFrame = pixelAlignedFrame(
+            frameForGeometry(clamped),
+            type: type,
+            anchoredResize: clamped.anchoredResize
+        )
+        let alignedGeometry = geometryForFrame(alignedFrame, anchoredResize: clamped.anchoredResize)
+        return clampedGeometry(alignedGeometry, type: type)
+    }
+
+    private func pixelAlignedFrame(
+        _ frame: CGRect,
+        type: ButtonType,
+        anchoredResize: AnchoredButtonResize?
+    ) -> CGRect {
+        let minimumSize = ButtonSizing.minimumSize(for: type)
+        let workspaceBounds = editorWorkspaceBounds()
+        let width = min(max(round(frame.width), CGFloat(minimumSize.width)), workspaceBounds.width)
+        let height = min(max(round(frame.height), CGFloat(minimumSize.height)), workspaceBounds.height)
+        let originX: CGFloat
+        let originY: CGFloat
+
+        if let anchoredResize {
+            let anchorX = round(CGFloat(anchoredResize.anchorX))
+            let anchorY = round(CGFloat(anchoredResize.anchorY))
+            originX = anchoredResize.resizesFromLeft
+                ? anchorX - width
+                : anchorX
+            originY = anchoredResize.resizesFromBottom
+                ? anchorY - height
+                : anchorY
+        } else {
+            originX = round(frame.minX)
+            originY = round(frame.minY)
+        }
+
+        return CGRect(
+            x: pixelAlignedOrigin(originX, min: workspaceBounds.minX, max: workspaceBounds.maxX - width),
+            y: pixelAlignedOrigin(originY, min: workspaceBounds.minY, max: workspaceBounds.maxY - height),
+            width: width,
+            height: height
+        )
+    }
+
+    private func pixelAlignedOrigin(_ value: CGFloat, min minimum: CGFloat, max maximum: CGFloat) -> CGFloat {
+        let alignedMinimum = ceil(minimum)
+        let alignedMaximum = floor(maximum)
+        guard alignedMinimum <= alignedMaximum else {
+            return clamp(value, min: minimum, max: maximum)
+        }
+
+        return clamp(value, min: alignedMinimum, max: alignedMaximum)
     }
 
     private func clampedAnchoredGeometry(
@@ -2845,12 +3033,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private func scrollPreviewToProfileContent() {
         guard let contentBounds = canvasContentBounds(for: profile) else {
             scrollPreviewToCanvasRect(
-                CGRect(
-                    x: previewCanvasView.workspaceOrigin.x,
-                    y: previewCanvasView.workspaceOrigin.y,
-                    width: maximumWorkspaceSize.width,
-                    height: maximumWorkspaceSize.height
-                )
+                canvasRect(forModelRect: editorWorkspaceBounds())
             )
             return
         }
@@ -2917,16 +3100,56 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             return nil
         }
 
-        guard profile.editorCoordinateMode == .centered else {
-            return contentBounds.offsetBy(
-                dx: previewCanvasView.workspaceOrigin.x,
-                dy: previewCanvasView.workspaceOrigin.y
-            )
+        return canvasRect(forModelRect: contentBounds)
+    }
+
+    private func visibleCanvasAnchorPoint() -> CGPoint? {
+        guard previewScrollView.contentView.bounds.size != .zero else {
+            return nil
         }
 
-        return contentBounds.offsetBy(
-            dx: (maximumWorkspaceSize.width / 2) + previewCanvasView.workspaceOrigin.x,
-            dy: (maximumWorkspaceSize.height / 2) + previewCanvasView.workspaceOrigin.y
+        let visibleBounds = previewScrollView.contentView.bounds
+        return modelPoint(forCanvasPoint: CGPoint(x: visibleBounds.midX, y: visibleBounds.midY))
+    }
+
+    private func canvasPoint(forModelPoint point: CGPoint) -> CGPoint {
+        switch profile.editorCoordinateMode {
+        case .legacyTopLeft:
+            return CGPoint(
+                x: point.x * canvasZoomScale + previewCanvasView.workspaceOrigin.x,
+                y: point.y * canvasZoomScale + previewCanvasView.workspaceOrigin.y
+            )
+        case .centered:
+            return CGPoint(
+                x: (point.x + maximumWorkspaceSize.width / 2) * canvasZoomScale + previewCanvasView.workspaceOrigin.x,
+                y: (point.y + maximumWorkspaceSize.height / 2) * canvasZoomScale + previewCanvasView.workspaceOrigin.y
+            )
+        }
+    }
+
+    private func modelPoint(forCanvasPoint point: CGPoint) -> CGPoint {
+        let workspacePoint = CGPoint(
+            x: (point.x - previewCanvasView.workspaceOrigin.x) / canvasZoomScale,
+            y: (point.y - previewCanvasView.workspaceOrigin.y) / canvasZoomScale
+        )
+
+        guard profile.editorCoordinateMode == .centered else {
+            return workspacePoint
+        }
+
+        return CGPoint(
+            x: workspacePoint.x - maximumWorkspaceSize.width / 2,
+            y: workspacePoint.y - maximumWorkspaceSize.height / 2
+        )
+    }
+
+    private func canvasRect(forModelRect rect: CGRect) -> CGRect {
+        let origin = canvasPoint(forModelPoint: rect.origin)
+        return CGRect(
+            x: origin.x,
+            y: origin.y,
+            width: rect.width * canvasZoomScale,
+            height: rect.height * canvasZoomScale
         )
     }
 

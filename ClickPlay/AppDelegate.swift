@@ -79,9 +79,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         let appItem = NSMenuItem()
         let fileItem = NSMenuItem()
         let editItem = NSMenuItem()
+        let viewItem = NSMenuItem()
         mainMenu.addItem(appItem)
         mainMenu.addItem(fileItem)
         mainMenu.addItem(editItem)
+        mainMenu.addItem(viewItem)
 
         let appMenu = NSMenu(title: "Click Play")
         appMenu.addItem(
@@ -143,6 +145,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         editMenu.addItem(NSMenuItem(title: "Equalize Heights", action: NSSelectorFromString("equalizeHeights:"), keyEquivalent: ""))
         editMenu.addItem(NSMenuItem(title: "Equalize Both", action: NSSelectorFromString("equalizeBoth:"), keyEquivalent: ""))
         editItem.submenu = editMenu
+
+        let viewMenu = NSMenu(title: "View")
+        viewMenu.addItem(NSMenuItem(title: "Zoom In", action: NSSelectorFromString("zoomIn:"), keyEquivalent: "+"))
+        viewMenu.addItem(NSMenuItem(title: "Zoom Out", action: NSSelectorFromString("zoomOut:"), keyEquivalent: "-"))
+        viewMenu.addItem(NSMenuItem(title: "Actual Size", action: NSSelectorFromString("actualSize:"), keyEquivalent: "0"))
+        viewItem.submenu = viewMenu
 
         NSApp.mainMenu = mainMenu
     }
