@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-05-23
+
 ### Added
 
 - The editor canvas now supports zooming in and out from the toolbar and View menu.
