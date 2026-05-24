@@ -53,6 +53,12 @@ You can control transparency from the gamepad overlay's menu. Transparency is st
 
 A global fade timeout can fade the overlay after inactivity, with menu options such as never, 3 seconds, 5 seconds, 10 seconds, and 30 seconds.
 
+#### Show Pointer Location
+
+The gamepad overlay can show a pointer ring where the mouse is located on the overlay. This can be useful for games that hide the mouse. 
+
+It can be toggled from the gamepad overlay's drop-down menu and is saved per profile.
+
 ### Click Play Editor
 
 The Click Play Editor is used to create, arrange, configure, duplicate, delete, and save profiles, layers, buttons, groups, and templates. It has a profile sidebar, live preview canvas, and inspector panel. You can open the editor from either the menu bar or the gamepad overlay's menu.
