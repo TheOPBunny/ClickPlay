@@ -497,6 +497,17 @@ final class GamepadButtonView: NSView {
         updateHoverState(with: event, animated: true)
     }
 
+    @discardableResult
+    func syncPolledHover(at point: CGPoint) -> Bool {
+        let hovered = containsInteractivePoint(point)
+        setHovered(hovered, animated: false)
+        return hovered
+    }
+
+    func clearPolledHover() {
+        setHovered(false, animated: false)
+    }
+
     // MARK: - Visual State
 
     private var isSubProfileSwitch: Bool {

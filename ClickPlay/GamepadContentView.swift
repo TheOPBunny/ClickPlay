@@ -283,6 +283,42 @@ final class GamepadContentView: NSView {
         releaseAllButtonsForRebuild()
     }
 
+    func syncButtonHover(atScreenPoint screenPoint: NSPoint) {
+        guard !isMinimized, !padSurface.isHidden, let window else {
+            clearButtonHover()
+            return
+        }
+
+        let windowPoint = window.convertPoint(fromScreen: screenPoint)
+        let contentPoint = convert(windowPoint, from: nil)
+        guard bounds.contains(contentPoint), padSurface.frame.contains(contentPoint) else {
+            clearButtonHover()
+            return
+        }
+
+        let padPoint = padSurface.convert(contentPoint, from: self)
+        var hoveredView: GamepadButtonView?
+        for button in currentProfile.orderedButtonIDs.reversed() {
+            guard let view = buttonViews[button], !view.isHidden else {
+                continue
+            }
+
+            let localPoint = view.convert(padPoint, from: padSurface)
+            if view.syncPolledHover(at: localPoint) {
+                hoveredView = view
+                break
+            }
+        }
+
+        for view in buttonViews.values {
+            if hoveredView.map({ view === $0 }) ?? false {
+                continue
+            }
+
+            view.clearPolledHover()
+        }
+    }
+
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         updateLayout()
@@ -501,6 +537,10 @@ final class GamepadContentView: NSView {
         if hadJoystickCapture {
             onJoystickCaptureChanged?(false)
         }
+    }
+
+    private func clearButtonHover() {
+        buttonViews.values.forEach { $0.clearPolledHover() }
     }
 
     private func setJoystickCapture(_ captured: Bool, for button: GamepadButton) {
