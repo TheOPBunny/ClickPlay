@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The gamepad overlay can now show a pointer location ring for games that hide the mouse, saved per profile. [See more...](docs/index.md#show-pointer-location)
+
 ### Changed
 
 - Button hover outlines now update more responsively, including while the system is under load.
