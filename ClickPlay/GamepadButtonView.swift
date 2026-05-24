@@ -55,9 +55,42 @@ final class GamepadButtonView: NSView {
         case joystickScrollDown
     }
 
-    private enum ActiveModeOutline {
+    private enum ActiveModeOutline: Equatable {
         case toggleHold
         case turbo
+    }
+
+    private enum OutlineState: Equatable {
+        case none
+        case hover
+        case active(ActiveModeOutline)
+    }
+
+    private enum FillState: Equatable {
+        case standard
+        case currentSubProfile
+        case pressed
+    }
+
+    private struct VisualPalette {
+        let baseColor: NSColor
+        let standardFillColor: CGColor
+        let currentSubProfileFillColor: CGColor
+        let pressedFillColor: CGColor
+        let hoverOutlineColor: CGColor
+        let toggleHoldOutlineColor: CGColor
+        let turboOutlineColor: CGColor
+    }
+
+    private struct ButtonVisualState: Equatable {
+        let isJoystick: Bool
+        let fillState: FillState
+        let visualScale: CGFloat
+        let outlineState: OutlineState
+        let joystickOffset: CGPoint
+        let isJoystickCaptured: Bool
+        let isJoystickDragActive: Bool
+        let lockedJoystickDirection: JoystickDirection?
     }
 
     // Each source carries its own pressed bindings and timers for toggle/turbo/sequence behavior.
@@ -77,7 +110,7 @@ final class GamepadButtonView: NSView {
         let multiKeyActivationMode: MultiKeyActivationMode
     }
 
-    private enum JoystickDirection: CaseIterable {
+    private enum JoystickDirection: CaseIterable, Equatable {
         case up
         case upRight
         case right
@@ -129,6 +162,7 @@ final class GamepadButtonView: NSView {
     private let joystickScrollUpState = PressState()
     private let joystickScrollDownState = PressState()
     private let shapeLayer = CAShapeLayer()
+    private let outlineLayer = CAShapeLayer()
     private let joystickOuterLayer = CAShapeLayer()
     private let joystickKnobLayer = CAShapeLayer()
     private let joystickLockIndicatorLayer = CALayer()
@@ -165,6 +199,8 @@ final class GamepadButtonView: NSView {
     private var requiresJoystickAxisLockNeutralBeforeLock = false
     private var trackingArea: NSTrackingArea?
     private var visualScale: CGFloat = 1
+    private var visualPalette: VisualPalette?
+    private var lastAppliedVisualState: ButtonVisualState?
     var onJoystickCaptureChanged: ((Bool) -> Void)?
 
     init(button: GamepadButton, config: ButtonConfig, compatibilityModeEnabled: Bool, activeSubProfileID: UUID?) {
@@ -184,7 +220,12 @@ final class GamepadButtonView: NSView {
         wantsLayer = true
         layer?.masksToBounds = false
         shapeLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2
+        shapeLayer.strokeColor = nil
+        shapeLayer.lineWidth = 0
+        outlineLayer.contentsScale = shapeLayer.contentsScale
+        outlineLayer.fillColor = NSColor.clear.cgColor
         layer?.addSublayer(shapeLayer)
+        layer?.addSublayer(outlineLayer)
         joystickOuterLayer.contentsScale = shapeLayer.contentsScale
         joystickKnobLayer.contentsScale = shapeLayer.contentsScale
         joystickLockIndicatorLayer.contentsScale = shapeLayer.contentsScale
@@ -218,6 +259,7 @@ final class GamepadButtonView: NSView {
             symbolImageView.widthAnchor.constraint(equalTo: widthAnchor, multiplier: 0.58),
             symbolImageView.heightAnchor.constraint(equalTo: heightAnchor, multiplier: 0.58),
         ])
+        refreshVisualPalette()
         updateSystemEventSymbol()
 
         updateAppearance(animated: false)
@@ -237,6 +279,8 @@ final class GamepadButtonView: NSView {
         config = newConfig
         self.compatibilityModeEnabled = compatibilityModeEnabled
         self.activeSubProfileID = activeSubProfileID
+        refreshVisualPalette()
+        lastAppliedVisualState = nil
         if wasJoystick || isJoystick {
             resetJoystickRuntimeState()
         }
@@ -522,8 +566,7 @@ final class GamepadButtonView: NSView {
         return nil
     }
 
-    private var hoverOutlineColor: NSColor {
-        let base = NSColor(hex: config.colorHex)
+    private func hoverOutlineColor(for base: NSColor) -> NSColor {
         guard let color = base.usingColorSpace(.sRGB) else {
             return .white
         }
@@ -2173,32 +2216,155 @@ final class GamepadButtonView: NSView {
     // MARK: - Drawing
 
     private func updateAppearance(animated _: Bool) {
-        let base = NSColor(hex: config.colorHex)
-        let defaultAlpha = isCurrentSubProfileSwitch ? 0.32 : 0.75
-        let target = isVisuallyPressed ? base.withAlphaComponent(1.0) : base.withAlphaComponent(defaultAlpha)
-        let targetVisualScale: CGFloat = isVisuallyPressed ? 0.92 : 1.0
-        let activeOutlineColor = activeModeOutline.map { outlineColor(for: $0, baseColor: base) }
-        let strokeColor = (activeOutlineColor ?? (isHovered ? hoverOutlineColor : nil))?.cgColor
-        let lineWidth: CGFloat = activeOutlineColor == nil ? (isHovered ? 2 : 0) : 3
-        let applyAppearance = {
-            self.visualScale = targetVisualScale
-            self.updateShapePath()
-            self.updateJoystickLayers(baseColor: base)
-            self.shapeLayer.fillColor = target.cgColor
-            self.shapeLayer.strokeColor = strokeColor
-            self.shapeLayer.lineWidth = lineWidth
+        let palette = visualPalette ?? refreshVisualPalette()
+        let nextState = currentVisualState()
+        let previousState = lastAppliedVisualState
+        let shouldUpdatePaths = previousState.map { $0.visualScale != nextState.visualScale } ?? true
+        let shouldUpdateFill = previousState.map {
+            $0.fillState != nextState.fillState || $0.isJoystick != nextState.isJoystick
+        } ?? true
+        let shouldUpdateOutline = previousState.map {
+            $0.outlineState != nextState.outlineState || $0.isJoystick != nextState.isJoystick
+        } ?? true
+        let shouldUpdateJoystick = nextState.isJoystick && (
+            previousState.map {
+                $0.isJoystick != nextState.isJoystick
+                    || $0.joystickOffset != nextState.joystickOffset
+                    || $0.isJoystickCaptured != nextState.isJoystickCaptured
+                    || $0.isJoystickDragActive != nextState.isJoystickDragActive
+                    || $0.lockedJoystickDirection != nextState.lockedJoystickDirection
+                    || $0.outlineState != nextState.outlineState
+            } ?? true
+        )
+        let shouldUpdateVisibility = previousState.map { $0.isJoystick != nextState.isJoystick } ?? true
+
+        if let previousState, previousState == nextState {
+            return
         }
 
         // Button visuals need to track mouse-down/drag instantly; implicit layer animations make outlines feel delayed.
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        applyAppearance()
+
+        visualScale = nextState.visualScale
+
+        if shouldUpdatePaths {
+            updateShapePath()
+        }
+
+        if shouldUpdateVisibility {
+            updateLayerVisibility(isJoystick: nextState.isJoystick)
+        }
+
+        if nextState.isJoystick {
+            if shouldUpdateJoystick {
+                updateJoystickLayers(baseColor: palette.baseColor)
+            }
+        } else {
+            if shouldUpdateFill {
+                shapeLayer.fillColor = fillColor(for: nextState.fillState, palette: palette)
+            }
+
+            if shouldUpdateOutline {
+                applyOutline(nextState.outlineState, palette: palette)
+            }
+        }
+
+        lastAppliedVisualState = nextState
         CATransaction.commit()
+    }
+
+    @discardableResult
+    private func refreshVisualPalette() -> VisualPalette {
+        let base = NSColor(hex: config.colorHex)
+        let palette = VisualPalette(
+            baseColor: base,
+            standardFillColor: base.withAlphaComponent(0.75).cgColor,
+            currentSubProfileFillColor: base.withAlphaComponent(0.32).cgColor,
+            pressedFillColor: base.withAlphaComponent(1.0).cgColor,
+            hoverOutlineColor: hoverOutlineColor(for: base).cgColor,
+            toggleHoldOutlineColor: outlineColor(for: .toggleHold, baseColor: base).cgColor,
+            turboOutlineColor: outlineColor(for: .turbo, baseColor: base).cgColor
+        )
+        visualPalette = palette
+        return palette
+    }
+
+    private func currentVisualState() -> ButtonVisualState {
+        let fillState: FillState
+        if isVisuallyPressed {
+            fillState = .pressed
+        } else if isCurrentSubProfileSwitch {
+            fillState = .currentSubProfile
+        } else {
+            fillState = .standard
+        }
+
+        let outlineState: OutlineState
+        if let activeModeOutline {
+            outlineState = .active(activeModeOutline)
+        } else if isHovered {
+            outlineState = .hover
+        } else {
+            outlineState = .none
+        }
+
+        return ButtonVisualState(
+            isJoystick: isJoystick,
+            fillState: fillState,
+            visualScale: isVisuallyPressed ? 0.92 : 1.0,
+            outlineState: outlineState,
+            joystickOffset: joystickOffset,
+            isJoystickCaptured: isJoystickCaptured,
+            isJoystickDragActive: isJoystickDragActive,
+            lockedJoystickDirection: lockedJoystickDirection
+        )
+    }
+
+    private func fillColor(for fillState: FillState, palette: VisualPalette) -> CGColor {
+        switch fillState {
+        case .standard:
+            return palette.standardFillColor
+        case .currentSubProfile:
+            return palette.currentSubProfileFillColor
+        case .pressed:
+            return palette.pressedFillColor
+        }
+    }
+
+    private func applyOutline(_ outlineState: OutlineState, palette: VisualPalette) {
+        switch outlineState {
+        case .none:
+            outlineLayer.strokeColor = nil
+            outlineLayer.lineWidth = 0
+        case .hover:
+            outlineLayer.strokeColor = palette.hoverOutlineColor
+            outlineLayer.lineWidth = 2
+        case .active(.toggleHold):
+            outlineLayer.strokeColor = palette.toggleHoldOutlineColor
+            outlineLayer.lineWidth = 3
+        case .active(.turbo):
+            outlineLayer.strokeColor = palette.turboOutlineColor
+            outlineLayer.lineWidth = 3
+        }
+    }
+
+    private func updateLayerVisibility(isJoystick: Bool) {
+        label.isHidden = isJoystick
+        symbolImageView.isHidden = true
+        shapeLayer.isHidden = isJoystick
+        outlineLayer.isHidden = isJoystick
+        joystickOuterLayer.isHidden = !isJoystick
+        joystickKnobLayer.isHidden = !isJoystick
+        joystickLockIndicatorLayer.isHidden = !isJoystick || lockedJoystickDirection == nil
     }
 
     private func updateShapePath() {
         shapeLayer.frame = bounds
-        shapeLayer.path = buttonPath(in: visualBounds)
+        outlineLayer.frame = bounds
+        let path = buttonPath(in: visualBounds)
+        shapeLayer.path = path
+        outlineLayer.path = path
     }
 
     private var visualBounds: CGRect {
@@ -2236,6 +2402,7 @@ final class GamepadButtonView: NSView {
         joystickKnobLayer.isHidden = !showsJoystick
         joystickLockIndicatorLayer.isHidden = !showsJoystick || lockedJoystickDirection == nil
         shapeLayer.isHidden = showsJoystick
+        outlineLayer.isHidden = showsJoystick
 
         guard showsJoystick else {
             return
@@ -2247,7 +2414,7 @@ final class GamepadButtonView: NSView {
         joystickOuterLayer.path = CGPath(roundedRect: outerRect, cornerWidth: 8, cornerHeight: 8, transform: nil)
         joystickOuterLayer.fillColor = baseColor.withAlphaComponent(isActiveJoystick ? 0.42 : 0.26).cgColor
         joystickOuterLayer.strokeColor = isHovered
-            ? hoverOutlineColor.cgColor
+            ? (visualPalette ?? refreshVisualPalette()).hoverOutlineColor
             : NSColor.white.withAlphaComponent(isActiveJoystick ? 0.65 : 0.32).cgColor
         joystickOuterLayer.lineWidth = isHovered ? 2.5 : 2
 
