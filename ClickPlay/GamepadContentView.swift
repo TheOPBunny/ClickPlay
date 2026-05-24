@@ -29,6 +29,10 @@ final class GamepadContentView: NSView {
 
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
+        func updateStrokeColor(_ color: NSColor) {
+            layer?.borderColor = color.cgColor
+        }
+
         func show(centeredAt point: NSPoint) {
             CATransaction.begin()
             CATransaction.setDisableActions(true)
@@ -446,6 +450,7 @@ final class GamepadContentView: NSView {
         layer?.backgroundColor = color.cgColor
         blurView.isHidden = frostedGlassIntensity <= 0
         backgroundTintView.layer?.backgroundColor = color.withAlphaComponent(1 - frostedGlassIntensity).cgColor
+        pointerLocationView.updateStrokeColor(headerForegroundColor())
     }
 
     private func updateLayout() {
@@ -472,7 +477,7 @@ final class GamepadContentView: NSView {
     }
 
     private func updatePointerLocationVisibility(atScreenPoint screenPoint: NSPoint) {
-        guard currentProfile.showPointerLocation, !isMinimized, let window else {
+        guard currentProfile.showPointerLocation, !isMinimized, capturedJoystickButton == nil, let window else {
             pointerLocationView.hide()
             return
         }
@@ -619,6 +624,7 @@ final class GamepadContentView: NSView {
         }
 
         updateButtonVisibilityForJoystickCapture()
+        updatePointerLocationVisibility(atScreenPoint: NSEvent.mouseLocation)
         let isCaptured = capturedJoystickButton != nil
         if wasCaptured != isCaptured {
             onJoystickCaptureChanged?(isCaptured)
