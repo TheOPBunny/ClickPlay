@@ -540,6 +540,7 @@ struct Profile: Codable, Identifiable {
     var id: UUID
     var name: String
     var opacity: Double                              // 0.25–1.0
+    var showPointerLocation: Bool
     var backgroundColorHex: String                   // "#RRGGBB"
     var backgroundFrostedGlassIntensity: Int         // 0–100
     var compatibilityMode: Bool
@@ -557,6 +558,7 @@ struct Profile: Codable, Identifiable {
         case id
         case name
         case opacity
+        case showPointerLocation
         case backgroundColorHex
         case backgroundFrostedGlassIntensity
         case compatibilityMode
@@ -575,6 +577,7 @@ struct Profile: Codable, Identifiable {
         id: UUID,
         name: String,
         opacity: Double,
+        showPointerLocation: Bool = false,
         backgroundColorHex: String = Profile.defaultBackgroundColorHex,
         backgroundFrostedGlassIntensity: Int = Profile.defaultBackgroundFrostedGlassIntensity,
         compatibilityMode: Bool = false,
@@ -591,6 +594,7 @@ struct Profile: Codable, Identifiable {
         self.id = id
         self.name = name
         self.opacity = opacity
+        self.showPointerLocation = showPointerLocation
         self.backgroundColorHex = backgroundColorHex
         self.backgroundFrostedGlassIntensity = backgroundFrostedGlassIntensity
         self.compatibilityMode = compatibilityMode
@@ -610,6 +614,7 @@ struct Profile: Codable, Identifiable {
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
         opacity = try container.decode(Double.self, forKey: .opacity)
+        showPointerLocation = try container.decodeIfPresent(Bool.self, forKey: .showPointerLocation) ?? false
         backgroundColorHex = try container.decodeIfPresent(String.self, forKey: .backgroundColorHex) ?? Self.defaultBackgroundColorHex
         let legacyContainer = try decoder.container(keyedBy: DynamicCodingKey.self)
         let legacyFrostedGlassKey = DynamicCodingKey("background" + "S" + "moke" + "Intensity")

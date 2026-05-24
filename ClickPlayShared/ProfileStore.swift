@@ -314,6 +314,7 @@ final class ProfileStore {
 
         resolvedProfile.displayPadWidth = profile.displayPadWidth
         resolvedProfile.displayPadHeight = profile.displayPadHeight
+        resolvedProfile.showPointerLocation = profile.showPointerLocation
         return resolvedProfile
     }
 
@@ -419,6 +420,13 @@ final class ProfileStore {
         guard let idx = profiles.firstIndex(where: { $0.id == activeProfileID }) else { return }
         profiles[idx].displayPadWidth = width
         profiles[idx].displayPadHeight = height
+        save()
+    }
+
+    func updateActiveProfileShowPointerLocation(_ enabled: Bool) {
+        guard let idx = profiles.firstIndex(where: { $0.id == activeProfileID }),
+              profiles[idx].showPointerLocation != enabled else { return }
+        profiles[idx].showPointerLocation = enabled
         save()
     }
 

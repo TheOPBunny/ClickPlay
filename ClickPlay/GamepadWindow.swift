@@ -121,6 +121,8 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
              .otherMouseDown, .otherMouseUp, .otherMouseDragged,
              .mouseMoved:
             noteUserActivity()
+            syncButtonHoverToMouseLocation()
+            syncPointerLocationToMouseLocation()
         default:
             break
         }
@@ -220,6 +222,8 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
         ) { [weak self] _ in
+            self?.syncButtonHoverToMouseLocation()
+            self?.syncPointerLocationToMouseLocation()
             self?.wakeIfMouseIsOverWindow()
         }
     }
@@ -272,6 +276,16 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     private func wakeIfMouseIsOverWindow() {
         guard isFadedForInactivity, isVisible, frame.contains(NSEvent.mouseLocation) else { return }
         noteUserActivity()
+    }
+
+    private func syncButtonHoverToMouseLocation() {
+        guard isVisible else { return }
+        (contentView as? GamepadContentView)?.syncButtonHover(atScreenPoint: NSEvent.mouseLocation)
+    }
+
+    private func syncPointerLocationToMouseLocation() {
+        guard isVisible else { return }
+        (contentView as? GamepadContentView)?.syncPointerLocation(atScreenPoint: NSEvent.mouseLocation)
     }
 
     private func applyCurrentAlpha(animated: Bool) {

@@ -5,7 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.3.0] - 2026-05-24
+
+### Added
+
+- The gamepad overlay can now show a pointer location ring for games that hide the mouse, saved per profile. [See more...](docs/index.md#show-pointer-location)
+
+### Changed
+
+- Button hover outlines now update more responsively, including while the system is under load.
 
 ## [1.2.0] - 2026-05-23
 
