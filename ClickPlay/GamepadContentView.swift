@@ -12,6 +12,46 @@ final class GamepadContentView: NSView {
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
 
+    private final class PointerLocationView: NSView {
+        private static let diameter: CGFloat = 26
+
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            wantsLayer = true
+            isHidden = true
+            layer?.backgroundColor = NSColor.clear.cgColor
+            layer?.borderColor = NSColor.white.cgColor
+            layer?.borderWidth = 2
+            layer?.cornerRadius = Self.diameter / 2
+        }
+
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        func show(centeredAt point: NSPoint) {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            frame = NSRect(
+                x: point.x - Self.diameter / 2,
+                y: point.y - Self.diameter / 2,
+                width: Self.diameter,
+                height: Self.diameter
+            )
+            layer?.cornerRadius = Self.diameter / 2
+            isHidden = false
+            CATransaction.commit()
+        }
+
+        func hide() {
+            guard !isHidden else { return }
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            isHidden = true
+            CATransaction.commit()
+        }
+    }
+
     /// Header controls are separated from the pad surface so minimize/menu/hide interactions do not press buttons.
     private final class HeaderBarView: NSView {
         var onToggleMinimize: (() -> Void)?
@@ -239,6 +279,7 @@ final class GamepadContentView: NSView {
     private let padSurface = PadSurfaceView(frame: .zero)
     private let blurView = PassthroughVisualEffectView(frame: .zero)
     private let backgroundTintView = PassthroughView(frame: .zero)
+    private let pointerLocationView = PointerLocationView(frame: .zero)
 
     private var currentProfile: Profile
     private var isMinimized = false
@@ -267,6 +308,7 @@ final class GamepadContentView: NSView {
         currentProfile = profile
         isMinimized = minimized
         updateBackgroundColor()
+        updatePointerLocationVisibility(atScreenPoint: NSEvent.mouseLocation)
         updateHeader()
         updateLayout()
         buildButtons(profile: profile)
@@ -274,6 +316,7 @@ final class GamepadContentView: NSView {
 
     func setMinimized(_ minimized: Bool) {
         isMinimized = minimized
+        updatePointerLocationVisibility(atScreenPoint: NSEvent.mouseLocation)
         updateHeader()
         updateLayout()
         buildButtons(profile: currentProfile)
@@ -317,6 +360,10 @@ final class GamepadContentView: NSView {
 
             view.clearPolledHover()
         }
+    }
+
+    func syncPointerLocation(atScreenPoint screenPoint: NSPoint) {
+        updatePointerLocationVisibility(atScreenPoint: screenPoint)
     }
 
     override func setFrameSize(_ newSize: NSSize) {
@@ -373,6 +420,8 @@ final class GamepadContentView: NSView {
             self?.endWindowDrag()
         }
         addSubview(padSurface)
+
+        addSubview(pointerLocationView)
     }
 
     private func updateHeader() {
@@ -402,6 +451,7 @@ final class GamepadContentView: NSView {
     private func updateLayout() {
         blurView.frame = bounds
         backgroundTintView.frame = bounds
+        updatePointerLocationVisibility(atScreenPoint: NSEvent.mouseLocation)
 
         headerBar.frame = NSRect(
             x: 0,
@@ -412,12 +462,29 @@ final class GamepadContentView: NSView {
 
         if isMinimized {
             padSurface.isHidden = true
+            pointerLocationView.hide()
             return
         }
 
         let padHeight = max(0, bounds.height - Self.headerHeight - Self.contentGap)
         padSurface.isHidden = false
         padSurface.frame = NSRect(x: 0, y: 0, width: bounds.width, height: padHeight)
+    }
+
+    private func updatePointerLocationVisibility(atScreenPoint screenPoint: NSPoint) {
+        guard currentProfile.showPointerLocation, !isMinimized, let window else {
+            pointerLocationView.hide()
+            return
+        }
+
+        let windowPoint = window.convertPoint(fromScreen: screenPoint)
+        let contentPoint = convert(windowPoint, from: nil)
+        guard bounds.contains(contentPoint) else {
+            pointerLocationView.hide()
+            return
+        }
+
+        pointerLocationView.show(centeredAt: contentPoint)
     }
 
     // MARK: - Button Construction

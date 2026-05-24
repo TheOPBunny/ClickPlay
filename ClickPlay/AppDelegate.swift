@@ -282,6 +282,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         fadeItem.submenu = makeFadeMenu()
         menu.addItem(fadeItem)
 
+        let showPointerItem = NSMenuItem(title: "Show Pointer Location", action: #selector(toggleShowPointerLocation(_:)), keyEquivalent: "")
+        showPointerItem.target = self
+        showPointerItem.state = ProfileStore.shared.activeProfile.showPointerLocation ? .on : .off
+        menu.addItem(showPointerItem)
+
         menu.addItem(NSMenuItem.separator())
 
         let editProfilesItem = NSMenuItem(title: "Open Editor…", action: #selector(showEditor), keyEquivalent: "")
@@ -503,6 +508,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         }
 
         GamepadSettings.fadeTimeout = nil
+    }
+
+    @objc func toggleShowPointerLocation(_ sender: NSMenuItem) {
+        ProfileStore.shared.updateActiveProfileShowPointerLocation(!ProfileStore.shared.activeProfile.showPointerLocation)
     }
 
     // MARK: - Window and Editor Actions
