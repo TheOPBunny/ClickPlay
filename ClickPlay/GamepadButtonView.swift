@@ -2272,6 +2272,10 @@ final class GamepadButtonView: NSView {
 
         lastAppliedVisualState = nextState
         CATransaction.commit()
+
+        if shouldUpdateOutline {
+            CATransaction.flush()
+        }
     }
 
     @discardableResult
