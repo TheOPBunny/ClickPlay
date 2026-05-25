@@ -58,7 +58,7 @@ final class DwellActionController {
     }
 
     private final class ProgressWindow: NSPanel {
-        private static let size = CGSize(width: 64, height: 10)
+        private static let size = CGSize(width: 32, height: 10)
         private let progressView = ProgressView(frame: NSRect(origin: .zero, size: size))
         private var isProgressVisible = false
 
@@ -93,8 +93,8 @@ final class DwellActionController {
         func update(progress: CGFloat, underCursorAt point: CGPoint) {
             progressView.progress = progress
             let origin = CGPoint(
-                x: point.x - Self.size.width / 2,
-                y: point.y - 26
+                x: point.x - Self.size.width / 2 + 5,
+                y: point.y - 34
             )
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0
