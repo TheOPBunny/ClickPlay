@@ -583,8 +583,8 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         let colorRow = makeRow(label: "Color:", control: colorWell)
         self.colorRow = colorRow
         contentStack.addArrangedSubview(colorRow)
-        contentStack.addArrangedSubview(makeRow(label: "X (px):", control: xField))
-        contentStack.addArrangedSubview(makeRow(label: "Y (px):", control: yField))
+        contentStack.addArrangedSubview(makeRow(label: "X:", control: makeUnitField(field: xField, unit: "px")))
+        contentStack.addArrangedSubview(makeRow(label: "Y:", control: makeUnitField(field: yField, unit: "px")))
         contentStack.addArrangedSubview(makeRow(label: "Shape:", control: shapePopup))
         let interactionModeRow = makeRow(label: "Mode:", control: interactionModePopup)
         self.interactionModeRow = interactionModeRow
