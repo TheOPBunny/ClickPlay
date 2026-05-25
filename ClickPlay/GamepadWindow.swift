@@ -147,6 +147,9 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
              .rightMouseUp, .rightMouseDragged,
              .otherMouseUp, .otherMouseDragged,
              .mouseMoved:
+            if shouldInterruptDwell(for: event) {
+                dwellActionController.notePhysicalMouseInterrupt(event, at: NSEvent.mouseLocation)
+            }
             dwellActionController.noteMouseLocation(NSEvent.mouseLocation, from: event)
             noteUserActivity()
             syncButtonHoverToMouseLocation()
@@ -156,6 +159,18 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         }
 
         super.sendEvent(event)
+    }
+
+    private func shouldInterruptDwell(for event: NSEvent) -> Bool {
+        switch event.type {
+        case .leftMouseDown, .rightMouseDown, .otherMouseDown,
+             .leftMouseUp, .rightMouseUp, .otherMouseUp,
+             .leftMouseDragged, .rightMouseDragged, .otherMouseDragged,
+             .scrollWheel:
+            return true
+        default:
+            return false
+        }
     }
 
     // MARK: - Visibility and Profile Reloading
@@ -254,9 +269,9 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         )
 
         globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel]
+            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .leftMouseDown, .rightMouseDown, .otherMouseDown, .leftMouseUp, .rightMouseUp, .otherMouseUp, .scrollWheel]
         ) { [weak self] event in
-            if [.leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel].contains(event.type) {
+            if self?.shouldInterruptDwell(for: event) == true {
                 self?.dwellActionController.notePhysicalMouseInterrupt(event, at: NSEvent.mouseLocation)
             }
             self?.dwellActionController.noteMouseLocation(NSEvent.mouseLocation, from: event)
@@ -266,9 +281,9 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         }
 
         localMouseMonitor = NSEvent.addLocalMonitorForEvents(
-            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel]
+            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .leftMouseDown, .rightMouseDown, .otherMouseDown, .leftMouseUp, .rightMouseUp, .otherMouseUp, .scrollWheel]
         ) { [weak self] event in
-            if [.leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel].contains(event.type) {
+            if self?.shouldInterruptDwell(for: event) == true {
                 self?.dwellActionController.notePhysicalMouseInterrupt(event, at: NSEvent.mouseLocation)
             }
             self?.dwellActionController.noteMouseLocation(NSEvent.mouseLocation, from: event)
