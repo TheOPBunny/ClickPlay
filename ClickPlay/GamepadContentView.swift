@@ -277,6 +277,7 @@ final class GamepadContentView: NSView {
     var onHideOverlay: (() -> Void)?
     var menuProvider: (() -> NSMenu?)?
     var onJoystickCaptureChanged: ((Bool) -> Void)?
+    var onDwellActionToggled: ((GamepadButton, DwellActionConfig) -> Bool)?
 
     private var buttonViews: [GamepadButton: GamepadButtonView] = [:]
     private let headerBar = HeaderBarView(frame: .zero)
@@ -288,6 +289,7 @@ final class GamepadContentView: NSView {
     private var currentProfile: Profile
     private var isMinimized = false
     private var capturedJoystickButton: GamepadButton?
+    private var activeDwellButton: GamepadButton?
 
     // Drag state is stored in screen coordinates so moving the overlay works across Spaces and displays.
     private var dragStartWindowOrigin: NSPoint = .zero
@@ -328,6 +330,11 @@ final class GamepadContentView: NSView {
 
     func releaseAllInputs() {
         releaseAllButtonsForRebuild()
+    }
+
+    func setActiveDwellButton(_ button: GamepadButton?) {
+        activeDwellButton = button
+        syncDwellActionActiveState()
     }
 
     func syncButtonHover(atScreenPoint screenPoint: NSPoint) {
@@ -540,6 +547,7 @@ final class GamepadContentView: NSView {
                         activeSubProfileID: profile.id
                     )
                 }
+                view.setDwellActionActive(activeDwellButton == button)
             } else {
                 let view = GamepadButtonView(
                     button: button,
@@ -553,12 +561,17 @@ final class GamepadContentView: NSView {
                     }
                     self.setJoystickCapture(captured, for: view.button)
                 }
+                view.onDwellActionToggled = { [weak self] button, config in
+                    self?.onDwellActionToggled?(button, config) ?? false
+                }
                 view.frame = frame
+                view.setDwellActionActive(activeDwellButton == button)
                 padSurface.addSubview(view)
                 buttonViews[button] = view
             }
         }
         updateButtonVisibilityForJoystickCapture()
+        syncDwellActionActiveState()
         debugLog("[ContentView] Built \(buttonViews.count) buttons")
     }
 
@@ -613,6 +626,12 @@ final class GamepadContentView: NSView {
 
     private func clearButtonHover() {
         buttonViews.values.forEach { $0.clearPolledHover() }
+    }
+
+    private func syncDwellActionActiveState() {
+        for (button, view) in buttonViews {
+            view.setDwellActionActive(activeDwellButton == button)
+        }
     }
 
     private func setJoystickCapture(_ captured: Bool, for button: GamepadButton) {

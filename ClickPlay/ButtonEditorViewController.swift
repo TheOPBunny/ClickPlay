@@ -924,6 +924,33 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         )
     }
 
+    private func makeNewDwellActionConfig() -> ButtonConfig {
+        let width = 20.0
+        let height = 20.0
+        let origin = nearestEmptySpawnOrigin(for: CGSize(width: width, height: height))
+
+        return ButtonConfig(
+            type: .dwellAction,
+            x: Double(origin.x) + (width / 2),
+            y: Double(origin.y) + (height / 2),
+            width: width,
+            height: height,
+            editorWidth: width,
+            editorHeight: height,
+            colorHex: "#000000",
+            keyCode: 49,
+            keyModifiers: 0,
+            label: "",
+            shape: .square,
+            enabled: true,
+            interactionMode: .momentary,
+            rightClickKeyBindings: nil,
+            rightClickFallsBackToPrimary: false,
+            rightClickInteractionMode: nil,
+            dwellAction: .default
+        )
+    }
+
     private func nextCustomButtonLabel() -> String {
         let nextNumber = profile.buttons.values.reduce(0) { currentMax, config in
             let label = config.label.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1178,6 +1205,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         addPopupButton.lastItem?.tag = 2
         addPopupButton.addItem(withTitle: "System Event")
         addPopupButton.lastItem?.tag = 3
+        addPopupButton.addItem(withTitle: "Dwell Action")
+        addPopupButton.lastItem?.tag = 4
 
         let groupItem = NSMenuItem(title: "Group", action: nil, keyEquivalent: "")
         let groupMenu = NSMenu(title: "Group")
@@ -1209,6 +1238,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             addJoystickPressed()
         case 3:
             addSystemEventPressed()
+        case 4:
+            addDwellActionPressed()
         default:
             break
         }
@@ -1251,6 +1282,20 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         let config = makeNewSystemEventConfig()
         profile.buttons[button.rawValue] = config
         registerButtonStateUndo(button: button, before: nil, after: config, actionName: "Add System Event")
+        syncWorkspaceAfterGeometryChange(selectedButton: button)
+        reloadPreview(keepSelection: false)
+        previewView.select(button: button)
+    }
+
+    @objc private func addDwellActionPressed() {
+        guard confirmAddingButtonIfNeeded() else {
+            return
+        }
+
+        let button = GamepadButton.generated()
+        let config = makeNewDwellActionConfig()
+        profile.buttons[button.rawValue] = config
+        registerButtonStateUndo(button: button, before: nil, after: config, actionName: "Add Dwell Action")
         syncWorkspaceAfterGeometryChange(selectedButton: button)
         reloadPreview(keepSelection: false)
         previewView.select(button: button)
@@ -2309,6 +2354,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 || lhs.rightClickFallsBackToPrimary != rhs.rightClickFallsBackToPrimary
                 || lhs.rightClickInteractionMode != rhs.rightClickInteractionMode
                 || lhs.joystick != rhs.joystick
+                || lhs.dwellAction != rhs.dwellAction
                 || lhs.action != rhs.action
         }
     }

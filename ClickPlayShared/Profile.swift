@@ -18,6 +18,7 @@ enum ButtonType: String, Codable {
     case keyboard
     case joystick
     case systemEvent
+    case dwellAction
 }
 
 enum JoystickOperationMode: String, Codable, Equatable {
@@ -52,6 +53,8 @@ enum ButtonSizing {
             return (minimumJoystickWidth, minimumJoystickHeight)
         case .systemEvent:
             return (minimumButtonWidth, minimumButtonHeight)
+        case .dwellAction:
+            return (minimumButtonWidth, minimumButtonWidth)
         }
     }
 }
@@ -92,6 +95,61 @@ enum SystemEventIconSize: String, Codable, Equatable {
     case medium
     case large
     case extraLarge
+}
+
+enum DwellActionKind: String, Codable, Equatable {
+    case leftClick
+    case rightClick
+    case middleClick
+    case holdLeftClick
+    case holdRightClick
+    case holdMiddleClick
+    case scrollUp
+    case scrollDown
+}
+
+struct DwellActionConfig: Codable, Equatable {
+    static let defaultTimerDuration = 2.0
+    static let defaultMovementTolerance = 5.0
+
+    var kind: DwellActionKind
+    var timerDuration: Double
+    var movementTolerance: Double
+
+    private enum CodingKeys: String, CodingKey {
+        case kind
+        case timerDuration
+        case movementTolerance
+    }
+
+    static let `default` = DwellActionConfig(
+        kind: .leftClick,
+        timerDuration: defaultTimerDuration,
+        movementTolerance: defaultMovementTolerance
+    )
+
+    init(
+        kind: DwellActionKind = .leftClick,
+        timerDuration: Double = DwellActionConfig.defaultTimerDuration,
+        movementTolerance: Double = DwellActionConfig.defaultMovementTolerance
+    ) {
+        self.kind = kind
+        self.timerDuration = max(0.1, timerDuration)
+        self.movementTolerance = max(0, movementTolerance)
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try container.decodeIfPresent(DwellActionKind.self, forKey: .kind) ?? .leftClick
+        timerDuration = max(
+            0.1,
+            try container.decodeIfPresent(Double.self, forKey: .timerDuration) ?? Self.defaultTimerDuration
+        )
+        movementTolerance = max(
+            0,
+            try container.decodeIfPresent(Double.self, forKey: .movementTolerance) ?? Self.defaultMovementTolerance
+        )
+    }
 }
 
 struct JoystickInputConfig: Codable, Equatable {
@@ -315,6 +373,7 @@ struct ButtonConfig: Codable {
     var action: ButtonAction
     var joystick: JoystickConfig
     var systemEventIconSize: SystemEventIconSize
+    var dwellAction: DwellActionConfig
 
     private enum CodingKeys: String, CodingKey {
         case type
@@ -343,6 +402,7 @@ struct ButtonConfig: Codable {
         case action
         case joystick
         case systemEventIconSize
+        case dwellAction
     }
 
     init(
@@ -371,7 +431,8 @@ struct ButtonConfig: Codable {
         rightClickInteractionMode: ButtonInteractionMode? = nil,
         action: ButtonAction = .keyboard,
         joystick: JoystickConfig = .defaultBindings,
-        systemEventIconSize: SystemEventIconSize = .large
+        systemEventIconSize: SystemEventIconSize = .large,
+        dwellAction: DwellActionConfig = .default
     ) {
         self.type = type
         self.x = x
@@ -405,6 +466,7 @@ struct ButtonConfig: Codable {
         self.action = action
         self.joystick = joystick
         self.systemEventIconSize = systemEventIconSize
+        self.dwellAction = dwellAction
     }
 
     init(from decoder: Decoder) throws {
@@ -445,6 +507,7 @@ struct ButtonConfig: Codable {
         }
         joystick = try container.decodeIfPresent(JoystickConfig.self, forKey: .joystick) ?? .defaultBindings
         systemEventIconSize = try container.decodeIfPresent(SystemEventIconSize.self, forKey: .systemEventIconSize) ?? .large
+        dwellAction = try container.decodeIfPresent(DwellActionConfig.self, forKey: .dwellAction) ?? .default
     }
 
     func encode(to encoder: Encoder) throws {
@@ -482,6 +545,7 @@ struct ButtonConfig: Codable {
         try container.encode(action, forKey: .action)
         try container.encode(joystick, forKey: .joystick)
         try container.encode(systemEventIconSize, forKey: .systemEventIconSize)
+        try container.encode(dwellAction, forKey: .dwellAction)
     }
 
     private static func normalizedKeyBindings(

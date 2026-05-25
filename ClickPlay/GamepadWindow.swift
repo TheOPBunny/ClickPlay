@@ -48,6 +48,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     private var isFadedForInactivity = false
     private var isJoystickCaptureActive = false
     private var globalMouseMonitor: Any?
+    private let dwellActionController = DwellActionController()
 
     convenience init() {
         let screen = NSScreen.main ?? NSScreen.screens[0]
@@ -91,10 +92,25 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         content.onJoystickCaptureChanged = { [weak self] isCaptured in
             self?.setJoystickCaptureActive(isCaptured)
         }
+        content.onDwellActionToggled = { [weak self] button, config in
+            guard let self else {
+                return false
+            }
+
+            return self.dwellActionController.toggle(
+                button: button,
+                config: config,
+                currentMouseLocation: NSEvent.mouseLocation
+            )
+        }
         content.menuProvider = {
             (NSApp.delegate as? AppDelegate)?.makeGamepadMenu()
         }
         contentView = content
+
+        dwellActionController.onActiveButtonChanged = { [weak self] activeButton in
+            (self?.contentView as? GamepadContentView)?.setActiveDwellButton(activeButton)
+        }
 
         alphaValue = profile.opacity
         startInactivityMonitoring()
@@ -107,6 +123,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     override var canBecomeMain: Bool { false }
 
     deinit {
+        dwellActionController.deactivate()
         inactivityTimer?.invalidate()
         if let globalMouseMonitor {
             NSEvent.removeMonitor(globalMouseMonitor)
@@ -120,6 +137,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
              .rightMouseDown, .rightMouseUp, .rightMouseDragged,
              .otherMouseDown, .otherMouseUp, .otherMouseDragged,
              .mouseMoved:
+            dwellActionController.noteMouseLocation(NSEvent.mouseLocation)
             noteUserActivity()
             syncButtonHoverToMouseLocation()
             syncPointerLocationToMouseLocation()
@@ -144,15 +162,18 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     }
 
     func releaseAllInputs() {
+        dwellActionController.deactivate()
         (contentView as? GamepadContentView)?.releaseAllInputs()
     }
 
     func reloadProfile() {
         var profile = ProfileStore.shared.activeResolvedProfile
         profile.name = ProfileStore.shared.activeProfile.name
+        reconcileActiveDwellAction(with: profile)
         updateResizeConstraints()
         resizeForCurrentState(using: profile)
         (contentView as? GamepadContentView)?.reload(profile: profile, minimized: isMinimized)
+        (contentView as? GamepadContentView)?.setActiveDwellButton(dwellActionController.activeButton)
         applyCurrentAlpha(animated: false)
         resetInactivityTimer()
     }
@@ -163,6 +184,9 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
 
     private func toggleMinimized() {
         isMinimized.toggle()
+        if isMinimized {
+            dwellActionController.deactivate()
+        }
         var profile = ProfileStore.shared.activeResolvedProfile
         profile.name = ProfileStore.shared.activeProfile.name
         updateResizeConstraints()
@@ -222,6 +246,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
         ) { [weak self] _ in
+            self?.dwellActionController.noteMouseLocation(NSEvent.mouseLocation)
             self?.syncButtonHoverToMouseLocation()
             self?.syncPointerLocationToMouseLocation()
             self?.wakeIfMouseIsOverWindow()
@@ -286,6 +311,21 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     private func syncPointerLocationToMouseLocation() {
         guard isVisible else { return }
         (contentView as? GamepadContentView)?.syncPointerLocation(atScreenPoint: NSEvent.mouseLocation)
+    }
+
+    private func reconcileActiveDwellAction(with profile: Profile) {
+        guard let activeButton = dwellActionController.activeButton else {
+            return
+        }
+
+        guard let config = profile.buttons[activeButton.rawValue],
+              config.enabled,
+              config.type == .dwellAction else {
+            dwellActionController.deactivate()
+            return
+        }
+
+        dwellActionController.updateActiveConfig(config.dwellAction, for: activeButton)
     }
 
     private func applyCurrentAlpha(animated: Bool) {
