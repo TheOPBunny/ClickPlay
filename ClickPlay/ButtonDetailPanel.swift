@@ -1711,27 +1711,6 @@ private extension DwellActionKind {
         ]
     }
 
-    var displayName: String {
-        switch self {
-        case .leftClick:
-            return "Left Click"
-        case .rightClick:
-            return "Right Click"
-        case .middleClick:
-            return "Middle Click"
-        case .holdLeftClick:
-            return "Hold Left Click"
-        case .holdRightClick:
-            return "Hold Right Click"
-        case .holdMiddleClick:
-            return "Hold Middle Click"
-        case .scrollUp:
-            return "Scroll Up"
-        case .scrollDown:
-            return "Scroll Down"
-        }
-    }
-
     var tag: Int {
         switch self {
         case .leftClick:

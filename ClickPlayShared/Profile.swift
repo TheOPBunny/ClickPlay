@@ -108,6 +108,50 @@ enum DwellActionKind: String, Codable, Equatable {
     case scrollDown
 }
 
+extension DwellActionKind {
+    var displayName: String {
+        switch self {
+        case .leftClick:
+            return "Left Click"
+        case .rightClick:
+            return "Right Click"
+        case .middleClick:
+            return "Middle Click"
+        case .holdLeftClick:
+            return "Hold Left Click"
+        case .holdRightClick:
+            return "Hold Right Click"
+        case .holdMiddleClick:
+            return "Hold Middle Click"
+        case .scrollUp:
+            return "Scroll Up"
+        case .scrollDown:
+            return "Scroll Down"
+        }
+    }
+
+    var fallbackLabel: String {
+        switch self {
+        case .leftClick:
+            return "􀭆"
+        case .rightClick:
+            return "􀭈"
+        case .middleClick:
+            return "􂲥"
+        case .holdLeftClick:
+            return "􀣡"
+        case .holdRightClick:
+            return "􀯪"
+        case .holdMiddleClick:
+            return "􀬂"
+        case .scrollUp:
+            return "􃗆"
+        case .scrollDown:
+            return "􃗈"
+        }
+    }
+}
+
 struct DwellActionConfig: Codable, Equatable {
     static let defaultTimerDuration = 2.0
     static let defaultMovementTolerance = 5.0
@@ -1299,6 +1343,10 @@ extension ButtonConfig {
 
         if let systemEvent = action.systemEvent {
             return systemEvent.fallbackSymbol
+        }
+
+        if type == .dwellAction {
+            return dwellAction.kind.fallbackLabel
         }
 
         return keyBindingsDisplayName
