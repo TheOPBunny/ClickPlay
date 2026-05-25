@@ -48,6 +48,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     private var isFadedForInactivity = false
     private var isJoystickCaptureActive = false
     private var globalMouseMonitor: Any?
+    private var localMouseMonitor: Any?
     private let dwellActionController = DwellActionController()
 
     convenience init() {
@@ -127,6 +128,9 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         inactivityTimer?.invalidate()
         if let globalMouseMonitor {
             NSEvent.removeMonitor(globalMouseMonitor)
+        }
+        if let localMouseMonitor {
+            NSEvent.removeMonitor(localMouseMonitor)
         }
         NotificationCenter.default.removeObserver(self)
     }
@@ -250,6 +254,13 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
             self?.syncButtonHoverToMouseLocation()
             self?.syncPointerLocationToMouseLocation()
             self?.wakeIfMouseIsOverWindow()
+        }
+
+        localMouseMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
+        ) { [weak self] event in
+            self?.dwellActionController.noteMouseLocation(NSEvent.mouseLocation)
+            return event
         }
     }
 
