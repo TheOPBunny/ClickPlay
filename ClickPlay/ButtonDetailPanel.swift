@@ -1127,6 +1127,10 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
             config.rightClickKeyBindings = nil
             config.rightClickFallsBackToPrimary = false
             config.rightClickInteractionMode = nil
+            config.label = ""
+            config.labelBold = true
+            config.labelItalic = false
+            config.labelColorHex = "#FFFFFF"
             config.dwellAction = DwellActionConfig(
                 kind: dwellActionKind,
                 timerDuration: durationValue(
@@ -1549,8 +1553,8 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         let isSystemEvent = config?.type == .systemEvent
         let hidesKeyboardControls = isProtectedSwitch || isJoystick || isSystemEvent || isDwellAction
 
-        labelRow?.isHidden = isSystemEvent
-        labelStyleRow?.isHidden = isSystemEvent
+        labelRow?.isHidden = isSystemEvent || isDwellAction
+        labelStyleRow?.isHidden = isSystemEvent || isDwellAction
         buttonTypeRow?.isHidden = isProtectedSwitch || isSystemEvent
         systemEventRow?.isHidden = !isSystemEvent || isProtectedSwitch
         systemEventIconSizeRow?.isHidden = !isSystemEvent || isProtectedSwitch
