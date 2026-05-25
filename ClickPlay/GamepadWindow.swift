@@ -137,8 +137,8 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
 
     override func sendEvent(_ event: NSEvent) {
         switch event.type {
-        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
-            dwellActionController.notePhysicalMouseButtonPressed(event, at: NSEvent.mouseLocation)
+        case .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel:
+            dwellActionController.notePhysicalMouseInterrupt(event, at: NSEvent.mouseLocation)
             dwellActionController.noteMouseLocation(NSEvent.mouseLocation, from: event)
             noteUserActivity()
             syncButtonHoverToMouseLocation()
@@ -254,10 +254,10 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         )
 
         globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .leftMouseDown, .rightMouseDown, .otherMouseDown]
+            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel]
         ) { [weak self] event in
-            if [.leftMouseDown, .rightMouseDown, .otherMouseDown].contains(event.type) {
-                self?.dwellActionController.notePhysicalMouseButtonPressed(event, at: NSEvent.mouseLocation)
+            if [.leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel].contains(event.type) {
+                self?.dwellActionController.notePhysicalMouseInterrupt(event, at: NSEvent.mouseLocation)
             }
             self?.dwellActionController.noteMouseLocation(NSEvent.mouseLocation, from: event)
             self?.syncButtonHoverToMouseLocation()
@@ -266,10 +266,10 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         }
 
         localMouseMonitor = NSEvent.addLocalMonitorForEvents(
-            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .leftMouseDown, .rightMouseDown, .otherMouseDown]
+            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel]
         ) { [weak self] event in
-            if [.leftMouseDown, .rightMouseDown, .otherMouseDown].contains(event.type) {
-                self?.dwellActionController.notePhysicalMouseButtonPressed(event, at: NSEvent.mouseLocation)
+            if [.leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel].contains(event.type) {
+                self?.dwellActionController.notePhysicalMouseInterrupt(event, at: NSEvent.mouseLocation)
             }
             self?.dwellActionController.noteMouseLocation(NSEvent.mouseLocation, from: event)
             return event

@@ -219,11 +219,12 @@ final class DwellActionController {
         }
     }
 
-    func notePhysicalMouseButtonPressed(_ event: NSEvent, at point: CGPoint) {
+    func notePhysicalMouseInterrupt(_ event: NSEvent, at point: CGPoint) {
         guard activeAction != nil, !MouseEventInjector.shared.isSyntheticEvent(event) else {
             return
         }
 
+        releaseHeldMouseButtonIfNeeded()
         stopTimerAndWaitForMovement(from: point)
     }
 
