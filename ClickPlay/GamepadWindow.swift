@@ -137,11 +137,17 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
 
     override func sendEvent(_ event: NSEvent) {
         switch event.type {
-        case .leftMouseDown, .leftMouseUp, .leftMouseDragged,
-             .rightMouseDown, .rightMouseUp, .rightMouseDragged,
-             .otherMouseDown, .otherMouseUp, .otherMouseDragged,
+        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+            dwellActionController.notePhysicalMouseButtonPressed(event, at: NSEvent.mouseLocation)
+            dwellActionController.noteMouseLocation(NSEvent.mouseLocation, from: event)
+            noteUserActivity()
+            syncButtonHoverToMouseLocation()
+            syncPointerLocationToMouseLocation()
+        case .leftMouseUp, .leftMouseDragged,
+             .rightMouseUp, .rightMouseDragged,
+             .otherMouseUp, .otherMouseDragged,
              .mouseMoved:
-            dwellActionController.noteMouseLocation(NSEvent.mouseLocation)
+            dwellActionController.noteMouseLocation(NSEvent.mouseLocation, from: event)
             noteUserActivity()
             syncButtonHoverToMouseLocation()
             syncPointerLocationToMouseLocation()
@@ -248,18 +254,24 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         )
 
         globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
-        ) { [weak self] _ in
-            self?.dwellActionController.noteMouseLocation(NSEvent.mouseLocation)
+            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .leftMouseDown, .rightMouseDown, .otherMouseDown]
+        ) { [weak self] event in
+            if [.leftMouseDown, .rightMouseDown, .otherMouseDown].contains(event.type) {
+                self?.dwellActionController.notePhysicalMouseButtonPressed(event, at: NSEvent.mouseLocation)
+            }
+            self?.dwellActionController.noteMouseLocation(NSEvent.mouseLocation, from: event)
             self?.syncButtonHoverToMouseLocation()
             self?.syncPointerLocationToMouseLocation()
             self?.wakeIfMouseIsOverWindow()
         }
 
         localMouseMonitor = NSEvent.addLocalMonitorForEvents(
-            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
+            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .leftMouseDown, .rightMouseDown, .otherMouseDown]
         ) { [weak self] event in
-            self?.dwellActionController.noteMouseLocation(NSEvent.mouseLocation)
+            if [.leftMouseDown, .rightMouseDown, .otherMouseDown].contains(event.type) {
+                self?.dwellActionController.notePhysicalMouseButtonPressed(event, at: NSEvent.mouseLocation)
+            }
+            self?.dwellActionController.noteMouseLocation(NSEvent.mouseLocation, from: event)
             return event
         }
     }

@@ -180,9 +180,17 @@ final class DwellActionController {
         }
     }
 
-    func noteMouseLocation(_ point: CGPoint) {
+    func noteMouseLocation(_ point: CGPoint, from event: NSEvent? = nil) {
+        if let event, MouseEventInjector.shared.isSyntheticEvent(event) {
+            return
+        }
+
         guard let activeAction else {
             return
+        }
+
+        if let heldMouseButton {
+            MouseEventInjector.shared.mouseDragged(heldMouseButton, at: point)
         }
 
         if movementReferencePoint == nil {
@@ -211,6 +219,14 @@ final class DwellActionController {
         }
     }
 
+    func notePhysicalMouseButtonPressed(_ event: NSEvent, at point: CGPoint) {
+        guard activeAction != nil, !MouseEventInjector.shared.isSyntheticEvent(event) else {
+            return
+        }
+
+        stopTimerAndWaitForMovement(from: point)
+    }
+
     private func activate(button: GamepadButton, config: DwellActionConfig, currentMouseLocation: CGPoint) {
         if activeAction?.button != button {
             releaseHeldMouseButtonIfNeeded()
@@ -224,6 +240,14 @@ final class DwellActionController {
         isWaitingForMovement = true
         progressWindow.hide()
         onActiveButtonChanged?(button)
+    }
+
+    private func stopTimerAndWaitForMovement(from point: CGPoint) {
+        stopTimer()
+        anchorPoint = nil
+        timerStartedAt = nil
+        movementReferencePoint = point
+        isWaitingForMovement = true
     }
 
     private func startTimer(anchor point: CGPoint) {
@@ -349,6 +373,7 @@ final class DwellActionController {
 
 private final class MouseEventInjector {
     static let shared = MouseEventInjector()
+    private static let syntheticEventUserData: Int64 = 0x43504457454C4C
 
     private init() {}
 
@@ -363,6 +388,14 @@ private final class MouseEventInjector {
 
     func mouseUp(_ button: DwellActionController.HeldMouseButton, at point: CGPoint) {
         postMouse(button: button, down: false, at: point)
+    }
+
+    func mouseDragged(_ button: DwellActionController.HeldMouseButton, at point: CGPoint) {
+        postMouse(button: button, type: draggedEventType(for: button), at: point)
+    }
+
+    func isSyntheticEvent(_ event: NSEvent) -> Bool {
+        event.cgEvent?.getIntegerValueField(.eventSourceUserData) == Self.syntheticEventUserData
     }
 
     func scroll(lines: Int32, at point: CGPoint) {
@@ -381,15 +414,20 @@ private final class MouseEventInjector {
         }
 
         event.location = quartzPoint
+        markSynthetic(event)
         event.post(tap: .cghidEventTap)
     }
 
     private func postMouse(button: DwellActionController.HeldMouseButton, down: Bool, at point: CGPoint) {
+        postMouse(button: button, type: eventType(for: button, down: down), at: point)
+    }
+
+    private func postMouse(button: DwellActionController.HeldMouseButton, type: CGEventType, at point: CGPoint) {
         let quartzPoint = quartzPoint(forAppKitPoint: point)
         guard let source = CGEventSource(stateID: .hidSystemState),
               let event = CGEvent(
                 mouseEventSource: source,
-                mouseType: eventType(for: button, down: down),
+                mouseType: type,
                 mouseCursorPosition: quartzPoint,
                 mouseButton: cgButton(for: button)
               ) else {
@@ -397,7 +435,12 @@ private final class MouseEventInjector {
             return
         }
 
+        markSynthetic(event)
         event.post(tap: .cghidEventTap)
+    }
+
+    private func markSynthetic(_ event: CGEvent) {
+        event.setIntegerValueField(.eventSourceUserData, value: Self.syntheticEventUserData)
     }
 
     private func eventType(for button: DwellActionController.HeldMouseButton, down: Bool) -> CGEventType {
@@ -408,6 +451,17 @@ private final class MouseEventInjector {
             return down ? .rightMouseDown : .rightMouseUp
         case .middle:
             return down ? .otherMouseDown : .otherMouseUp
+        }
+    }
+
+    private func draggedEventType(for button: DwellActionController.HeldMouseButton) -> CGEventType {
+        switch button {
+        case .left:
+            return .leftMouseDragged
+        case .right:
+            return .rightMouseDragged
+        case .middle:
+            return .otherMouseDragged
         }
     }
 
