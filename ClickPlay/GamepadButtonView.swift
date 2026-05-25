@@ -569,11 +569,11 @@ final class GamepadButtonView: NSView {
     }
 
     private var displayTextColor: NSColor {
-        isSystemEvent ? ButtonConfig.systemEventSymbolColor(for: config.colorHex) : NSColor(hex: config.labelColorHex)
+        (isSystemEvent || isDwellAction) ? ButtonConfig.systemEventSymbolColor(for: config.colorHex) : NSColor(hex: config.labelColorHex)
     }
 
     private var displayTextFont: NSFont {
-        guard isSystemEvent else {
+        guard isSystemEvent || isDwellAction else {
             return config.resolvedLabelFont
         }
 
@@ -2475,7 +2475,7 @@ final class GamepadButtonView: NSView {
     }
 
     private func updateSystemEventSymbol() {
-        guard isSystemEvent, let systemEvent = config.action.systemEvent else {
+        guard isSystemEvent || isDwellAction else {
             symbolImageView.image = nil
             symbolImageView.isHidden = true
             label.stringValue = config.resolvedDisplayLabel
@@ -2486,7 +2486,7 @@ final class GamepadButtonView: NSView {
 
         symbolImageView.image = nil
         symbolImageView.isHidden = true
-        label.stringValue = systemEvent.fallbackSymbol
+        label.stringValue = config.resolvedDisplayLabel
         label.font = displayTextFont
         label.textColor = displayTextColor
     }

@@ -1117,6 +1117,7 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
             systemEventIconSizePopup.selectItem(withTag: iconSize.tag)
         } else if config.type == .dwellAction {
             let dwellActionKind = DwellActionKind(tag: dwellActionPopup.selectedTag()) ?? config.dwellAction.kind
+            let iconSize = SystemEventIconSize(tag: systemEventIconSizePopup.selectedTag()) ?? config.systemEventIconSize
             config.action = .keyboard
             config.enabled = true
             config.keyBindings = [Self.defaultKeyBinding]
@@ -1131,6 +1132,7 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
             config.labelBold = true
             config.labelItalic = false
             config.labelColorHex = "#FFFFFF"
+            config.systemEventIconSize = iconSize
             config.dwellAction = DwellActionConfig(
                 kind: dwellActionKind,
                 timerDuration: durationValue(
@@ -1149,6 +1151,7 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
             rightClickFallbackCheckbox.state = .off
             rightClickModePopup.selectItem(withTag: Self.sameAsLeftModeTag)
             dwellActionPopup.selectItem(withTag: dwellActionKind.tag)
+            systemEventIconSizePopup.selectItem(withTag: iconSize.tag)
             dwellTimerField.stringValue = String(format: "%.1f", config.dwellAction.timerDuration)
             dwellToleranceField.stringValue = geometryValueString(config.dwellAction.movementTolerance)
         } else if config.type == .joystick {
@@ -1557,7 +1560,7 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         labelStyleRow?.isHidden = isSystemEvent || isDwellAction
         buttonTypeRow?.isHidden = isProtectedSwitch || isSystemEvent
         systemEventRow?.isHidden = !isSystemEvent || isProtectedSwitch
-        systemEventIconSizeRow?.isHidden = !isSystemEvent || isProtectedSwitch
+        systemEventIconSizeRow?.isHidden = !(isSystemEvent || isDwellAction) || isProtectedSwitch
         dwellActionRow?.isHidden = !isDwellAction || isProtectedSwitch
         dwellTimerRow?.isHidden = !isDwellAction || isProtectedSwitch
         dwellToleranceRow?.isHidden = !isDwellAction || isProtectedSwitch
