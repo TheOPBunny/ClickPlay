@@ -524,10 +524,10 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         let dwellActionRow = makeRow(label: "Action:", control: dwellActionPopup)
         self.dwellActionRow = dwellActionRow
         contentStack.addArrangedSubview(dwellActionRow)
-        let dwellTimerRow = makeRow(label: "Timer:", control: dwellTimerField)
+        let dwellTimerRow = makeRow(label: "Timer:", control: makeUnitField(field: dwellTimerField, unit: "seconds"))
         self.dwellTimerRow = dwellTimerRow
         contentStack.addArrangedSubview(dwellTimerRow)
-        let dwellToleranceRow = makeRow(label: "Tolerance:", control: dwellToleranceField)
+        let dwellToleranceRow = makeRow(label: "Tolerance:", control: makeUnitField(field: dwellToleranceField, unit: "px"))
         self.dwellToleranceRow = dwellToleranceRow
         contentStack.addArrangedSubview(dwellToleranceRow)
         let joystickSectionLabel = makeSectionLabel("Joystick")
@@ -667,6 +667,18 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         row.orientation = .horizontal
         row.spacing = 8
         return row
+    }
+
+    private func makeUnitField(field: NSTextField, unit: String) -> NSStackView {
+        let unitLabel = NSTextField(labelWithString: unit)
+        unitLabel.font = .systemFont(ofSize: 12)
+        unitLabel.textColor = .secondaryLabelColor
+
+        let stack = NSStackView(views: [field, unitLabel])
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 6
+        return stack
     }
 
     private func makeFieldLabel(_ text: String) -> NSTextField {
