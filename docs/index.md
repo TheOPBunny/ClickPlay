@@ -203,6 +203,27 @@ Buttons can trigger supported system events, including brightness, volume, media
 
 You can add a system event from the **Add...** drop-down in the top-right of the editor. Once a system event button is added, click it to edit its properties in the inspector panel.
 
+### Dwell Actions
+
+Dwell Action buttons let you activate mouse actions by resting the pointer in one place instead of physically clicking. They can perform left click, double click, right click, middle click, left/right/middle hold actions, and scroll up or down.
+
+You can add a Dwell Action from the **Add...** drop-down in the top-right of the editor. Once a Dwell Action button is added, click it to edit its properties in the inspector panel.
+
+Dwell Action buttons behave like toggles. Only one Dwell Action can be active at a time, and the active one is shown with a blue outline. Clicking the active Dwell Action again turns it off.
+
+When a Dwell Action is active, Click Play watches global pointer movement. After the pointer moves beyond the configured movement tolerance and then stays still for the configured timer duration, the selected action activates. If the pointer moves beyond tolerance before the timer completes, the timer cancels and waits for the pointer to become stationary again.
+
+For hold actions, the first completed dwell presses and holds the selected mouse button. After the pointer moves again and completes another dwell, Click Play releases the held button. Physical mouse clicks, overlay hide, minimize, profile reload, or quitting the app release any held dwell button.
+
+The inspector lets you configure:
+
+- Action type.
+- Timer duration in seconds.
+- Movement tolerance in pixels.
+- Icon size.
+
+A small progress bar appears under the cursor while a dwell timer is running. Dwell Actions continue working even when the overlay fades, so the fade behavior remains visual-only.
+
 ### Update Checks
 
 Click Play checks GitHub Releases for the latest version. Updates are checked automatically once per day, or you can check manually from the menu bar item.
