@@ -99,6 +99,7 @@ enum SystemEventIconSize: String, Codable, Equatable {
 
 enum DwellActionKind: String, Codable, Equatable {
     case leftClick
+    case doubleClick
     case rightClick
     case middleClick
     case holdLeftClick
@@ -113,6 +114,8 @@ extension DwellActionKind {
         switch self {
         case .leftClick:
             return "Left Click"
+        case .doubleClick:
+            return "Double Click"
         case .rightClick:
             return "Right Click"
         case .middleClick:
@@ -134,6 +137,8 @@ extension DwellActionKind {
         switch self {
         case .leftClick:
             return "􀭆"
+        case .doubleClick:
+            return "􀭇"
         case .rightClick:
             return "􀭈"
         case .middleClick:

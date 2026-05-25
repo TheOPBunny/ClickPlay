@@ -329,6 +329,8 @@ final class DwellActionController {
         switch action {
         case .leftClick:
             MouseEventInjector.shared.click(.left, at: point)
+        case .doubleClick:
+            MouseEventInjector.shared.doubleClick(.left, at: point)
         case .rightClick:
             MouseEventInjector.shared.click(.right, at: point)
         case .middleClick:
@@ -383,6 +385,11 @@ private final class MouseEventInjector {
         mouseUp(button, at: point)
     }
 
+    func doubleClick(_ button: DwellActionController.HeldMouseButton, at point: CGPoint) {
+        click(button, at: point, clickState: 1)
+        click(button, at: point, clickState: 2)
+    }
+
     func mouseDown(_ button: DwellActionController.HeldMouseButton, at point: CGPoint) {
         postMouse(button: button, down: true, at: point)
     }
@@ -423,7 +430,17 @@ private final class MouseEventInjector {
         postMouse(button: button, type: eventType(for: button, down: down), at: point)
     }
 
-    private func postMouse(button: DwellActionController.HeldMouseButton, type: CGEventType, at point: CGPoint) {
+    private func click(_ button: DwellActionController.HeldMouseButton, at point: CGPoint, clickState: Int64) {
+        postMouse(button: button, type: eventType(for: button, down: true), at: point, clickState: clickState)
+        postMouse(button: button, type: eventType(for: button, down: false), at: point, clickState: clickState)
+    }
+
+    private func postMouse(
+        button: DwellActionController.HeldMouseButton,
+        type: CGEventType,
+        at point: CGPoint,
+        clickState: Int64? = nil
+    ) {
         let quartzPoint = quartzPoint(forAppKitPoint: point)
         guard let source = CGEventSource(stateID: .hidSystemState),
               let event = CGEvent(
@@ -436,6 +453,9 @@ private final class MouseEventInjector {
             return
         }
 
+        if let clickState {
+            event.setIntegerValueField(.mouseEventClickState, value: clickState)
+        }
         markSynthetic(event)
         event.post(tap: .cghidEventTap)
     }

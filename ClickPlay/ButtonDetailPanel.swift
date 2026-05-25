@@ -1708,6 +1708,7 @@ private extension DwellActionKind {
     static var allCases: [DwellActionKind] {
         [
             .leftClick,
+            .doubleClick,
             .rightClick,
             .middleClick,
             .holdLeftClick,
@@ -1722,20 +1723,22 @@ private extension DwellActionKind {
         switch self {
         case .leftClick:
             return 0
-        case .rightClick:
+        case .doubleClick:
             return 1
-        case .middleClick:
+        case .rightClick:
             return 2
-        case .holdLeftClick:
+        case .middleClick:
             return 3
-        case .holdRightClick:
+        case .holdLeftClick:
             return 4
-        case .holdMiddleClick:
+        case .holdRightClick:
             return 5
-        case .scrollUp:
+        case .holdMiddleClick:
             return 6
-        case .scrollDown:
+        case .scrollUp:
             return 7
+        case .scrollDown:
+            return 8
         }
     }
 
@@ -1744,18 +1747,20 @@ private extension DwellActionKind {
         case 0:
             self = .leftClick
         case 1:
-            self = .rightClick
+            self = .doubleClick
         case 2:
-            self = .middleClick
+            self = .rightClick
         case 3:
-            self = .holdLeftClick
+            self = .middleClick
         case 4:
-            self = .holdRightClick
+            self = .holdLeftClick
         case 5:
-            self = .holdMiddleClick
+            self = .holdRightClick
         case 6:
-            self = .scrollUp
+            self = .holdMiddleClick
         case 7:
+            self = .scrollUp
+        case 8:
             self = .scrollDown
         default:
             return nil
