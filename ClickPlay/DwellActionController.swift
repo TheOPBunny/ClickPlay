@@ -93,7 +93,7 @@ final class DwellActionController {
         func update(progress: CGFloat, underCursorAt point: CGPoint) {
             progressView.progress = progress
             let origin = CGPoint(
-                x: point.x - Self.size.width / 2 + 5,
+                x: point.x - Self.size.width / 3,
                 y: point.y - 34
             )
             NSAnimationContext.runAnimationGroup { context in
