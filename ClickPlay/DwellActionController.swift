@@ -3,40 +3,64 @@ import Cocoa
 /// Runs one global mouse dwell action at a time and keeps the visual timer out of the gamepad event path.
 final class DwellActionController {
     private final class ProgressView: NSView {
+        private let trackLayer = CALayer()
+        private let fillLayer = CALayer()
+
         var progress: CGFloat = 0 {
-            didSet { needsDisplay = true }
+            didSet { updateFillFrame() }
         }
 
-        override var isFlipped: Bool { true }
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            setupLayers()
+        }
 
-        override func draw(_ dirtyRect: NSRect) {
-            super.draw(dirtyRect)
+        required init?(coder: NSCoder) { fatalError() }
 
-            let trackRect = bounds.insetBy(dx: 0, dy: 2)
-            let trackPath = NSBezierPath(roundedRect: trackRect, xRadius: 1.5, yRadius: 1.5)
-            NSColor(calibratedWhite: 0.82, alpha: 0.92).setFill()
-            trackPath.fill()
+        override func layout() {
+            super.layout()
+            updateLayerFrames()
+        }
 
-            let fillWidth = max(0, min(trackRect.width, trackRect.width * progress))
-            guard fillWidth > 0 else {
-                return
-            }
+        private func setupLayers() {
+            wantsLayer = true
+            layer?.backgroundColor = NSColor.clear.cgColor
+            layer?.masksToBounds = false
+            trackLayer.backgroundColor = NSColor(calibratedWhite: 0.82, alpha: 0.92).cgColor
+            trackLayer.cornerRadius = 1.5
+            fillLayer.backgroundColor = NSColor.systemBlue.withAlphaComponent(0.95).cgColor
+            fillLayer.cornerRadius = 1.5
+            layer?.addSublayer(trackLayer)
+            layer?.addSublayer(fillLayer)
+            updateLayerFrames()
+        }
 
-            let fillRect = CGRect(
-                x: trackRect.minX,
-                y: trackRect.minY,
-                width: fillWidth,
-                height: trackRect.height
+        private func updateLayerFrames() {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            trackLayer.frame = bounds.insetBy(dx: 0, dy: 2)
+            updateFillFrame()
+            CATransaction.commit()
+        }
+
+        private func updateFillFrame() {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            let trackFrame = trackLayer.frame
+            fillLayer.frame = CGRect(
+                x: trackFrame.minX,
+                y: trackFrame.minY,
+                width: max(0, min(trackFrame.width, trackFrame.width * progress)),
+                height: trackFrame.height
             )
-            let fillPath = NSBezierPath(roundedRect: fillRect, xRadius: 1.5, yRadius: 1.5)
-            NSColor.systemBlue.withAlphaComponent(0.95).setFill()
-            fillPath.fill()
+            CATransaction.commit()
         }
     }
 
     private final class ProgressWindow: NSPanel {
         private static let size = CGSize(width: 64, height: 10)
         private let progressView = ProgressView(frame: NSRect(origin: .zero, size: size))
+        private var isProgressVisible = false
 
         init() {
             super.init(
@@ -57,18 +81,36 @@ final class DwellActionController {
         override var canBecomeKey: Bool { false }
         override var canBecomeMain: Bool { false }
 
-        func show(progress: CGFloat, underCursorAt point: CGPoint) {
+        func showIfNeeded() {
+            guard !isProgressVisible else {
+                return
+            }
+
+            orderFrontRegardless()
+            isProgressVisible = true
+        }
+
+        func update(progress: CGFloat, underCursorAt point: CGPoint) {
             progressView.progress = progress
             let origin = CGPoint(
                 x: point.x - Self.size.width / 2,
                 y: point.y - 26
             )
-            setFrame(NSRect(origin: origin, size: Self.size), display: true)
-            orderFrontRegardless()
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0
+                context.allowsImplicitAnimation = false
+                setFrame(NSRect(origin: origin, size: Self.size), display: false)
+            }
         }
 
         func hide() {
+            guard isProgressVisible else {
+                progressView.progress = 0
+                return
+            }
+
             orderOut(nil)
+            isProgressVisible = false
             progressView.progress = 0
         }
     }
@@ -185,7 +227,7 @@ final class DwellActionController {
     }
 
     private func startTimer(anchor point: CGPoint) {
-        stopTimer()
+        cancelTimer(hidesProgress: false)
         anchorPoint = point
         movementReferencePoint = point
         timerStartedAt = ProcessInfo.processInfo.systemUptime
@@ -200,9 +242,15 @@ final class DwellActionController {
     }
 
     private func stopTimer() {
+        cancelTimer(hidesProgress: true)
+    }
+
+    private func cancelTimer(hidesProgress: Bool) {
         timer?.invalidate()
         timer = nil
-        progressWindow.hide()
+        if hidesProgress {
+            progressWindow.hide()
+        }
     }
 
     private func tick() {
@@ -248,7 +296,8 @@ final class DwellActionController {
 
     private func updateProgress(at point: CGPoint, elapsed: TimeInterval, duration: TimeInterval) {
         let progress = CGFloat(min(max(elapsed / duration, 0), 1))
-        progressWindow.show(progress: progress, underCursorAt: point)
+        progressWindow.update(progress: progress, underCursorAt: point)
+        progressWindow.showIfNeeded()
     }
 
     private func perform(action: DwellActionKind, at point: CGPoint) {
@@ -317,6 +366,7 @@ private final class MouseEventInjector {
     }
 
     func scroll(lines: Int32, at point: CGPoint) {
+        let quartzPoint = quartzPoint(forAppKitPoint: point)
         guard let source = CGEventSource(stateID: .hidSystemState),
               let event = CGEvent(
                 scrollWheelEvent2Source: source,
@@ -330,16 +380,17 @@ private final class MouseEventInjector {
             return
         }
 
-        event.location = point
+        event.location = quartzPoint
         event.post(tap: .cghidEventTap)
     }
 
     private func postMouse(button: DwellActionController.HeldMouseButton, down: Bool, at point: CGPoint) {
+        let quartzPoint = quartzPoint(forAppKitPoint: point)
         guard let source = CGEventSource(stateID: .hidSystemState),
               let event = CGEvent(
                 mouseEventSource: source,
                 mouseType: eventType(for: button, down: down),
-                mouseCursorPosition: point,
+                mouseCursorPosition: quartzPoint,
                 mouseButton: cgButton(for: button)
               ) else {
             errorLog("[MouseEventInjector] ERROR: mouse event creation failed")
@@ -369,5 +420,20 @@ private final class MouseEventInjector {
         case .middle:
             return .center
         }
+    }
+
+    private func quartzPoint(forAppKitPoint point: CGPoint) -> CGPoint {
+        let containingScreen = NSScreen.screens.first { screen in
+            screen.frame.contains(point)
+        } ?? NSScreen.main
+
+        guard let screen = containingScreen else {
+            return point
+        }
+
+        return CGPoint(
+            x: point.x,
+            y: screen.frame.maxY - point.y
+        )
     }
 }
