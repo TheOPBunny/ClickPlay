@@ -140,6 +140,12 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
     private var systemEventRow: NSStackView?
     private let systemEventIconSizePopup = NSPopUpButton()
     private var systemEventIconSizeRow: NSStackView?
+    private let dwellActionPopup = NSPopUpButton()
+    private let dwellTimerField = NSTextField()
+    private let dwellToleranceField = NSTextField()
+    private var dwellActionRow: NSStackView?
+    private var dwellTimerRow: NSStackView?
+    private var dwellToleranceRow: NSStackView?
     private let interactionModePopup = NSPopUpButton()
     private var interactionModeRow: NSStackView?
     private let multiKeyActivationModePopup = NSPopUpButton()
@@ -176,6 +182,9 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         buttonTypePopup.selectItem(withTag: ButtonType.keyboard.tag)
         systemEventPopup.selectItem(withTag: SystemEvent.brightnessDown.tag)
         systemEventIconSizePopup.selectItem(withTag: SystemEventIconSize.large.tag)
+        dwellActionPopup.selectItem(withTag: DwellActionKind.leftClick.tag)
+        dwellTimerField.stringValue = String(format: "%.1f", DwellActionConfig.defaultTimerDuration)
+        dwellToleranceField.stringValue = String(format: "%.0f", DwellActionConfig.defaultMovementTolerance)
         keyRecorder.setKeyBindings([ButtonKeyBinding(keyCode: 49, keyModifiers: 0)])
         joystickOperationModePopup.selectItem(withTag: JoystickOperationMode.capture.tag)
         joystickAxisLockModePopup.selectItem(withTag: JoystickAxisLockMode.scrollWheel.tag)
@@ -243,6 +252,9 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         multiKeyActivationModePopup.selectItem(withTag: config.multiKeyActivationMode.tag)
         systemEventPopup.selectItem(withTag: (config.action.systemEvent ?? .brightnessDown).tag)
         systemEventIconSizePopup.selectItem(withTag: config.systemEventIconSize.tag)
+        dwellActionPopup.selectItem(withTag: config.dwellAction.kind.tag)
+        dwellTimerField.stringValue = String(format: "%.1f", config.dwellAction.timerDuration)
+        dwellToleranceField.stringValue = geometryValueString(config.dwellAction.movementTolerance)
         rightClickRecorder.setOptionalKeyBindings(config.rightClickKeyBindings)
         rightClickFallbackCheckbox.state = config.rightClickFallsBackToPrimary ? .on : .off
         rightClickModePopup.selectItem(withTag: config.rightClickInteractionMode?.tag ?? Self.sameAsLeftModeTag)
@@ -401,6 +413,9 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         systemEventIconSizePopup.target = self
         systemEventIconSizePopup.action = #selector(applyPressed)
         populateSystemEventIconSizes()
+        dwellActionPopup.target = self
+        dwellActionPopup.action = #selector(applyPressed)
+        populateDwellActions()
         buttonTypePopup.target = self
         buttonTypePopup.action = #selector(applyPressed)
         populateButtonTypes()
@@ -439,7 +454,7 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         rightClickClearButton.bezelStyle = .rounded
         rightClickClearButton.target = self
         rightClickClearButton.action = #selector(clearRightClickKey)
-        [joystickAxisLockHoldDurationField, joystickAxisUnlockHoldDurationField].forEach { field in
+        [joystickAxisLockHoldDurationField, joystickAxisUnlockHoldDurationField, dwellTimerField, dwellToleranceField].forEach { field in
             field.bezelStyle = .roundedBezel
             field.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
             field.widthAnchor.constraint(equalToConstant: 58).isActive = true
@@ -506,6 +521,15 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         let systemEventIconSizeRow = makeRow(label: "Icon Size:", control: systemEventIconSizePopup)
         self.systemEventIconSizeRow = systemEventIconSizeRow
         contentStack.addArrangedSubview(systemEventIconSizeRow)
+        let dwellActionRow = makeRow(label: "Action:", control: dwellActionPopup)
+        self.dwellActionRow = dwellActionRow
+        contentStack.addArrangedSubview(dwellActionRow)
+        let dwellTimerRow = makeRow(label: "Timer:", control: makeUnitField(field: dwellTimerField, unit: "seconds"))
+        self.dwellTimerRow = dwellTimerRow
+        contentStack.addArrangedSubview(dwellTimerRow)
+        let dwellToleranceRow = makeRow(label: "Tolerance:", control: makeUnitField(field: dwellToleranceField, unit: "px"))
+        self.dwellToleranceRow = dwellToleranceRow
+        contentStack.addArrangedSubview(dwellToleranceRow)
         let joystickSectionLabel = makeSectionLabel("Joystick")
         self.joystickSectionLabel = joystickSectionLabel
         contentStack.addArrangedSubview(joystickSectionLabel)
@@ -559,8 +583,8 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         let colorRow = makeRow(label: "Color:", control: colorWell)
         self.colorRow = colorRow
         contentStack.addArrangedSubview(colorRow)
-        contentStack.addArrangedSubview(makeRow(label: "X (px):", control: xField))
-        contentStack.addArrangedSubview(makeRow(label: "Y (px):", control: yField))
+        contentStack.addArrangedSubview(makeRow(label: "X:", control: makeUnitField(field: xField, unit: "px")))
+        contentStack.addArrangedSubview(makeRow(label: "Y:", control: makeUnitField(field: yField, unit: "px")))
         contentStack.addArrangedSubview(makeRow(label: "Shape:", control: shapePopup))
         let interactionModeRow = makeRow(label: "Mode:", control: interactionModePopup)
         self.interactionModeRow = interactionModeRow
@@ -645,6 +669,18 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         return row
     }
 
+    private func makeUnitField(field: NSTextField, unit: String) -> NSStackView {
+        let unitLabel = NSTextField(labelWithString: unit)
+        unitLabel.font = .systemFont(ofSize: 12)
+        unitLabel.textColor = .secondaryLabelColor
+
+        let stack = NSStackView(views: [field, unitLabel])
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 6
+        return stack
+    }
+
     private func makeFieldLabel(_ text: String) -> NSTextField {
         let label = NSTextField(labelWithString: text)
         label.font = .systemFont(ofSize: 12)
@@ -727,12 +763,13 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
 
         let separator = NSTextField(labelWithString: "×")
         separator.font = .systemFont(ofSize: 12)
+        separator.textColor = .secondaryLabelColor
         row.addArrangedSubview(separator)
         row.addArrangedSubview(heightField)
 
         let note = NSTextField(labelWithString: "px")
-        note.font = .systemFont(ofSize: 10)
-        note.textColor = .tertiaryLabelColor
+        note.font = .systemFont(ofSize: 12)
+        note.textColor = .secondaryLabelColor
         row.addArrangedSubview(note)
         return row
     }
@@ -950,6 +987,17 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         systemEventIconSizePopup.selectItem(withTag: SystemEventIconSize.large.tag)
     }
 
+    private func populateDwellActions() {
+        dwellActionPopup.removeAllItems()
+
+        for action in DwellActionKind.allCases {
+            dwellActionPopup.addItem(withTitle: action.displayName)
+            dwellActionPopup.lastItem?.tag = action.tag
+        }
+
+        dwellActionPopup.selectItem(withTag: DwellActionKind.leftClick.tag)
+    }
+
     private func populateMultiKeyActivationModes() {
         populateMultiKeyActivationModes(multiKeyActivationModePopup)
     }
@@ -1080,6 +1128,45 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
             rightClickModePopup.selectItem(withTag: Self.sameAsLeftModeTag)
             systemEventPopup.selectItem(withTag: systemEvent.tag)
             systemEventIconSizePopup.selectItem(withTag: iconSize.tag)
+        } else if config.type == .dwellAction {
+            let dwellActionKind = DwellActionKind(tag: dwellActionPopup.selectedTag()) ?? config.dwellAction.kind
+            let iconSize = SystemEventIconSize(tag: systemEventIconSizePopup.selectedTag()) ?? config.systemEventIconSize
+            config.action = .keyboard
+            config.enabled = true
+            config.keyBindings = [Self.defaultKeyBinding]
+            config.keyCode = Self.defaultKeyBinding.keyCode
+            config.keyModifiers = Self.defaultKeyBinding.keyModifiers
+            config.multiKeyActivationMode = .sequential
+            config.interactionMode = .momentary
+            config.rightClickKeyBindings = nil
+            config.rightClickFallsBackToPrimary = false
+            config.rightClickInteractionMode = nil
+            config.label = ""
+            config.labelBold = true
+            config.labelItalic = false
+            config.labelColorHex = "#FFFFFF"
+            config.systemEventIconSize = iconSize
+            config.dwellAction = DwellActionConfig(
+                kind: dwellActionKind,
+                timerDuration: durationValue(
+                    from: dwellTimerField.stringValue,
+                    fallback: config.dwellAction.timerDuration
+                ),
+                movementTolerance: toleranceValue(
+                    from: dwellToleranceField.stringValue,
+                    fallback: config.dwellAction.movementTolerance
+                )
+            )
+            keyRecorder.setKeyBindings([Self.defaultKeyBinding])
+            interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
+            multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
+            rightClickRecorder.setOptionalKeyBindings(nil)
+            rightClickFallbackCheckbox.state = .off
+            rightClickModePopup.selectItem(withTag: Self.sameAsLeftModeTag)
+            dwellActionPopup.selectItem(withTag: dwellActionKind.tag)
+            systemEventIconSizePopup.selectItem(withTag: iconSize.tag)
+            dwellTimerField.stringValue = String(format: "%.1f", config.dwellAction.timerDuration)
+            dwellToleranceField.stringValue = geometryValueString(config.dwellAction.movementTolerance)
         } else if config.type == .joystick {
             config.action = .keyboard
             config.shape = .oval
@@ -1473,19 +1560,23 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
 
         let isProtectedSwitch = config?.action.isProtectedSwitch == true
         let isJoystick = config?.type == .joystick
+        let isDwellAction = config?.type == .dwellAction
         let joystickOperationMode = JoystickOperationMode(tag: joystickOperationModePopup.selectedTag()) ?? .capture
         let joystickAxisLockMode = JoystickAxisLockMode(tag: joystickAxisLockModePopup.selectedTag()) ?? .scrollWheel
         updateJoystickScrollActionOptions(axisLockMode: joystickAxisLockMode)
         let showsJoystickCaptureInputs = isJoystick && joystickOperationMode == .capture
         let showsHoldDirectionAxisLock = isJoystick && joystickAxisLockMode == .holdDirection
         let isSystemEvent = config?.type == .systemEvent
-        let hidesKeyboardControls = isProtectedSwitch || isJoystick || isSystemEvent
+        let hidesKeyboardControls = isProtectedSwitch || isJoystick || isSystemEvent || isDwellAction
 
-        labelRow?.isHidden = isSystemEvent
-        labelStyleRow?.isHidden = isSystemEvent
-        buttonTypeRow?.isHidden = isProtectedSwitch || isSystemEvent
+        labelRow?.isHidden = isSystemEvent || isDwellAction
+        labelStyleRow?.isHidden = isSystemEvent || isDwellAction
+        buttonTypeRow?.isHidden = isProtectedSwitch
         systemEventRow?.isHidden = !isSystemEvent || isProtectedSwitch
-        systemEventIconSizeRow?.isHidden = !isSystemEvent || isProtectedSwitch
+        systemEventIconSizeRow?.isHidden = !(isSystemEvent || isDwellAction) || isProtectedSwitch
+        dwellActionRow?.isHidden = !isDwellAction || isProtectedSwitch
+        dwellTimerRow?.isHidden = !isDwellAction || isProtectedSwitch
+        dwellToleranceRow?.isHidden = !isDwellAction || isProtectedSwitch
         keyRow?.isHidden = hidesKeyboardControls
         interactionModeRow?.isHidden = hidesKeyboardControls
         rightClickSectionLabel?.isHidden = hidesKeyboardControls
@@ -1559,6 +1650,14 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         return max(0.1, parsedValue)
     }
 
+    private func toleranceValue(from stringValue: String, fallback: Double) -> Double {
+        guard let parsedValue = Double(stringValue), parsedValue.isFinite else {
+            return fallback
+        }
+
+        return max(0, parsedValue)
+    }
+
     private func syncLabelSizeControls(to size: Double) {
         let clampedSize = min(max(size, 6), 36)
         labelSizeField.stringValue = "\(Int(clampedSize))"
@@ -1573,7 +1672,7 @@ private extension ButtonDetailPanel {
 
 private extension ButtonType {
     static var allCases: [ButtonType] {
-        [.keyboard, .joystick, .systemEvent]
+        [.keyboard, .joystick, .systemEvent, .dwellAction]
     }
 
     var displayName: String {
@@ -1584,6 +1683,8 @@ private extension ButtonType {
             return "Joystick"
         case .systemEvent:
             return "System Event"
+        case .dwellAction:
+            return "Dwell Action"
         }
     }
 
@@ -1595,6 +1696,8 @@ private extension ButtonType {
             return 1
         case .systemEvent:
             return 2
+        case .dwellAction:
+            return 3
         }
     }
 
@@ -1606,6 +1709,72 @@ private extension ButtonType {
             self = .joystick
         case 2:
             self = .systemEvent
+        case 3:
+            self = .dwellAction
+        default:
+            return nil
+        }
+    }
+}
+
+private extension DwellActionKind {
+    static var allCases: [DwellActionKind] {
+        [
+            .leftClick,
+            .doubleClick,
+            .rightClick,
+            .middleClick,
+            .holdLeftClick,
+            .holdRightClick,
+            .holdMiddleClick,
+            .scrollUp,
+            .scrollDown,
+        ]
+    }
+
+    var tag: Int {
+        switch self {
+        case .leftClick:
+            return 0
+        case .doubleClick:
+            return 1
+        case .rightClick:
+            return 2
+        case .middleClick:
+            return 3
+        case .holdLeftClick:
+            return 4
+        case .holdRightClick:
+            return 5
+        case .holdMiddleClick:
+            return 6
+        case .scrollUp:
+            return 7
+        case .scrollDown:
+            return 8
+        }
+    }
+
+    init?(tag: Int) {
+        switch tag {
+        case 0:
+            self = .leftClick
+        case 1:
+            self = .doubleClick
+        case 2:
+            self = .rightClick
+        case 3:
+            self = .middleClick
+        case 4:
+            self = .holdLeftClick
+        case 5:
+            self = .holdRightClick
+        case 6:
+            self = .holdMiddleClick
+        case 7:
+            self = .scrollUp
+        case 8:
+            self = .scrollDown
         default:
             return nil
         }

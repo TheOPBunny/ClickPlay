@@ -18,6 +18,7 @@
 		10A1B0002F9D000000000001 /* SidebarToggleButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A1B0002F9D000000000000 /* SidebarToggleButton.swift */; };
 		10AE615B2FA816700071028C /* ClickPlay.icon in Resources */ = {isa = PBXBuildFile; fileRef = 10AE615A2FA816700071028C /* ClickPlay.icon */; };
 		10D000012FA9000000000001 /* DebugLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D000002FA9000000000001 /* DebugLog.swift */; };
+		10D100012FC0000000000001 /* DwellActionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D100002FC0000000000001 /* DwellActionController.swift */; };
 		10F100012FAF000000000001 /* FirstRunOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10F100002FAF000000000001 /* FirstRunOnboardingView.swift */; };
 		10F200012FB9000000000001 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10F200002FB9000000000001 /* UpdateChecker.swift */; };
 		10F200032FB9000000000001 /* UpdateCheckView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10F200022FB9000000000001 /* UpdateCheckView.swift */; };
@@ -44,6 +45,7 @@
 		10A1B0002F9D000000000000 /* SidebarToggleButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarToggleButton.swift; sourceTree = "<group>"; };
 		10AE615A2FA816700071028C /* ClickPlay.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = ClickPlay.icon; sourceTree = "<group>"; };
 		10D000002FA9000000000001 /* DebugLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLog.swift; sourceTree = "<group>"; };
+		10D100002FC0000000000001 /* DwellActionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DwellActionController.swift; sourceTree = "<group>"; };
 		10F100002FAF000000000001 /* FirstRunOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRunOnboardingView.swift; sourceTree = "<group>"; };
 		10F200002FB9000000000001 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
 		10F200022FB9000000000001 /* UpdateCheckView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateCheckView.swift; sourceTree = "<group>"; };
@@ -86,6 +88,7 @@
 				B005 /* GamepadContentView.swift */,
 				B006 /* GamepadWindow.swift */,
 				10D000002FA9000000000001 /* DebugLog.swift */,
+				10D100002FC0000000000001 /* DwellActionController.swift */,
 				B009 /* ../ClickPlayShared/Profile.swift */,
 				B010 /* ../ClickPlayShared/ProfileStore.swift */,
 				B007 /* Info.plist */,
@@ -202,6 +205,7 @@
 				A002 /* ../ClickPlayShared/KeyMapping.swift in Sources */,
 				A003 /* KeyInjector.swift in Sources */,
 				10D000012FA9000000000001 /* DebugLog.swift in Sources */,
+				10D100012FC0000000000001 /* DwellActionController.swift in Sources */,
 				108EF0DC2F984329009EFAAA /* KeyRecorderButton.swift in Sources */,
 				A004 /* GamepadButtonView.swift in Sources */,
 				108EF0E42F984A0B009EFAAA /* ButtonEditorViewController.swift in Sources */,
@@ -286,7 +290,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = 29P5MA925S;
@@ -304,7 +308,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.TheOPBunny.ClickPlay;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -380,7 +384,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = 29P5MA925S;
@@ -398,7 +402,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.TheOPBunny.ClickPlay;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";

@@ -785,7 +785,9 @@ final class GamepadPreviewView: NSView {
         path.fill()
 
         if let systemEvent = object.systemEvent {
-            drawSystemEventSymbol(systemEvent, for: object, in: canvasFrame)
+            drawScaledFallbackLabel(systemEvent.fallbackSymbol, for: object, in: canvasFrame)
+        } else if object.type == .dwellAction {
+            drawScaledFallbackLabel(object.label, for: object, in: canvasFrame)
         } else {
             drawLabel(for: object, in: canvasFrame)
         }
@@ -879,13 +881,13 @@ final class GamepadPreviewView: NSView {
         attributedLabel.draw(in: drawRect)
     }
 
-    private func drawSystemEventSymbol(_ event: SystemEvent, for object: CanvasButtonObject, in frame: CGRect) {
+    private func drawScaledFallbackLabel(_ label: String, for object: CanvasButtonObject, in frame: CGRect) {
         let tint = ButtonConfig.systemEventSymbolColor(for: object.colorHex)
         let symbolSize = max(10, min(frame.width, frame.height) * object.systemEventIconSize.symbolScale)
         let fallbackObject = CanvasButtonObject(
             id: object.id,
             frame: object.frame,
-            label: event.fallbackSymbol,
+            label: label,
             colorHex: object.colorHex,
             labelFontSize: Double(symbolSize),
             labelBold: true,

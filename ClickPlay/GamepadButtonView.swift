@@ -58,6 +58,7 @@ final class GamepadButtonView: NSView {
     private enum ActiveModeOutline: Equatable {
         case toggleHold
         case turbo
+        case dwellAction
     }
 
     private enum OutlineState: Equatable {
@@ -80,6 +81,7 @@ final class GamepadButtonView: NSView {
         let hoverOutlineColor: CGColor
         let toggleHoldOutlineColor: CGColor
         let turboOutlineColor: CGColor
+        let dwellActionOutlineColor: CGColor
     }
 
     private struct ButtonVisualState: Equatable {
@@ -174,6 +176,8 @@ final class GamepadButtonView: NSView {
     private var isHovered = false
     private var isSwitchPressed = false
     private var isSystemEventPressed = false
+    private var isDwellActionPressed = false
+    private var isDwellActionActive = false
     private var isJoystickCaptured = false
     private var isJoystickDragActive = false
     private var joystickOffset = CGPoint.zero
@@ -202,6 +206,7 @@ final class GamepadButtonView: NSView {
     private var visualPalette: VisualPalette?
     private var lastAppliedVisualState: ButtonVisualState?
     var onJoystickCaptureChanged: ((Bool) -> Void)?
+    var onDwellActionToggled: ((GamepadButton, DwellActionConfig) -> Bool)?
 
     init(button: GamepadButton, config: ButtonConfig, compatibilityModeEnabled: Bool, activeSubProfileID: UUID?) {
         self.button = button
@@ -284,6 +289,10 @@ final class GamepadButtonView: NSView {
         if wasJoystick || isJoystick {
             resetJoystickRuntimeState()
         }
+        if !isDwellAction {
+            isDwellActionPressed = false
+            isDwellActionActive = false
+        }
         label.stringValue = config.resolvedDisplayLabel
         label.font = displayTextFont
         label.textColor = displayTextColor
@@ -297,6 +306,7 @@ final class GamepadButtonView: NSView {
         releaseJoystickDrag()
         isHovered = false
         isSystemEventPressed = false
+        isDwellActionPressed = false
 
         if isSubProfileSwitch {
             isSwitchPressed = false
@@ -361,6 +371,11 @@ final class GamepadButtonView: NSView {
             return
         }
 
+        if isDwellAction {
+            handleDwellActionPressStarted()
+            return
+        }
+
         handlePressStarted(source: .primary)
     }
 
@@ -378,6 +393,11 @@ final class GamepadButtonView: NSView {
         }
 
         if isSystemEvent {
+            return
+        }
+
+        if isDwellAction {
+            handleDwellActionPressEnded(inside: containsInteractivePoint(convert(event.locationInWindow, from: nil)))
             return
         }
 
@@ -399,7 +419,7 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        guard containsInteractivePoint(convert(event.locationInWindow, from: nil)), !isSubProfileSwitch, !isSystemEvent else {
+        guard containsInteractivePoint(convert(event.locationInWindow, from: nil)), !isSubProfileSwitch, !isSystemEvent, !isDwellAction else {
             return
         }
 
@@ -418,7 +438,7 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        guard !isSubProfileSwitch, !isSystemEvent else {
+        guard !isSubProfileSwitch, !isSystemEvent, !isDwellAction else {
             return
         }
 
@@ -447,6 +467,15 @@ final class GamepadButtonView: NSView {
             return
         }
 
+        if isDwellAction {
+            let inside = containsInteractivePoint(convert(event.locationInWindow, from: nil))
+            if inside != isDwellActionPressed {
+                isDwellActionPressed = inside
+                updateAppearance(animated: true)
+            }
+            return
+        }
+
         handleDrag(source: .primary, event: event)
     }
 
@@ -459,7 +488,7 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        guard !isSubProfileSwitch, !isSystemEvent else {
+        guard !isSubProfileSwitch, !isSystemEvent, !isDwellAction else {
             return
         }
 
@@ -489,6 +518,14 @@ final class GamepadButtonView: NSView {
             return
         }
 
+        if isDwellAction {
+            if isDwellActionPressed {
+                isDwellActionPressed = false
+                updateAppearance(animated: true)
+            }
+            return
+        }
+
         releaseMomentaryOnExit(source: .primary)
         releaseMomentaryOnExit(source: .secondary)
     }
@@ -508,6 +545,15 @@ final class GamepadButtonView: NSView {
         setHovered(false, animated: false)
     }
 
+    func setDwellActionActive(_ active: Bool) {
+        guard isDwellActionActive != active else {
+            return
+        }
+
+        isDwellActionActive = active
+        updateAppearance(animated: true)
+    }
+
     // MARK: - Visual State
 
     private var isSubProfileSwitch: Bool {
@@ -518,12 +564,16 @@ final class GamepadButtonView: NSView {
         config.type == .systemEvent
     }
 
+    private var isDwellAction: Bool {
+        config.type == .dwellAction
+    }
+
     private var displayTextColor: NSColor {
-        isSystemEvent ? ButtonConfig.systemEventSymbolColor(for: config.colorHex) : NSColor(hex: config.labelColorHex)
+        (isSystemEvent || isDwellAction) ? ButtonConfig.systemEventSymbolColor(for: config.colorHex) : NSColor(hex: config.labelColorHex)
     }
 
     private var displayTextFont: NSFont {
-        guard isSystemEvent else {
+        guard isSystemEvent || isDwellAction else {
             return config.resolvedLabelFont
         }
 
@@ -542,6 +592,7 @@ final class GamepadButtonView: NSView {
     private var isVisuallyPressed: Bool {
         isSwitchPressed
             || isSystemEventPressed
+            || isDwellActionPressed
             || primaryState.isPressed
             || secondaryState.isPressed
             || joystickRightClickState.isPressed
@@ -562,7 +613,11 @@ final class GamepadButtonView: NSView {
     }
 
     private var activeModeOutline: ActiveModeOutline? {
-        guard !isJoystick, !isSubProfileSwitch, !isSystemEvent else {
+        if isDwellAction, isDwellActionActive {
+            return .dwellAction
+        }
+
+        guard !isJoystick, !isSubProfileSwitch, !isSystemEvent, !isDwellAction else {
             return nil
         }
 
@@ -605,6 +660,8 @@ final class GamepadButtonView: NSView {
             return isRedButtonColor(baseColor) ? .systemYellow : .systemRed
         case .turbo:
             return isGreenButtonColor(baseColor) ? .systemBlue : .systemGreen
+        case .dwellAction:
+            return .systemBlue
         }
     }
 
@@ -690,6 +747,27 @@ final class GamepadButtonView: NSView {
             self.isSystemEventPressed = false
             self.updateAppearance(animated: true)
         }
+    }
+
+    private func handleDwellActionPressStarted() {
+        isDwellActionPressed = true
+        updateAppearance(animated: true)
+    }
+
+    private func handleDwellActionPressEnded(inside: Bool) {
+        defer {
+            if isDwellActionPressed {
+                isDwellActionPressed = false
+                updateAppearance(animated: true)
+            }
+        }
+
+        guard inside else {
+            return
+        }
+
+        isDwellActionActive = onDwellActionToggled?(button, config.dwellAction) ?? false
+        updateAppearance(animated: true)
     }
 
     // MARK: - Joystick Capture
@@ -2299,7 +2377,8 @@ final class GamepadButtonView: NSView {
             pressedFillColor: base.withAlphaComponent(1.0).cgColor,
             hoverOutlineColor: hoverOutlineColor(for: base).cgColor,
             toggleHoldOutlineColor: outlineColor(for: .toggleHold, baseColor: base).cgColor,
-            turboOutlineColor: outlineColor(for: .turbo, baseColor: base).cgColor
+            turboOutlineColor: outlineColor(for: .turbo, baseColor: base).cgColor,
+            dwellActionOutlineColor: outlineColor(for: .dwellAction, baseColor: base).cgColor
         )
         visualPalette = palette
         return palette
@@ -2361,6 +2440,9 @@ final class GamepadButtonView: NSView {
         case .active(.turbo):
             outlineLayer.strokeColor = palette.turboOutlineColor
             outlineLayer.lineWidth = 3
+        case .active(.dwellAction):
+            outlineLayer.strokeColor = palette.dwellActionOutlineColor
+            outlineLayer.lineWidth = 3
         }
     }
 
@@ -2393,7 +2475,7 @@ final class GamepadButtonView: NSView {
     }
 
     private func updateSystemEventSymbol() {
-        guard isSystemEvent, let systemEvent = config.action.systemEvent else {
+        guard isSystemEvent || isDwellAction else {
             symbolImageView.image = nil
             symbolImageView.isHidden = true
             label.stringValue = config.resolvedDisplayLabel
@@ -2404,7 +2486,7 @@ final class GamepadButtonView: NSView {
 
         symbolImageView.image = nil
         symbolImageView.isHidden = true
-        label.stringValue = systemEvent.fallbackSymbol
+        label.stringValue = config.resolvedDisplayLabel
         label.font = displayTextFont
         label.textColor = displayTextColor
     }
