@@ -763,12 +763,13 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
 
         let separator = NSTextField(labelWithString: "×")
         separator.font = .systemFont(ofSize: 12)
+        separator.textColor = .secondaryLabelColor
         row.addArrangedSubview(separator)
         row.addArrangedSubview(heightField)
 
         let note = NSTextField(labelWithString: "px")
-        note.font = .systemFont(ofSize: 10)
-        note.textColor = .tertiaryLabelColor
+        note.font = .systemFont(ofSize: 12)
+        note.textColor = .secondaryLabelColor
         row.addArrangedSubview(note)
         return row
     }
