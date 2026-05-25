@@ -1558,7 +1558,7 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
 
         labelRow?.isHidden = isSystemEvent || isDwellAction
         labelStyleRow?.isHidden = isSystemEvent || isDwellAction
-        buttonTypeRow?.isHidden = isProtectedSwitch || isSystemEvent
+        buttonTypeRow?.isHidden = isProtectedSwitch
         systemEventRow?.isHidden = !isSystemEvent || isProtectedSwitch
         systemEventIconSizeRow?.isHidden = !(isSystemEvent || isDwellAction) || isProtectedSwitch
         dwellActionRow?.isHidden = !isDwellAction || isProtectedSwitch
