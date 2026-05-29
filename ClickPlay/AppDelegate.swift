@@ -65,6 +65,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
 
     func applicationWillTerminate(_ notification: Notification) {
         editorWindowController?.flushPanelLayoutDefaults()
+        MouseDiagnosticController.shared.setCaptureTestEnabled(false)
         MouseDiagnosticController.shared.setEnabled(false)
         gamepadWindow?.releaseAllInputs()
         KeyInjector.shared.releaseAllHeldKeys()
@@ -253,6 +254,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         mouseDiagnosticsItem.target = self
         mouseDiagnosticsItem.state = MouseDiagnosticController.shared.isEnabled ? .on : .off
         menu.addItem(mouseDiagnosticsItem)
+
+        let mouseCaptureTestItem = NSMenuItem(title: "Mouse Capture Test", action: #selector(toggleMouseCaptureTest(_:)), keyEquivalent: "")
+        mouseCaptureTestItem.target = self
+        mouseCaptureTestItem.state = MouseDiagnosticController.shared.isCaptureTestEnabled ? .on : .off
+        menu.addItem(mouseCaptureTestItem)
         menu.addItem(NSMenuItem.separator())
 
         let quitItem = NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -527,6 +533,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
 
     @objc func toggleMouseDiagnostics(_ sender: NSMenuItem) {
         let enabled = MouseDiagnosticController.shared.toggle()
+        sender.state = enabled ? .on : .off
+        rebuildMenu()
+    }
+
+    @objc func toggleMouseCaptureTest(_ sender: NSMenuItem) {
+        let enabled = MouseDiagnosticController.shared.toggleCaptureTest()
         sender.state = enabled ? .on : .off
         rebuildMenu()
     }

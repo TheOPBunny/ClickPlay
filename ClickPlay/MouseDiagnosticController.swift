@@ -5,24 +5,43 @@ final class MouseDiagnosticController {
     static let shared = MouseDiagnosticController()
 
     static let stateDidChange = Notification.Name("MouseDiagnosticControllerStateDidChange")
+    private static let captureTestTimeout: TimeInterval = 180
 
+    /// Passive logging requested by the status-menu diagnostic toggle.
     private(set) var isEnabled = false
+    private(set) var isCaptureTestEnabled = false
     private var eventTap: CFMachPort?
     private var eventTapRunLoopSource: CFRunLoopSource?
+    private var captureTestTimer: Timer?
 
     private init() {}
 
     deinit {
-        stop()
+        stopCaptureTest(reason: "deinit")
+        setEnabled(false)
     }
 
     @discardableResult
     func setEnabled(_ enabled: Bool) -> Bool {
         if enabled {
-            return start()
+            guard installEventTapIfNeeded() else {
+                return false
+            }
+
+            isEnabled = true
+            debugLog("[MouseDiagnostic] enabled")
+            NotificationCenter.default.post(name: Self.stateDidChange, object: self)
+            return true
         }
 
-        stop()
+        guard isEnabled else {
+            return true
+        }
+
+        isEnabled = false
+        debugLog("[MouseDiagnostic] disabled")
+        uninstallEventTapIfIdle()
+        NotificationCenter.default.post(name: Self.stateDidChange, object: self)
         return true
     }
 
@@ -32,8 +51,23 @@ final class MouseDiagnosticController {
     }
 
     @discardableResult
-    private func start() -> Bool {
-        guard !isEnabled else {
+    func setCaptureTestEnabled(_ enabled: Bool) -> Bool {
+        if enabled {
+            return startCaptureTest()
+        }
+
+        stopCaptureTest(reason: "manual")
+        return true
+    }
+
+    @discardableResult
+    func toggleCaptureTest() -> Bool {
+        setCaptureTestEnabled(!isCaptureTestEnabled)
+    }
+
+    @discardableResult
+    private func installEventTapIfNeeded() -> Bool {
+        guard eventTap == nil else {
             return true
         }
 
@@ -55,14 +89,20 @@ final class MouseDiagnosticController {
 
         eventTap = tap
         eventTapRunLoopSource = source
-        isEnabled = true
-        debugLog("[MouseDiagnostic] enabled")
-        NotificationCenter.default.post(name: Self.stateDidChange, object: self)
+        debugLog("[MouseDiagnostic] eventTapInstalled")
         return true
     }
 
-    private func stop() {
-        guard isEnabled || eventTap != nil || eventTapRunLoopSource != nil else {
+    private func uninstallEventTapIfIdle() {
+        guard !isEnabled, !isCaptureTestEnabled else {
+            return
+        }
+
+        uninstallEventTap()
+    }
+
+    private func uninstallEventTap() {
+        guard eventTap != nil || eventTapRunLoopSource != nil else {
             return
         }
 
@@ -76,9 +116,53 @@ final class MouseDiagnosticController {
             self.eventTap = nil
         }
 
-        isEnabled = false
-        debugLog("[MouseDiagnostic] disabled")
+        debugLog("[MouseDiagnostic] eventTapUninstalled")
+    }
+
+    @discardableResult
+    private func startCaptureTest() -> Bool {
+        guard !isCaptureTestEnabled else {
+            return true
+        }
+
+        guard installEventTapIfNeeded() else {
+            return false
+        }
+
+        isCaptureTestEnabled = true
+        scheduleCaptureTestTimeout()
+        debugLog("[MouseDiagnostic] captureTestEnabled timeoutSeconds=\(Self.captureTestTimeout)")
         NotificationCenter.default.post(name: Self.stateDidChange, object: self)
+        return true
+    }
+
+    private func stopCaptureTest(reason: String) {
+        guard isCaptureTestEnabled else {
+            captureTestTimer?.invalidate()
+            captureTestTimer = nil
+            return
+        }
+
+        captureTestTimer?.invalidate()
+        captureTestTimer = nil
+        isCaptureTestEnabled = false
+        debugLog("[MouseDiagnostic] captureTestDisabled reason=\(reason)")
+        uninstallEventTapIfIdle()
+        NotificationCenter.default.post(name: Self.stateDidChange, object: self)
+    }
+
+    private func scheduleCaptureTestTimeout() {
+        captureTestTimer?.invalidate()
+        let timer = Timer(timeInterval: Self.captureTestTimeout, repeats: false) { [weak self] _ in
+            guard let self, self.isCaptureTestEnabled else {
+                return
+            }
+
+            errorLog("[MouseDiagnostic] captureTestWatchdogReleased timeoutSeconds=\(Self.captureTestTimeout)")
+            self.stopCaptureTest(reason: "watchdogTimeout")
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        captureTestTimer = timer
     }
 
     private static var eventMask: CGEventMask {
@@ -117,13 +201,29 @@ final class MouseDiagnosticController {
             }
             return nil
 
+        case .rightMouseDown, .rightMouseUp, .rightMouseDragged:
+            guard isCaptureTestEnabled else {
+                log(event: event, type: type, swallowed: false)
+                return Unmanaged.passUnretained(event)
+            }
+
+            log(event: event, type: type, swallowed: true)
+            if type == .rightMouseUp {
+                stopCaptureTest(reason: "rightClick")
+            }
+            return nil
+
         default:
-            log(event: event, type: type)
+            log(event: event, type: type, swallowed: isCaptureTestEnabled)
+            if isCaptureTestEnabled {
+                return nil
+            }
+
             return Unmanaged.passUnretained(event)
         }
     }
 
-    private func log(event: CGEvent, type: CGEventType) {
+    private func log(event: CGEvent, type: CGEventType, swallowed: Bool) {
         let location = event.location
         let deltaX = event.getIntegerValueField(.mouseEventDeltaX)
         let deltaY = event.getIntegerValueField(.mouseEventDeltaY)
@@ -135,8 +235,10 @@ final class MouseDiagnosticController {
 
         debugLog(
             String(
-                format: "[MouseDiagnostic] type=%@ dx=%lld dy=%lld button=%lld scrollX=%lld scrollY=%lld loc=(%.1f,%.1f) flags=%llu eventAge=%.3fms",
+                format: "[MouseDiagnostic] type=%@ swallowed=%@ captureTest=%@ dx=%lld dy=%lld button=%lld scrollX=%lld scrollY=%lld loc=(%.1f,%.1f) flags=%llu eventAge=%.3fms",
                 name(for: type),
+                swallowed ? "true" : "false",
+                isCaptureTestEnabled ? "true" : "false",
                 deltaX,
                 deltaY,
                 button,
