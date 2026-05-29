@@ -5,19 +5,23 @@ final class MouseDiagnosticController {
     static let shared = MouseDiagnosticController()
 
     static let stateDidChange = Notification.Name("MouseDiagnosticControllerStateDidChange")
+    private static let captureTestStartDelay: TimeInterval = 10
     private static let captureTestTimeout: TimeInterval = 180
 
     /// Passive logging requested by the status-menu diagnostic toggle.
     private(set) var isEnabled = false
+    private(set) var isCaptureTestPending = false
     private(set) var isCaptureTestEnabled = false
     private var eventTap: CFMachPort?
     private var eventTapRunLoopSource: CFRunLoopSource?
+    private var captureTestStartTimer: Timer?
     private var captureTestTimer: Timer?
 
     private init() {}
 
     deinit {
         stopCaptureTest(reason: "deinit")
+        cancelPendingCaptureTest(reason: "deinit")
         setEnabled(false)
     }
 
@@ -53,16 +57,17 @@ final class MouseDiagnosticController {
     @discardableResult
     func setCaptureTestEnabled(_ enabled: Bool) -> Bool {
         if enabled {
-            return startCaptureTest()
+            return armCaptureTest()
         }
 
+        cancelPendingCaptureTest(reason: "manual")
         stopCaptureTest(reason: "manual")
         return true
     }
 
     @discardableResult
     func toggleCaptureTest() -> Bool {
-        setCaptureTestEnabled(!isCaptureTestEnabled)
+        setCaptureTestEnabled(!isCaptureTestPending && !isCaptureTestEnabled)
     }
 
     @discardableResult
@@ -120,12 +125,59 @@ final class MouseDiagnosticController {
     }
 
     @discardableResult
+    private func armCaptureTest() -> Bool {
+        guard !isCaptureTestEnabled else {
+            return true
+        }
+
+        guard !isCaptureTestPending else {
+            return true
+        }
+
+        isCaptureTestPending = true
+        scheduleCaptureTestStart()
+        debugLog("[MouseDiagnostic] captureTestArmed delaySeconds=\(Self.captureTestStartDelay)")
+        NotificationCenter.default.post(name: Self.stateDidChange, object: self)
+        return true
+    }
+
+    private func cancelPendingCaptureTest(reason: String) {
+        guard isCaptureTestPending else {
+            captureTestStartTimer?.invalidate()
+            captureTestStartTimer = nil
+            return
+        }
+
+        captureTestStartTimer?.invalidate()
+        captureTestStartTimer = nil
+        isCaptureTestPending = false
+        debugLog("[MouseDiagnostic] captureTestDisarmed reason=\(reason)")
+        NotificationCenter.default.post(name: Self.stateDidChange, object: self)
+    }
+
+    private func scheduleCaptureTestStart() {
+        captureTestStartTimer?.invalidate()
+        let timer = Timer(timeInterval: Self.captureTestStartDelay, repeats: false) { [weak self] _ in
+            guard let self, self.isCaptureTestPending else {
+                return
+            }
+
+            self.captureTestStartTimer = nil
+            self.isCaptureTestPending = false
+            _ = self.startCaptureTest()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        captureTestStartTimer = timer
+    }
+
+    @discardableResult
     private func startCaptureTest() -> Bool {
         guard !isCaptureTestEnabled else {
             return true
         }
 
         guard installEventTapIfNeeded() else {
+            NotificationCenter.default.post(name: Self.stateDidChange, object: self)
             return false
         }
 

@@ -255,9 +255,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         mouseDiagnosticsItem.state = MouseDiagnosticController.shared.isEnabled ? .on : .off
         menu.addItem(mouseDiagnosticsItem)
 
-        let mouseCaptureTestItem = NSMenuItem(title: "Mouse Capture Test", action: #selector(toggleMouseCaptureTest(_:)), keyEquivalent: "")
+        let mouseCaptureTestTitle = MouseDiagnosticController.shared.isCaptureTestPending
+            ? "Mouse Capture Test (starts in 10s)"
+            : "Mouse Capture Test"
+        let mouseCaptureTestItem = NSMenuItem(title: mouseCaptureTestTitle, action: #selector(toggleMouseCaptureTest(_:)), keyEquivalent: "")
         mouseCaptureTestItem.target = self
-        mouseCaptureTestItem.state = MouseDiagnosticController.shared.isCaptureTestEnabled ? .on : .off
+        mouseCaptureTestItem.state = mouseCaptureTestState()
         menu.addItem(mouseCaptureTestItem)
         menu.addItem(NSMenuItem.separator())
 
@@ -539,8 +542,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
 
     @objc func toggleMouseCaptureTest(_ sender: NSMenuItem) {
         let enabled = MouseDiagnosticController.shared.toggleCaptureTest()
-        sender.state = enabled ? .on : .off
+        sender.state = enabled ? mouseCaptureTestState() : .off
         rebuildMenu()
+    }
+
+    private func mouseCaptureTestState() -> NSControl.StateValue {
+        if MouseDiagnosticController.shared.isCaptureTestEnabled {
+            return .on
+        }
+
+        if MouseDiagnosticController.shared.isCaptureTestPending {
+            return .mixed
+        }
+
+        return .off
     }
 
     // MARK: - Window and Editor Actions
