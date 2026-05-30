@@ -12,6 +12,7 @@ final class MouseDiagnosticController {
     static let stateDidChange = Notification.Name("MouseDiagnosticControllerStateDidChange")
     private static let captureStartDelay: TimeInterval = 10
     private static let captureTimeout: TimeInterval = 180
+    private static let temporaryReleaseDuration: TimeInterval = 15
     private static let escapeUnlockCount = 5
     private static let escapeSequenceMaximumGap: TimeInterval = 2
     private static let escapeKeyCode: Int64 = 53
@@ -26,6 +27,8 @@ final class MouseDiagnosticController {
     private(set) var isCapturePending = false
     private(set) var isCaptureActive = false
     private(set) var captureCountdownSeconds = 0
+    private(set) var isCaptureTemporarilyReleased = false
+    private(set) var temporaryReleaseCountdownSeconds = 0
 
     private var mouseEventTap: CFMachPort?
     private var mouseEventTapRunLoopSource: CFRunLoopSource?
@@ -33,19 +36,21 @@ final class MouseDiagnosticController {
     private var keyboardEventTapRunLoopSource: CFRunLoopSource?
     private var captureStartTimer: Timer?
     private var captureWatchdogTimer: Timer?
+    private var temporaryReleaseTimer: Timer?
     private var escapePressCount = 0
     private var lastEscapePressTime: TimeInterval?
 
     private init() {}
 
     deinit {
+        cancelTemporaryRelease(reason: "deinit")
         deactivateCapture(reason: "deinit")
         cancelPendingCapture(reason: "deinit")
         setEnabled(false)
     }
 
     var hasCaptureState: Bool {
-        isCapturePending || isCaptureActive
+        isCapturePending || isCaptureActive || isCaptureTemporarilyReleased
     }
 
     @discardableResult
@@ -84,6 +89,7 @@ final class MouseDiagnosticController {
         }
 
         cancelPendingCapture(reason: "manual")
+        cancelTemporaryRelease(reason: "manual")
         deactivateCapture(reason: "manual")
         return true
     }
@@ -95,12 +101,26 @@ final class MouseDiagnosticController {
 
     func cancelCapture(reason: String) {
         cancelPendingCapture(reason: reason)
+        cancelTemporaryRelease(reason: reason)
         deactivateCapture(reason: reason)
+    }
+
+    @discardableResult
+    func toggleTemporaryRelease() -> Bool {
+        if isCaptureTemporarilyReleased {
+            return resumeCaptureAfterTemporaryRelease(reason: "manual")
+        }
+
+        return temporarilyReleaseCapture()
     }
 
     @discardableResult
     private func armCapture() -> Bool {
         guard !isCaptureActive else {
+            return true
+        }
+
+        guard !isCaptureTemporarilyReleased else {
             return true
         }
 
@@ -207,6 +227,88 @@ final class MouseDiagnosticController {
         NotificationCenter.default.post(name: Self.stateDidChange, object: self)
     }
 
+    @discardableResult
+    private func temporarilyReleaseCapture() -> Bool {
+        guard isCaptureActive else {
+            return false
+        }
+
+        captureWatchdogTimer?.invalidate()
+        captureWatchdogTimer = nil
+        isCaptureActive = false
+        isCaptureTemporarilyReleased = true
+        temporaryReleaseCountdownSeconds = Int(Self.temporaryReleaseDuration)
+        resetEscapeSequence()
+        debugLog("[MouseDiagnostic] captureTemporarilyReleased durationSeconds=\(Self.temporaryReleaseDuration)")
+        onCaptureDeactivated?()
+        uninstallMouseEventTapIfIdle()
+        scheduleTemporaryReleaseTimer()
+        NotificationCenter.default.post(name: Self.stateDidChange, object: self)
+        return true
+    }
+
+    @discardableResult
+    private func resumeCaptureAfterTemporaryRelease(reason: String) -> Bool {
+        guard isCaptureTemporarilyReleased else {
+            return true
+        }
+
+        temporaryReleaseTimer?.invalidate()
+        temporaryReleaseTimer = nil
+        isCaptureTemporarilyReleased = false
+        temporaryReleaseCountdownSeconds = 0
+        resetEscapeSequence()
+        debugLog("[MouseDiagnostic] captureTemporaryReleaseEnded reason=\(reason)")
+
+        let activated = activateCapture()
+        if !activated {
+            uninstallKeyboardEventTapIfIdle()
+            NotificationCenter.default.post(name: Self.stateDidChange, object: self)
+        }
+        return activated
+    }
+
+    private func cancelTemporaryRelease(reason: String) {
+        guard isCaptureTemporarilyReleased else {
+            temporaryReleaseTimer?.invalidate()
+            temporaryReleaseTimer = nil
+            temporaryReleaseCountdownSeconds = 0
+            return
+        }
+
+        temporaryReleaseTimer?.invalidate()
+        temporaryReleaseTimer = nil
+        isCaptureTemporarilyReleased = false
+        temporaryReleaseCountdownSeconds = 0
+        resetEscapeSequence()
+        debugLog("[MouseDiagnostic] captureTemporaryReleaseCancelled reason=\(reason)")
+        uninstallKeyboardEventTapIfIdle()
+        NotificationCenter.default.post(name: Self.stateDidChange, object: self)
+    }
+
+    private func scheduleTemporaryReleaseTimer() {
+        temporaryReleaseTimer?.invalidate()
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] timer in
+            guard let self, self.isCaptureTemporarilyReleased else {
+                timer.invalidate()
+                return
+            }
+
+            self.temporaryReleaseCountdownSeconds = max(0, self.temporaryReleaseCountdownSeconds - 1)
+            NotificationCenter.default.post(name: Self.stateDidChange, object: self)
+
+            guard self.temporaryReleaseCountdownSeconds <= 0 else {
+                return
+            }
+
+            timer.invalidate()
+            self.temporaryReleaseTimer = nil
+            _ = self.resumeCaptureAfterTemporaryRelease(reason: "timer")
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        temporaryReleaseTimer = timer
+    }
+
     private func scheduleCaptureWatchdogTimer() {
         captureWatchdogTimer?.invalidate()
         let timer = Timer(timeInterval: Self.captureTimeout, repeats: false) { [weak self] _ in
@@ -304,7 +406,7 @@ final class MouseDiagnosticController {
     }
 
     private func uninstallKeyboardEventTapIfIdle() {
-        guard !isCapturePending, !isCaptureActive else {
+        guard !isCapturePending, !isCaptureActive, !isCaptureTemporarilyReleased else {
             return
         }
 
@@ -461,6 +563,7 @@ final class MouseDiagnosticController {
         }
 
         cancelPendingCapture(reason: "escape")
+        cancelTemporaryRelease(reason: "escape")
         deactivateCapture(reason: "escape")
     }
 

@@ -61,6 +61,7 @@ final class GamepadContentView: NSView {
         var onToggleMinimize: (() -> Void)?
         var onHideOverlay: (() -> Void)?
         var onToggleCapture: (() -> Void)?
+        var onToggleTemporaryRelease: (() -> Void)?
         var menuProvider: (() -> NSMenu?)?
         var onDragBegan: ((NSEvent) -> Void)?
         var onDragChanged: ((NSEvent) -> Void)?
@@ -71,6 +72,8 @@ final class GamepadContentView: NSView {
         private let minimizeButton = NSButton(frame: .zero)
         private let captureButton = NSButton(frame: .zero)
         private let captureCountdownLabel = NSTextField(labelWithString: "")
+        private let temporaryReleaseButton = NSButton(frame: .zero)
+        private let temporaryReleaseCountdownLabel = NSTextField(labelWithString: "")
         private let menuButton = NSButton(frame: .zero)
         private let titleLabel = NSTextField(labelWithString: "")
         private let separatorView = NSView(frame: .zero)
@@ -110,6 +113,8 @@ final class GamepadContentView: NSView {
             closeButton.isHidden = minimized
             captureButton.isHidden = minimized
             captureCountdownLabel.isHidden = minimized
+            temporaryReleaseButton.isHidden = minimized
+            temporaryReleaseCountdownLabel.isHidden = minimized
             titleLabel.isHidden = minimized
             menuButton.isHidden = minimized
             separatorView.isHidden = minimized
@@ -117,15 +122,31 @@ final class GamepadContentView: NSView {
             needsLayout = true
         }
 
-        func updateCaptureState(isPending: Bool, isActive: Bool, countdown: Int) {
-            captureButton.title = (isPending || isActive) ? "􀎥" : "􀎡"
+        func updateCaptureState(
+            isPending: Bool,
+            isActive: Bool,
+            isTemporarilyReleased: Bool,
+            countdown: Int,
+            temporaryReleaseCountdown: Int
+        ) {
+            captureButton.title = (isPending || isActive || isTemporarilyReleased) ? "􀎥" : "􀎡"
             captureCountdownLabel.stringValue = isPending ? "\(max(0, countdown))" : ""
             captureCountdownLabel.isHidden = closeButton.isHidden || !isPending
+            temporaryReleaseButton.isHidden = closeButton.isHidden || (!isActive && !isTemporarilyReleased)
+            temporaryReleaseButton.isEnabled = isActive || isTemporarilyReleased
+            temporaryReleaseCountdownLabel.stringValue = isTemporarilyReleased ? "\(max(0, temporaryReleaseCountdown))" : ""
+            temporaryReleaseCountdownLabel.isHidden = closeButton.isHidden || !isTemporarilyReleased
             applyTitleColor(to: captureButton)
+            applyTitleColor(to: temporaryReleaseButton)
             needsLayout = true
         }
 
         func handleVirtualPrimaryUp(at point: NSPoint) -> Bool {
+            if !temporaryReleaseButton.isHidden, temporaryReleaseButton.frame.contains(point) {
+                onToggleTemporaryRelease?()
+                return true
+            }
+
             guard !captureButton.isHidden, captureButton.frame.contains(point) else {
                 return false
             }
@@ -167,6 +188,22 @@ final class GamepadContentView: NSView {
             captureCountdownLabel.isHidden = true
             addSubview(captureCountdownLabel)
 
+            temporaryReleaseButton.title = "􂆊"
+            temporaryReleaseButton.font = NSFont.systemFont(ofSize: 16, weight: .regular)
+            temporaryReleaseButton.isBordered = false
+            temporaryReleaseButton.contentTintColor = .white
+            temporaryReleaseButton.target = self
+            temporaryReleaseButton.action = #selector(handleToggleTemporaryRelease)
+            temporaryReleaseButton.setButtonType(.momentaryChange)
+            temporaryReleaseButton.isHidden = true
+            addSubview(temporaryReleaseButton)
+
+            temporaryReleaseCountdownLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
+            temporaryReleaseCountdownLabel.textColor = .white
+            temporaryReleaseCountdownLabel.alignment = .center
+            temporaryReleaseCountdownLabel.isHidden = true
+            addSubview(temporaryReleaseCountdownLabel)
+
             if let menuImage = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "Menu") {
                 menuButton.image = menuImage
                 menuButton.imagePosition = .imageOnly
@@ -199,6 +236,8 @@ final class GamepadContentView: NSView {
             minimizeButton.contentTintColor = foregroundColor
             captureButton.contentTintColor = foregroundColor
             captureCountdownLabel.textColor = foregroundColor
+            temporaryReleaseButton.contentTintColor = foregroundColor
+            temporaryReleaseCountdownLabel.textColor = foregroundColor
             menuButton.contentTintColor = foregroundColor
             titleLabel.textColor = foregroundColor
             separatorView.layer?.backgroundColor = foregroundColor.withAlphaComponent(0.12).cgColor
@@ -206,6 +245,7 @@ final class GamepadContentView: NSView {
             applyTitleColor(to: closeButton)
             applyTitleColor(to: minimizeButton)
             applyTitleColor(to: captureButton)
+            applyTitleColor(to: temporaryReleaseButton)
             if menuButton.image == nil {
                 applyTitleColor(to: menuButton)
             }
@@ -237,12 +277,27 @@ final class GamepadContentView: NSView {
                 minimizeButton.frame = NSRect(x: closeButton.frame.maxX + 8, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
                 menuButton.frame = NSRect(x: bounds.width - 34, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
                 captureButton.frame = NSRect(x: menuButton.frame.minX - 30, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
+                temporaryReleaseButton.frame = temporaryReleaseButton.isHidden
+                    ? .zero
+                    : NSRect(x: captureButton.frame.minX - 30, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
                 if captureCountdownLabel.isHidden {
                     captureCountdownLabel.frame = .zero
                 } else {
                     captureCountdownLabel.frame = NSRect(x: captureButton.frame.minX - 28, y: bounds.midY - 9, width: 24, height: 18)
                 }
-                let rightControlMinX = captureCountdownLabel.isHidden ? captureButton.frame.minX : captureCountdownLabel.frame.minX
+                if temporaryReleaseCountdownLabel.isHidden {
+                    temporaryReleaseCountdownLabel.frame = .zero
+                } else {
+                    temporaryReleaseCountdownLabel.frame = NSRect(x: temporaryReleaseButton.frame.minX - 28, y: bounds.midY - 9, width: 24, height: 18)
+                }
+
+                let rightControlMinX = [
+                    menuButton.frame.minX,
+                    captureButton.frame.minX,
+                    captureCountdownLabel.isHidden ? .greatestFiniteMagnitude : captureCountdownLabel.frame.minX,
+                    temporaryReleaseButton.isHidden ? .greatestFiniteMagnitude : temporaryReleaseButton.frame.minX,
+                    temporaryReleaseCountdownLabel.isHidden ? .greatestFiniteMagnitude : temporaryReleaseCountdownLabel.frame.minX
+                ].min() ?? captureButton.frame.minX
                 let titleInset = max(minimizeButton.frame.maxX + 18, bounds.maxX - rightControlMinX + 18)
                 titleLabel.frame = NSRect(x: titleInset, y: bounds.midY - 10, width: max(50, bounds.width - (titleInset * 2)), height: 20)
                 separatorView.frame = NSRect(x: 12, y: 0, width: bounds.width - 24, height: 1)
@@ -260,6 +315,10 @@ final class GamepadContentView: NSView {
 
         @objc private func handleToggleCapture() {
             onToggleCapture?()
+        }
+
+        @objc private func handleToggleTemporaryRelease() {
+            onToggleTemporaryRelease?()
         }
 
         @objc private func handleMenu() {
@@ -484,6 +543,9 @@ final class GamepadContentView: NSView {
         headerBar.onToggleCapture = {
             MouseDiagnosticController.shared.toggleCapture()
         }
+        headerBar.onToggleTemporaryRelease = {
+            MouseDiagnosticController.shared.toggleTemporaryRelease()
+        }
         headerBar.menuProvider = { [weak self] in
             self?.menuProvider?()
         }
@@ -520,7 +582,9 @@ final class GamepadContentView: NSView {
         headerBar.updateCaptureState(
             isPending: MouseDiagnosticController.shared.isCapturePending,
             isActive: MouseDiagnosticController.shared.isCaptureActive,
-            countdown: MouseDiagnosticController.shared.captureCountdownSeconds
+            isTemporarilyReleased: MouseDiagnosticController.shared.isCaptureTemporarilyReleased,
+            countdown: MouseDiagnosticController.shared.captureCountdownSeconds,
+            temporaryReleaseCountdown: MouseDiagnosticController.shared.temporaryReleaseCountdownSeconds
         )
     }
 
