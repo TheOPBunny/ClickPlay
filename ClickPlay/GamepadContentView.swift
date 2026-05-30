@@ -329,6 +329,7 @@ final class GamepadContentView: NSView {
     var menuProvider: (() -> NSMenu?)?
     var onJoystickCaptureChanged: ((Bool) -> Void)?
     var onDwellActionToggled: ((GamepadButton, DwellActionConfig) -> Bool)?
+    var onVirtualCursorActivity: (() -> Void)?
 
     private var buttonViews: [GamepadButton: GamepadButtonView] = [:]
     private let headerBar = HeaderBarView(frame: .zero)
@@ -670,6 +671,7 @@ final class GamepadContentView: NSView {
         virtualCursorPoint = nextPoint
         pointerLocationView.show(centeredAt: nextPoint)
         syncButtonHover(atContentPoint: nextPoint)
+        onVirtualCursorActivity?()
 
         if let virtualPrimaryButtonView,
            let event = syntheticMouseEvent(type: .leftMouseDragged, atContentPoint: nextPoint) {
@@ -687,6 +689,7 @@ final class GamepadContentView: NSView {
             return
         }
 
+        onVirtualCursorActivity?()
         ensureVirtualCursorPoint()
         guard let virtualCursorPoint else {
             return
@@ -746,6 +749,7 @@ final class GamepadContentView: NSView {
             return
         }
 
+        onVirtualCursorActivity?()
         ensureVirtualCursorPoint()
         guard let virtualCursorPoint,
               let targetView = buttonView(atContentPoint: virtualCursorPoint),

@@ -104,6 +104,9 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
                 currentMouseLocation: NSEvent.mouseLocation
             )
         }
+        content.onVirtualCursorActivity = { [weak self] in
+            self?.noteUserActivity()
+        }
         content.menuProvider = {
             (NSApp.delegate as? AppDelegate)?.makeGamepadMenu()
         }
