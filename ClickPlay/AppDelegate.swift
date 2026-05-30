@@ -65,7 +65,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
 
     func applicationWillTerminate(_ notification: Notification) {
         editorWindowController?.flushPanelLayoutDefaults()
-        MouseDiagnosticController.shared.setCaptureTestEnabled(false)
+        MouseDiagnosticController.shared.cancelCapture(reason: "terminate")
         MouseDiagnosticController.shared.setEnabled(false)
         gamepadWindow?.releaseAllInputs()
         KeyInjector.shared.releaseAllHeldKeys()
@@ -255,13 +255,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         mouseDiagnosticsItem.state = MouseDiagnosticController.shared.isEnabled ? .on : .off
         menu.addItem(mouseDiagnosticsItem)
 
-        let mouseCaptureTestTitle = MouseDiagnosticController.shared.isCaptureTestPending
-            ? "Mouse Capture Test (starts in 10s)"
-            : "Mouse Capture Test"
-        let mouseCaptureTestItem = NSMenuItem(title: mouseCaptureTestTitle, action: #selector(toggleMouseCaptureTest(_:)), keyEquivalent: "")
-        mouseCaptureTestItem.target = self
-        mouseCaptureTestItem.state = mouseCaptureTestState()
-        menu.addItem(mouseCaptureTestItem)
         menu.addItem(NSMenuItem.separator())
 
         let quitItem = NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -538,24 +531,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         let enabled = MouseDiagnosticController.shared.toggle()
         sender.state = enabled ? .on : .off
         rebuildMenu()
-    }
-
-    @objc func toggleMouseCaptureTest(_ sender: NSMenuItem) {
-        let enabled = MouseDiagnosticController.shared.toggleCaptureTest()
-        sender.state = enabled ? mouseCaptureTestState() : .off
-        rebuildMenu()
-    }
-
-    private func mouseCaptureTestState() -> NSControl.StateValue {
-        if MouseDiagnosticController.shared.isCaptureTestEnabled {
-            return .on
-        }
-
-        if MouseDiagnosticController.shared.isCaptureTestPending {
-            return .mixed
-        }
-
-        return .off
     }
 
     // MARK: - Window and Editor Actions

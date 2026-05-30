@@ -1,34 +1,57 @@
 import Cocoa
 
-/// Passive mouse-event visibility diagnostic for testing whether target apps expose input through Quartz event taps.
+/// Coordinates passive mouse diagnostics and the experimental virtual-cursor capture mode.
 final class MouseDiagnosticController {
+    enum VirtualMouseButton {
+        case left
+        case right
+    }
+
     static let shared = MouseDiagnosticController()
 
     static let stateDidChange = Notification.Name("MouseDiagnosticControllerStateDidChange")
-    private static let captureTestStartDelay: TimeInterval = 10
-    private static let captureTestTimeout: TimeInterval = 180
+    private static let captureStartDelay: TimeInterval = 10
+    private static let captureTimeout: TimeInterval = 180
+    private static let escapeUnlockCount = 5
+    private static let escapeSequenceMaximumGap: TimeInterval = 2
+    private static let escapeKeyCode: Int64 = 53
+
+    var onVirtualMouseDelta: ((CGPoint) -> Void)?
+    var onVirtualMouseButton: ((VirtualMouseButton, Bool) -> Void)?
+    var onVirtualScroll: ((CGFloat) -> Void)?
+    var onCaptureDeactivated: (() -> Void)?
 
     /// Passive logging requested by the status-menu diagnostic toggle.
     private(set) var isEnabled = false
-    private(set) var isCaptureTestPending = false
-    private(set) var isCaptureTestEnabled = false
-    private var eventTap: CFMachPort?
-    private var eventTapRunLoopSource: CFRunLoopSource?
-    private var captureTestStartTimer: Timer?
-    private var captureTestTimer: Timer?
+    private(set) var isCapturePending = false
+    private(set) var isCaptureActive = false
+    private(set) var captureCountdownSeconds = 0
+
+    private var mouseEventTap: CFMachPort?
+    private var mouseEventTapRunLoopSource: CFRunLoopSource?
+    private var keyboardEventTap: CFMachPort?
+    private var keyboardEventTapRunLoopSource: CFRunLoopSource?
+    private var captureStartTimer: Timer?
+    private var captureWatchdogTimer: Timer?
+    private var escapePressCount = 0
+    private var lastEscapePressTime: TimeInterval?
 
     private init() {}
 
     deinit {
-        stopCaptureTest(reason: "deinit")
-        cancelPendingCaptureTest(reason: "deinit")
+        deactivateCapture(reason: "deinit")
+        cancelPendingCapture(reason: "deinit")
         setEnabled(false)
+    }
+
+    var hasCaptureState: Bool {
+        isCapturePending || isCaptureActive
     }
 
     @discardableResult
     func setEnabled(_ enabled: Bool) -> Bool {
         if enabled {
-            guard installEventTapIfNeeded() else {
+            guard installMouseEventTapIfNeeded() else {
                 return false
             }
 
@@ -44,7 +67,7 @@ final class MouseDiagnosticController {
 
         isEnabled = false
         debugLog("[MouseDiagnostic] disabled")
-        uninstallEventTapIfIdle()
+        uninstallMouseEventTapIfIdle()
         NotificationCenter.default.post(name: Self.stateDidChange, object: self)
         return true
     }
@@ -55,24 +78,152 @@ final class MouseDiagnosticController {
     }
 
     @discardableResult
-    func setCaptureTestEnabled(_ enabled: Bool) -> Bool {
+    func setCaptureEnabled(_ enabled: Bool) -> Bool {
         if enabled {
-            return armCaptureTest()
+            return armCapture()
         }
 
-        cancelPendingCaptureTest(reason: "manual")
-        stopCaptureTest(reason: "manual")
+        cancelPendingCapture(reason: "manual")
+        deactivateCapture(reason: "manual")
         return true
     }
 
     @discardableResult
-    func toggleCaptureTest() -> Bool {
-        setCaptureTestEnabled(!isCaptureTestPending && !isCaptureTestEnabled)
+    func toggleCapture() -> Bool {
+        setCaptureEnabled(!hasCaptureState)
+    }
+
+    func cancelCapture(reason: String) {
+        cancelPendingCapture(reason: reason)
+        deactivateCapture(reason: reason)
     }
 
     @discardableResult
-    private func installEventTapIfNeeded() -> Bool {
-        guard eventTap == nil else {
+    private func armCapture() -> Bool {
+        guard !isCaptureActive else {
+            return true
+        }
+
+        guard !isCapturePending else {
+            return true
+        }
+
+        guard installKeyboardEventTapIfNeeded() else {
+            return false
+        }
+
+        isCapturePending = true
+        captureCountdownSeconds = Int(Self.captureStartDelay)
+        resetEscapeSequence()
+        scheduleCaptureStartTimer()
+        debugLog("[MouseDiagnostic] captureArmed delaySeconds=\(Self.captureStartDelay)")
+        NotificationCenter.default.post(name: Self.stateDidChange, object: self)
+        return true
+    }
+
+    private func cancelPendingCapture(reason: String) {
+        guard isCapturePending else {
+            captureStartTimer?.invalidate()
+            captureStartTimer = nil
+            return
+        }
+
+        captureStartTimer?.invalidate()
+        captureStartTimer = nil
+        isCapturePending = false
+        captureCountdownSeconds = 0
+        resetEscapeSequence()
+        uninstallKeyboardEventTapIfIdle()
+        debugLog("[MouseDiagnostic] captureDisarmed reason=\(reason)")
+        NotificationCenter.default.post(name: Self.stateDidChange, object: self)
+    }
+
+    private func scheduleCaptureStartTimer() {
+        captureStartTimer?.invalidate()
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] timer in
+            guard let self, self.isCapturePending else {
+                timer.invalidate()
+                return
+            }
+
+            self.captureCountdownSeconds = max(0, self.captureCountdownSeconds - 1)
+            NotificationCenter.default.post(name: Self.stateDidChange, object: self)
+
+            guard self.captureCountdownSeconds <= 0 else {
+                return
+            }
+
+            timer.invalidate()
+            self.captureStartTimer = nil
+            self.isCapturePending = false
+            _ = self.activateCapture()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        captureStartTimer = timer
+    }
+
+    @discardableResult
+    private func activateCapture() -> Bool {
+        guard !isCaptureActive else {
+            return true
+        }
+
+        guard installMouseEventTapIfNeeded() else {
+            uninstallKeyboardEventTapIfIdle()
+            NotificationCenter.default.post(name: Self.stateDidChange, object: self)
+            return false
+        }
+
+        guard installKeyboardEventTapIfNeeded() else {
+            uninstallMouseEventTapIfIdle()
+            NotificationCenter.default.post(name: Self.stateDidChange, object: self)
+            return false
+        }
+
+        isCaptureActive = true
+        captureCountdownSeconds = 0
+        resetEscapeSequence()
+        scheduleCaptureWatchdogTimer()
+        debugLog("[MouseDiagnostic] captureEnabled timeoutSeconds=\(Self.captureTimeout)")
+        NotificationCenter.default.post(name: Self.stateDidChange, object: self)
+        return true
+    }
+
+    private func deactivateCapture(reason: String) {
+        guard isCaptureActive else {
+            captureWatchdogTimer?.invalidate()
+            captureWatchdogTimer = nil
+            return
+        }
+
+        captureWatchdogTimer?.invalidate()
+        captureWatchdogTimer = nil
+        isCaptureActive = false
+        resetEscapeSequence()
+        debugLog("[MouseDiagnostic] captureDisabled reason=\(reason)")
+        onCaptureDeactivated?()
+        uninstallMouseEventTapIfIdle()
+        uninstallKeyboardEventTapIfIdle()
+        NotificationCenter.default.post(name: Self.stateDidChange, object: self)
+    }
+
+    private func scheduleCaptureWatchdogTimer() {
+        captureWatchdogTimer?.invalidate()
+        let timer = Timer(timeInterval: Self.captureTimeout, repeats: false) { [weak self] _ in
+            guard let self, self.isCaptureActive else {
+                return
+            }
+
+            errorLog("[MouseDiagnostic] captureWatchdogReleased timeoutSeconds=\(Self.captureTimeout)")
+            self.deactivateCapture(reason: "watchdogTimeout")
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        captureWatchdogTimer = timer
+    }
+
+    @discardableResult
+    private func installMouseEventTapIfNeeded() -> Bool {
+        guard mouseEventTap == nil else {
             return true
         }
 
@@ -80,11 +231,11 @@ final class MouseDiagnosticController {
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
             options: .defaultTap,
-            eventsOfInterest: Self.eventMask,
-            callback: Self.eventTapCallback,
+            eventsOfInterest: Self.mouseEventMask,
+            callback: Self.mouseEventTapCallback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
-            errorLog("[MouseDiagnostic] ERROR: eventTapCreationFailed")
+            errorLog("[MouseDiagnostic] ERROR: mouseEventTapCreationFailed")
             return false
         }
 
@@ -92,132 +243,93 @@ final class MouseDiagnosticController {
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
 
-        eventTap = tap
-        eventTapRunLoopSource = source
-        debugLog("[MouseDiagnostic] eventTapInstalled")
+        mouseEventTap = tap
+        mouseEventTapRunLoopSource = source
+        debugLog("[MouseDiagnostic] mouseEventTapInstalled")
         return true
     }
 
-    private func uninstallEventTapIfIdle() {
-        guard !isEnabled, !isCaptureTestEnabled else {
+    private func uninstallMouseEventTapIfIdle() {
+        guard !isEnabled, !isCaptureActive else {
             return
         }
 
-        uninstallEventTap()
+        uninstallMouseEventTap()
     }
 
-    private func uninstallEventTap() {
-        guard eventTap != nil || eventTapRunLoopSource != nil else {
+    private func uninstallMouseEventTap() {
+        guard mouseEventTap != nil || mouseEventTapRunLoopSource != nil else {
             return
         }
 
-        if let eventTapRunLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), eventTapRunLoopSource, .commonModes)
-            self.eventTapRunLoopSource = nil
+        if let mouseEventTapRunLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), mouseEventTapRunLoopSource, .commonModes)
+            self.mouseEventTapRunLoopSource = nil
         }
 
-        if let eventTap {
-            CGEvent.tapEnable(tap: eventTap, enable: false)
-            self.eventTap = nil
+        if let mouseEventTap {
+            CGEvent.tapEnable(tap: mouseEventTap, enable: false)
+            self.mouseEventTap = nil
         }
 
-        debugLog("[MouseDiagnostic] eventTapUninstalled")
+        debugLog("[MouseDiagnostic] mouseEventTapUninstalled")
     }
 
     @discardableResult
-    private func armCaptureTest() -> Bool {
-        guard !isCaptureTestEnabled else {
+    private func installKeyboardEventTapIfNeeded() -> Bool {
+        guard keyboardEventTap == nil else {
             return true
         }
 
-        guard !isCaptureTestPending else {
-            return true
-        }
-
-        isCaptureTestPending = true
-        scheduleCaptureTestStart()
-        debugLog("[MouseDiagnostic] captureTestArmed delaySeconds=\(Self.captureTestStartDelay)")
-        NotificationCenter.default.post(name: Self.stateDidChange, object: self)
-        return true
-    }
-
-    private func cancelPendingCaptureTest(reason: String) {
-        guard isCaptureTestPending else {
-            captureTestStartTimer?.invalidate()
-            captureTestStartTimer = nil
-            return
-        }
-
-        captureTestStartTimer?.invalidate()
-        captureTestStartTimer = nil
-        isCaptureTestPending = false
-        debugLog("[MouseDiagnostic] captureTestDisarmed reason=\(reason)")
-        NotificationCenter.default.post(name: Self.stateDidChange, object: self)
-    }
-
-    private func scheduleCaptureTestStart() {
-        captureTestStartTimer?.invalidate()
-        let timer = Timer(timeInterval: Self.captureTestStartDelay, repeats: false) { [weak self] _ in
-            guard let self, self.isCaptureTestPending else {
-                return
-            }
-
-            self.captureTestStartTimer = nil
-            self.isCaptureTestPending = false
-            _ = self.startCaptureTest()
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        captureTestStartTimer = timer
-    }
-
-    @discardableResult
-    private func startCaptureTest() -> Bool {
-        guard !isCaptureTestEnabled else {
-            return true
-        }
-
-        guard installEventTapIfNeeded() else {
-            NotificationCenter.default.post(name: Self.stateDidChange, object: self)
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: Self.keyboardEventMask,
+            callback: Self.keyboardEventTapCallback,
+            userInfo: Unmanaged.passUnretained(self).toOpaque()
+        ) else {
+            errorLog("[MouseDiagnostic] ERROR: keyboardEventTapCreationFailed")
             return false
         }
 
-        isCaptureTestEnabled = true
-        scheduleCaptureTestTimeout()
-        debugLog("[MouseDiagnostic] captureTestEnabled timeoutSeconds=\(Self.captureTestTimeout)")
-        NotificationCenter.default.post(name: Self.stateDidChange, object: self)
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+
+        keyboardEventTap = tap
+        keyboardEventTapRunLoopSource = source
+        debugLog("[MouseDiagnostic] keyboardEventTapInstalled")
         return true
     }
 
-    private func stopCaptureTest(reason: String) {
-        guard isCaptureTestEnabled else {
-            captureTestTimer?.invalidate()
-            captureTestTimer = nil
+    private func uninstallKeyboardEventTapIfIdle() {
+        guard !isCapturePending, !isCaptureActive else {
             return
         }
 
-        captureTestTimer?.invalidate()
-        captureTestTimer = nil
-        isCaptureTestEnabled = false
-        debugLog("[MouseDiagnostic] captureTestDisabled reason=\(reason)")
-        uninstallEventTapIfIdle()
-        NotificationCenter.default.post(name: Self.stateDidChange, object: self)
+        uninstallKeyboardEventTap()
     }
 
-    private func scheduleCaptureTestTimeout() {
-        captureTestTimer?.invalidate()
-        let timer = Timer(timeInterval: Self.captureTestTimeout, repeats: false) { [weak self] _ in
-            guard let self, self.isCaptureTestEnabled else {
-                return
-            }
-
-            errorLog("[MouseDiagnostic] captureTestWatchdogReleased timeoutSeconds=\(Self.captureTestTimeout)")
-            self.stopCaptureTest(reason: "watchdogTimeout")
+    private func uninstallKeyboardEventTap() {
+        guard keyboardEventTap != nil || keyboardEventTapRunLoopSource != nil else {
+            return
         }
-        RunLoop.main.add(timer, forMode: .common)
-        captureTestTimer = timer
+
+        if let keyboardEventTapRunLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), keyboardEventTapRunLoopSource, .commonModes)
+            self.keyboardEventTapRunLoopSource = nil
+        }
+
+        if let keyboardEventTap {
+            CGEvent.tapEnable(tap: keyboardEventTap, enable: false)
+            self.keyboardEventTap = nil
+        }
+
+        debugLog("[MouseDiagnostic] keyboardEventTapUninstalled")
     }
 
-    private static var eventMask: CGEventMask {
+    private static var mouseEventMask: CGEventMask {
         eventMask(for: .mouseMoved)
             | eventMask(for: .leftMouseDown)
             | eventMask(for: .leftMouseUp)
@@ -231,48 +343,130 @@ final class MouseDiagnosticController {
             | eventMask(for: .scrollWheel)
     }
 
-    private static let eventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in
+    private static var keyboardEventMask: CGEventMask {
+        eventMask(for: .keyDown)
+    }
+
+    private static let mouseEventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in
         guard let userInfo else {
             return Unmanaged.passUnretained(event)
         }
 
         let controller = Unmanaged<MouseDiagnosticController>.fromOpaque(userInfo).takeUnretainedValue()
-        return controller.handleEventTap(type: type, event: event)
+        return controller.handleMouseEventTap(type: type, event: event)
+    }
+
+    private static let keyboardEventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in
+        guard let userInfo else {
+            return Unmanaged.passUnretained(event)
+        }
+
+        let controller = Unmanaged<MouseDiagnosticController>.fromOpaque(userInfo).takeUnretainedValue()
+        return controller.handleKeyboardEventTap(type: type, event: event)
     }
 
     private static func eventMask(for type: CGEventType) -> CGEventMask {
         CGEventMask(1 << type.rawValue)
     }
 
-    private func handleEventTap(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+    private func handleMouseEventTap(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
-            errorLog("[MouseDiagnostic] eventTapDisabled type=\(name(for: type)); reenable=true")
-            if let eventTap {
-                CGEvent.tapEnable(tap: eventTap, enable: true)
-            }
-            return nil
-
-        case .rightMouseDown, .rightMouseUp, .rightMouseDragged:
-            guard isCaptureTestEnabled else {
-                log(event: event, type: type, swallowed: false)
-                return Unmanaged.passUnretained(event)
-            }
-
-            log(event: event, type: type, swallowed: true)
-            if type == .rightMouseUp {
-                stopCaptureTest(reason: "rightClick")
+            errorLog("[MouseDiagnostic] mouseEventTapDisabled type=\(name(for: type)); reenable=true")
+            if let mouseEventTap {
+                CGEvent.tapEnable(tap: mouseEventTap, enable: true)
             }
             return nil
 
         default:
-            log(event: event, type: type, swallowed: isCaptureTestEnabled)
-            if isCaptureTestEnabled {
-                return nil
+            routeMouseEvent(type: type, event: event)
+            log(event: event, type: type, swallowed: isCaptureActive)
+            return isCaptureActive ? nil : Unmanaged.passUnretained(event)
+        }
+    }
+
+    private func routeMouseEvent(type: CGEventType, event: CGEvent) {
+        guard isCaptureActive else {
+            return
+        }
+
+        switch type {
+        case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
+            let deltaX = CGFloat(event.getIntegerValueField(.mouseEventDeltaX))
+            let deltaY = CGFloat(-event.getIntegerValueField(.mouseEventDeltaY))
+            guard deltaX != 0 || deltaY != 0 else {
+                return
             }
 
+            onVirtualMouseDelta?(CGPoint(x: deltaX, y: deltaY))
+
+        case .leftMouseDown:
+            onVirtualMouseButton?(.left, true)
+        case .leftMouseUp:
+            onVirtualMouseButton?(.left, false)
+        case .rightMouseDown:
+            onVirtualMouseButton?(.right, true)
+        case .rightMouseUp:
+            onVirtualMouseButton?(.right, false)
+        case .scrollWheel:
+            let delta = CGFloat(event.getIntegerValueField(.scrollWheelEventDeltaAxis1))
+            onVirtualScroll?(delta)
+        default:
+            return
+        }
+    }
+
+    private func handleKeyboardEventTap(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        switch type {
+        case .tapDisabledByTimeout, .tapDisabledByUserInput:
+            errorLog("[MouseDiagnostic] keyboardEventTapDisabled type=\(name(for: type)); reenable=true")
+            if let keyboardEventTap {
+                CGEvent.tapEnable(tap: keyboardEventTap, enable: true)
+            }
+            return nil
+
+        case .keyDown:
+            handleKeyDown(event)
+            return Unmanaged.passUnretained(event)
+
+        default:
             return Unmanaged.passUnretained(event)
         }
+    }
+
+    private func handleKeyDown(_ event: CGEvent) {
+        guard hasCaptureState else {
+            resetEscapeSequence()
+            return
+        }
+
+        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        guard keyCode == Self.escapeKeyCode else {
+            resetEscapeSequence()
+            return
+        }
+
+        let now = ProcessInfo.processInfo.systemUptime
+        if let lastEscapePressTime,
+           now - lastEscapePressTime > Self.escapeSequenceMaximumGap {
+            escapePressCount = 0
+        }
+
+        escapePressCount += 1
+        lastEscapePressTime = now
+        debugLog("[MouseDiagnostic] escapeUnlockProgress count=\(escapePressCount)")
+
+        guard escapePressCount >= Self.escapeUnlockCount else {
+            return
+        }
+
+        cancelPendingCapture(reason: "escape")
+        deactivateCapture(reason: "escape")
+    }
+
+    private func resetEscapeSequence() {
+        escapePressCount = 0
+        lastEscapePressTime = nil
     }
 
     private func log(event: CGEvent, type: CGEventType, swallowed: Bool) {
@@ -287,10 +481,10 @@ final class MouseDiagnosticController {
 
         debugLog(
             String(
-                format: "[MouseDiagnostic] type=%@ swallowed=%@ captureTest=%@ dx=%lld dy=%lld button=%lld scrollX=%lld scrollY=%lld loc=(%.1f,%.1f) flags=%llu eventAge=%.3fms",
+                format: "[MouseDiagnostic] type=%@ swallowed=%@ capture=%@ dx=%lld dy=%lld button=%lld scrollX=%lld scrollY=%lld loc=(%.1f,%.1f) flags=%llu eventAge=%.3fms",
                 name(for: type),
                 swallowed ? "true" : "false",
-                isCaptureTestEnabled ? "true" : "false",
+                isCaptureActive ? "true" : "false",
                 deltaX,
                 deltaY,
                 button,
@@ -328,6 +522,8 @@ final class MouseDiagnosticController {
             return "otherMouseDragged"
         case .scrollWheel:
             return "scrollWheel"
+        case .keyDown:
+            return "keyDown"
         case .tapDisabledByTimeout:
             return "tapDisabledByTimeout"
         case .tapDisabledByUserInput:

@@ -60,6 +60,7 @@ final class GamepadContentView: NSView {
     private final class HeaderBarView: NSView {
         var onToggleMinimize: (() -> Void)?
         var onHideOverlay: (() -> Void)?
+        var onToggleCapture: (() -> Void)?
         var menuProvider: (() -> NSMenu?)?
         var onDragBegan: ((NSEvent) -> Void)?
         var onDragChanged: ((NSEvent) -> Void)?
@@ -68,6 +69,8 @@ final class GamepadContentView: NSView {
         private var foregroundColor: NSColor = .white
         private let closeButton = NSButton(frame: .zero)
         private let minimizeButton = NSButton(frame: .zero)
+        private let captureButton = NSButton(frame: .zero)
+        private let captureCountdownLabel = NSTextField(labelWithString: "")
         private let menuButton = NSButton(frame: .zero)
         private let titleLabel = NSTextField(labelWithString: "")
         private let separatorView = NSView(frame: .zero)
@@ -105,11 +108,30 @@ final class GamepadContentView: NSView {
         func setMinimized(_ minimized: Bool) {
             minimizeButton.title = minimized ? "+" : "−"
             closeButton.isHidden = minimized
+            captureButton.isHidden = minimized
+            captureCountdownLabel.isHidden = minimized
             titleLabel.isHidden = minimized
             menuButton.isHidden = minimized
             separatorView.isHidden = minimized
             applyForegroundColor()
             needsLayout = true
+        }
+
+        func updateCaptureState(isPending: Bool, isActive: Bool, countdown: Int) {
+            captureButton.title = (isPending || isActive) ? "􀎥" : "􀎡"
+            captureCountdownLabel.stringValue = isPending ? "\(max(0, countdown))" : ""
+            captureCountdownLabel.isHidden = closeButton.isHidden || !isPending
+            applyTitleColor(to: captureButton)
+            needsLayout = true
+        }
+
+        func handleVirtualPrimaryUp(at point: NSPoint) -> Bool {
+            guard !captureButton.isHidden, captureButton.frame.contains(point) else {
+                return false
+            }
+
+            onToggleCapture?()
+            return true
         }
 
         private func setup() {
@@ -129,6 +151,21 @@ final class GamepadContentView: NSView {
             minimizeButton.action = #selector(handleToggleMinimize)
             minimizeButton.setButtonType(.momentaryChange)
             addSubview(minimizeButton)
+
+            captureButton.title = "􀎡"
+            captureButton.font = NSFont.systemFont(ofSize: 16, weight: .regular)
+            captureButton.isBordered = false
+            captureButton.contentTintColor = .white
+            captureButton.target = self
+            captureButton.action = #selector(handleToggleCapture)
+            captureButton.setButtonType(.momentaryChange)
+            addSubview(captureButton)
+
+            captureCountdownLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
+            captureCountdownLabel.textColor = .white
+            captureCountdownLabel.alignment = .center
+            captureCountdownLabel.isHidden = true
+            addSubview(captureCountdownLabel)
 
             if let menuImage = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "Menu") {
                 menuButton.image = menuImage
@@ -160,12 +197,15 @@ final class GamepadContentView: NSView {
         private func applyForegroundColor() {
             closeButton.contentTintColor = foregroundColor
             minimizeButton.contentTintColor = foregroundColor
+            captureButton.contentTintColor = foregroundColor
+            captureCountdownLabel.textColor = foregroundColor
             menuButton.contentTintColor = foregroundColor
             titleLabel.textColor = foregroundColor
             separatorView.layer?.backgroundColor = foregroundColor.withAlphaComponent(0.12).cgColor
 
             applyTitleColor(to: closeButton)
             applyTitleColor(to: minimizeButton)
+            applyTitleColor(to: captureButton)
             if menuButton.image == nil {
                 applyTitleColor(to: menuButton)
             }
@@ -196,7 +236,14 @@ final class GamepadContentView: NSView {
                 closeButton.frame = NSRect(x: 10, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
                 minimizeButton.frame = NSRect(x: closeButton.frame.maxX + 8, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
                 menuButton.frame = NSRect(x: bounds.width - 34, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
-                let titleInset = max(minimizeButton.frame.maxX + 18, bounds.maxX - menuButton.frame.minX + 18)
+                captureButton.frame = NSRect(x: menuButton.frame.minX - 30, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
+                if captureCountdownLabel.isHidden {
+                    captureCountdownLabel.frame = .zero
+                } else {
+                    captureCountdownLabel.frame = NSRect(x: captureButton.frame.minX - 28, y: bounds.midY - 9, width: 24, height: 18)
+                }
+                let rightControlMinX = captureCountdownLabel.isHidden ? captureButton.frame.minX : captureCountdownLabel.frame.minX
+                let titleInset = max(minimizeButton.frame.maxX + 18, bounds.maxX - rightControlMinX + 18)
                 titleLabel.frame = NSRect(x: titleInset, y: bounds.midY - 10, width: max(50, bounds.width - (titleInset * 2)), height: 20)
                 separatorView.frame = NSRect(x: 12, y: 0, width: bounds.width - 24, height: 1)
                 separatorView.isHidden = bounds.height <= 32
@@ -209,6 +256,10 @@ final class GamepadContentView: NSView {
 
         @objc private func handleHideOverlay() {
             onHideOverlay?()
+        }
+
+        @objc private func handleToggleCapture() {
+            onToggleCapture?()
         }
 
         @objc private func handleMenu() {
@@ -290,6 +341,10 @@ final class GamepadContentView: NSView {
     private var isMinimized = false
     private var capturedJoystickButton: GamepadButton?
     private var activeDwellButton: GamepadButton?
+    private var virtualCursorPoint: NSPoint?
+    private weak var virtualPrimaryButtonView: GamepadButtonView?
+    private weak var virtualSecondaryButtonView: GamepadButtonView?
+    private var captureStateObserver: NSObjectProtocol?
 
     // Drag state is stored in screen coordinates so moving the overlay works across Spaces and displays.
     private var dragStartWindowOrigin: NSPoint = .zero
@@ -308,9 +363,17 @@ final class GamepadContentView: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    deinit {
+        if let captureStateObserver {
+            NotificationCenter.default.removeObserver(captureStateObserver)
+        }
+    }
+
     // MARK: - Profile Reloading
 
     func reload(profile: Profile, minimized: Bool) {
+        MouseDiagnosticController.shared.cancelCapture(reason: "profileReload")
+        releaseAllVirtualInputs()
         currentProfile = profile
         isMinimized = minimized
         updateBackgroundColor()
@@ -321,6 +384,10 @@ final class GamepadContentView: NSView {
     }
 
     func setMinimized(_ minimized: Bool) {
+        if minimized {
+            MouseDiagnosticController.shared.cancelCapture(reason: "minimize")
+            releaseAllVirtualInputs()
+        }
         isMinimized = minimized
         updatePointerLocationVisibility(atScreenPoint: NSEvent.mouseLocation)
         updateHeader()
@@ -329,6 +396,8 @@ final class GamepadContentView: NSView {
     }
 
     func releaseAllInputs() {
+        MouseDiagnosticController.shared.cancelCapture(reason: "releaseAllInputs")
+        releaseAllVirtualInputs()
         releaseAllButtonsForRebuild()
     }
 
@@ -345,6 +414,10 @@ final class GamepadContentView: NSView {
 
         let windowPoint = window.convertPoint(fromScreen: screenPoint)
         let contentPoint = convert(windowPoint, from: nil)
+        syncButtonHover(atContentPoint: contentPoint)
+    }
+
+    private func syncButtonHover(atContentPoint contentPoint: NSPoint) {
         guard bounds.contains(contentPoint), padSurface.frame.contains(contentPoint) else {
             clearButtonHover()
             return
@@ -407,6 +480,9 @@ final class GamepadContentView: NSView {
         headerBar.onHideOverlay = { [weak self] in
             self?.onHideOverlay?()
         }
+        headerBar.onToggleCapture = {
+            MouseDiagnosticController.shared.toggleCapture()
+        }
         headerBar.menuProvider = { [weak self] in
             self?.menuProvider?()
         }
@@ -433,12 +509,18 @@ final class GamepadContentView: NSView {
         addSubview(padSurface)
 
         addSubview(pointerLocationView)
+        configureVirtualCursorCapture()
     }
 
     private func updateHeader() {
         headerBar.updateTitle(currentProfile.name)
         headerBar.updateForegroundColor(headerForegroundColor())
         headerBar.setMinimized(isMinimized)
+        headerBar.updateCaptureState(
+            isPending: MouseDiagnosticController.shared.isCapturePending,
+            isActive: MouseDiagnosticController.shared.isCaptureActive,
+            countdown: MouseDiagnosticController.shared.captureCountdownSeconds
+        )
     }
 
     private func headerForegroundColor() -> NSColor {
@@ -484,6 +566,14 @@ final class GamepadContentView: NSView {
     }
 
     private func updatePointerLocationVisibility(atScreenPoint screenPoint: NSPoint) {
+        if MouseDiagnosticController.shared.isCaptureActive, !isMinimized {
+            ensureVirtualCursorPoint()
+            if let virtualCursorPoint {
+                pointerLocationView.show(centeredAt: virtualCursorPoint)
+                return
+            }
+        }
+
         guard currentProfile.showPointerLocation, !isMinimized, capturedJoystickButton == nil, let window else {
             pointerLocationView.hide()
             return
@@ -497,6 +587,242 @@ final class GamepadContentView: NSView {
         }
 
         pointerLocationView.show(centeredAt: contentPoint)
+    }
+
+    // MARK: - Virtual Cursor Capture
+
+    private func configureVirtualCursorCapture() {
+        let controller = MouseDiagnosticController.shared
+        controller.onVirtualMouseDelta = { [weak self] delta in
+            DispatchQueue.main.async {
+                self?.moveVirtualCursor(by: delta)
+            }
+        }
+        controller.onVirtualMouseButton = { [weak self] button, isDown in
+            DispatchQueue.main.async {
+                self?.routeVirtualMouseButton(button, isDown: isDown)
+            }
+        }
+        controller.onVirtualScroll = { [weak self] delta in
+            DispatchQueue.main.async {
+                self?.routeVirtualScroll(delta)
+            }
+        }
+        controller.onCaptureDeactivated = { [weak self] in
+            DispatchQueue.main.async {
+                self?.releaseAllVirtualInputs()
+                self?.virtualCursorPoint = nil
+                self?.updateHeader()
+                self?.updatePointerLocationVisibility(atScreenPoint: NSEvent.mouseLocation)
+            }
+        }
+
+        captureStateObserver = NotificationCenter.default.addObserver(
+            forName: MouseDiagnosticController.stateDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+
+            if MouseDiagnosticController.shared.isCaptureActive {
+                self.ensureVirtualCursorPoint()
+            } else if !MouseDiagnosticController.shared.isCapturePending {
+                self.releaseAllVirtualInputs()
+            }
+
+            self.updateHeader()
+            self.updatePointerLocationVisibility(atScreenPoint: NSEvent.mouseLocation)
+        }
+    }
+
+    private func ensureVirtualCursorPoint() {
+        guard virtualCursorPoint == nil else {
+            virtualCursorPoint = virtualCursorPoint.map(clampedVirtualCursorPoint)
+            return
+        }
+
+        if let window {
+            let windowPoint = window.convertPoint(fromScreen: NSEvent.mouseLocation)
+            let contentPoint = convert(windowPoint, from: nil)
+            if bounds.contains(contentPoint) {
+                virtualCursorPoint = clampedVirtualCursorPoint(contentPoint)
+                return
+            }
+        }
+
+        virtualCursorPoint = clampedVirtualCursorPoint(NSPoint(x: padSurface.frame.midX, y: padSurface.frame.midY))
+    }
+
+    private func moveVirtualCursor(by delta: CGPoint) {
+        guard MouseDiagnosticController.shared.isCaptureActive, !isMinimized else {
+            return
+        }
+
+        ensureVirtualCursorPoint()
+        guard let currentPoint = virtualCursorPoint else {
+            return
+        }
+
+        let nextPoint = clampedVirtualCursorPoint(NSPoint(
+            x: currentPoint.x + delta.x,
+            y: currentPoint.y + delta.y
+        ))
+        virtualCursorPoint = nextPoint
+        pointerLocationView.show(centeredAt: nextPoint)
+        syncButtonHover(atContentPoint: nextPoint)
+
+        if let virtualPrimaryButtonView,
+           let event = syntheticMouseEvent(type: .leftMouseDragged, atContentPoint: nextPoint) {
+            virtualPrimaryButtonView.mouseDragged(with: event)
+        }
+
+        if let virtualSecondaryButtonView,
+           let event = syntheticMouseEvent(type: .rightMouseDragged, atContentPoint: nextPoint) {
+            virtualSecondaryButtonView.rightMouseDragged(with: event)
+        }
+    }
+
+    private func routeVirtualMouseButton(_ button: MouseDiagnosticController.VirtualMouseButton, isDown: Bool) {
+        guard MouseDiagnosticController.shared.isCaptureActive, !isMinimized else {
+            return
+        }
+
+        ensureVirtualCursorPoint()
+        guard let virtualCursorPoint else {
+            return
+        }
+
+        if button == .left,
+           !isDown,
+           headerBar.frame.contains(virtualCursorPoint),
+           headerBar.handleVirtualPrimaryUp(at: headerBar.convert(virtualCursorPoint, from: self)) {
+            return
+        }
+
+        let targetView = buttonView(atContentPoint: virtualCursorPoint)
+        switch (button, isDown) {
+        case (.left, true):
+            guard let targetView,
+                  let event = syntheticMouseEvent(type: .leftMouseDown, atContentPoint: virtualCursorPoint) else {
+                return
+            }
+
+            virtualPrimaryButtonView = targetView
+            targetView.mouseDown(with: event)
+
+        case (.left, false):
+            guard let targetView = virtualPrimaryButtonView ?? targetView,
+                  let event = syntheticMouseEvent(type: .leftMouseUp, atContentPoint: virtualCursorPoint) else {
+                virtualPrimaryButtonView = nil
+                return
+            }
+
+            targetView.mouseUp(with: event)
+            virtualPrimaryButtonView = nil
+
+        case (.right, true):
+            guard let targetView,
+                  let event = syntheticMouseEvent(type: .rightMouseDown, atContentPoint: virtualCursorPoint) else {
+                return
+            }
+
+            virtualSecondaryButtonView = targetView
+            targetView.rightMouseDown(with: event)
+
+        case (.right, false):
+            guard let targetView = virtualSecondaryButtonView ?? targetView,
+                  let event = syntheticMouseEvent(type: .rightMouseUp, atContentPoint: virtualCursorPoint) else {
+                virtualSecondaryButtonView = nil
+                return
+            }
+
+            targetView.rightMouseUp(with: event)
+            virtualSecondaryButtonView = nil
+        }
+    }
+
+    private func routeVirtualScroll(_ delta: CGFloat) {
+        guard MouseDiagnosticController.shared.isCaptureActive else {
+            return
+        }
+
+        ensureVirtualCursorPoint()
+        guard let virtualCursorPoint,
+              let targetView = buttonView(atContentPoint: virtualCursorPoint),
+              targetView.handleVirtualScroll(delta: delta) else {
+            debugLog("[ContentView] virtualScroll swallowed delta=\(delta)")
+            return
+        }
+
+        debugLog("[ContentView] virtualScroll routed delta=\(delta) button=\(targetView.button.rawValue)")
+    }
+
+    private func releaseAllVirtualInputs() {
+        var released = Set<ObjectIdentifier>()
+
+        if let virtualPrimaryButtonView {
+            released.insert(ObjectIdentifier(virtualPrimaryButtonView))
+            virtualPrimaryButtonView.releaseIfNeeded()
+        }
+
+        if let virtualSecondaryButtonView,
+           !released.contains(ObjectIdentifier(virtualSecondaryButtonView)) {
+            virtualSecondaryButtonView.releaseIfNeeded()
+        }
+
+        virtualPrimaryButtonView = nil
+        virtualSecondaryButtonView = nil
+        clearButtonHover()
+    }
+
+    private func buttonView(atContentPoint contentPoint: NSPoint) -> GamepadButtonView? {
+        guard bounds.contains(contentPoint), padSurface.frame.contains(contentPoint) else {
+            return nil
+        }
+
+        let padPoint = padSurface.convert(contentPoint, from: self)
+        for button in currentProfile.orderedButtonIDs.reversed() {
+            guard let view = buttonViews[button], !view.isHidden else {
+                continue
+            }
+
+            let localPoint = view.convert(padPoint, from: padSurface)
+            if view.hitTest(localPoint) != nil {
+                return view
+            }
+        }
+
+        return nil
+    }
+
+    private func syntheticMouseEvent(type: NSEvent.EventType, atContentPoint contentPoint: NSPoint) -> NSEvent? {
+        guard let window else {
+            return nil
+        }
+
+        return NSEvent.mouseEvent(
+            with: type,
+            location: convert(contentPoint, to: nil),
+            modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 0,
+            clickCount: 1,
+            pressure: 1
+        )
+    }
+
+    private func clampedVirtualCursorPoint(_ point: NSPoint) -> NSPoint {
+        let targetBounds = isMinimized ? bounds : padSurface.frame.union(headerBar.frame).intersection(bounds)
+        guard !targetBounds.isEmpty else {
+            return NSPoint(x: bounds.midX, y: bounds.midY)
+        }
+
+        return NSPoint(
+            x: min(max(point.x, targetBounds.minX), targetBounds.maxX),
+            y: min(max(point.y, targetBounds.minY), targetBounds.maxY)
+        )
     }
 
     // MARK: - Button Construction

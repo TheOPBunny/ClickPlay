@@ -535,6 +535,41 @@ final class GamepadButtonView: NSView {
     }
 
     @discardableResult
+    func handleVirtualScroll(delta: CGFloat) -> Bool {
+        guard config.type == .joystick, delta != 0 else {
+            return false
+        }
+
+        let direction: JoystickScrollDirection = delta > 0 ? .up : .down
+        let action = joystickScrollAction(for: direction)
+        switch action.kind {
+        case .off:
+            return false
+        case .axisLock:
+            guard config.joystick.axisLockMode == .scrollWheel else {
+                return false
+            }
+        case .keyCombo:
+            break
+        }
+
+        guard shouldActivateJoystickScroll(direction) else {
+            return true
+        }
+
+        switch action.kind {
+        case .off:
+            break
+        case .axisLock:
+            toggleJoystickAxisLock(for: direction)
+        case .keyCombo:
+            triggerJoystickScrollInput(for: direction)
+        }
+
+        return true
+    }
+
+    @discardableResult
     func syncPolledHover(at point: CGPoint) -> Bool {
         let hovered = containsInteractivePoint(point)
         setHovered(hovered, animated: false)
