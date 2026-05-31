@@ -643,6 +643,11 @@ final class GamepadContentView: NSView {
 
     private func updatePointerLocationVisibility(atScreenPoint screenPoint: NSPoint) {
         if MouseDiagnosticController.shared.isCaptureActive, !isMinimized {
+            guard capturedJoystickButton == nil else {
+                pointerLocationView.hide()
+                return
+            }
+
             ensureVirtualCursorPoint()
             if let virtualCursorPoint {
                 pointerLocationView.show(centeredAt: virtualCursorPoint)
