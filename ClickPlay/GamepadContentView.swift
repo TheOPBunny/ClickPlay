@@ -404,6 +404,7 @@ final class GamepadContentView: NSView {
     private var virtualCursorPoint: NSPoint?
     private weak var virtualPrimaryButtonView: GamepadButtonView?
     private weak var virtualSecondaryButtonView: GamepadButtonView?
+    private weak var virtualJoystickCaptureView: GamepadButtonView?
     private var captureStateObserver: NSObjectProtocol?
 
     // Drag state is stored in screen coordinates so moving the overlay works across Spaces and displays.
@@ -723,6 +724,12 @@ final class GamepadContentView: NSView {
             return
         }
 
+        if let virtualJoystickCaptureView {
+            virtualJoystickCaptureView.updateVirtualJoystickCapture(delta: delta)
+            onVirtualCursorActivity?()
+            return
+        }
+
         ensureVirtualCursorPoint()
         guard let currentPoint = virtualCursorPoint else {
             return
@@ -759,6 +766,19 @@ final class GamepadContentView: NSView {
             return
         }
 
+        if let virtualJoystickCaptureView {
+            switch (button, isDown) {
+            case (.left, true), (.left, false):
+                virtualJoystickCaptureView.handleVirtualJoystickLeftClick(isDown: isDown)
+            case (.right, true):
+                break
+            case (.right, false):
+                virtualJoystickCaptureView.releaseVirtualJoystickCapture()
+                self.virtualJoystickCaptureView = nil
+            }
+            return
+        }
+
         if button == .left,
            !isDown,
            headerBar.frame.contains(virtualCursorPoint),
@@ -769,11 +789,19 @@ final class GamepadContentView: NSView {
         let targetView = buttonView(atContentPoint: virtualCursorPoint)
         switch (button, isDown) {
         case (.left, true):
-            guard let targetView,
-                  let event = syntheticMouseEvent(type: .leftMouseDown, atContentPoint: virtualCursorPoint) else {
+            guard let targetView else {
                 return
             }
 
+            if targetView.beginVirtualJoystickCapture() {
+                virtualJoystickCaptureView = targetView
+                virtualPrimaryButtonView = nil
+                return
+            }
+
+            guard let event = syntheticMouseEvent(type: .leftMouseDown, atContentPoint: virtualCursorPoint) else {
+                return
+            }
             virtualPrimaryButtonView = targetView
             targetView.mouseDown(with: event)
 
@@ -828,9 +856,16 @@ final class GamepadContentView: NSView {
     private func releaseAllVirtualInputs() {
         var released = Set<ObjectIdentifier>()
 
+        if let virtualJoystickCaptureView {
+            released.insert(ObjectIdentifier(virtualJoystickCaptureView))
+            virtualJoystickCaptureView.releaseIfNeeded()
+        }
+
         if let virtualPrimaryButtonView {
-            released.insert(ObjectIdentifier(virtualPrimaryButtonView))
-            virtualPrimaryButtonView.releaseIfNeeded()
+            if !released.contains(ObjectIdentifier(virtualPrimaryButtonView)) {
+                released.insert(ObjectIdentifier(virtualPrimaryButtonView))
+                virtualPrimaryButtonView.releaseIfNeeded()
+            }
         }
 
         if let virtualSecondaryButtonView,
@@ -838,6 +873,7 @@ final class GamepadContentView: NSView {
             virtualSecondaryButtonView.releaseIfNeeded()
         }
 
+        virtualJoystickCaptureView = nil
         virtualPrimaryButtonView = nil
         virtualSecondaryButtonView = nil
         clearButtonHover()

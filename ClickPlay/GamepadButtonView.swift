@@ -179,6 +179,7 @@ final class GamepadButtonView: NSView {
     private var isDwellActionPressed = false
     private var isDwellActionActive = false
     private var isJoystickCaptured = false
+    private var isVirtualJoystickCaptured = false
     private var isJoystickDragActive = false
     private var joystickOffset = CGPoint.zero
     private var activeJoystickDirection: JoystickDirection?
@@ -807,11 +808,76 @@ final class GamepadButtonView: NSView {
 
     // MARK: - Joystick Capture
 
+    @discardableResult
+    func beginVirtualJoystickCapture() -> Bool {
+        guard isJoystickCaptureMode else {
+            return false
+        }
+
+        guard !isJoystickCaptured else {
+            return isVirtualJoystickCaptured
+        }
+
+        resetJoystickCaptureStartState()
+        isJoystickCaptured = true
+        isVirtualJoystickCaptured = true
+        onJoystickCaptureChanged?(true)
+        updateAppearance(animated: true)
+        debugLog("[Button \(button.rawValue)] virtualJoystickCaptureStarted")
+        return true
+    }
+
+    func updateVirtualJoystickCapture(delta: CGPoint) {
+        guard isVirtualJoystickCaptured else {
+            return
+        }
+
+        updateJoystickCapture(deltaX: delta.x, deltaY: delta.y)
+    }
+
+    func handleVirtualJoystickLeftClick(isDown: Bool) {
+        guard isVirtualJoystickCaptured else {
+            return
+        }
+
+        if isDown {
+            handlePressStarted(source: .joystickLeftClick)
+        } else {
+            handlePressEnded(source: .joystickLeftClick)
+        }
+    }
+
+    func releaseVirtualJoystickCapture() {
+        guard isVirtualJoystickCaptured else {
+            return
+        }
+
+        releaseJoystickCapture(warpCursorToCenter: false)
+    }
+
     private func beginJoystickCapture(with event: NSEvent) {
         guard !isJoystickCaptured else {
             return
         }
 
+        resetJoystickCaptureStartState()
+        guard installJoystickEventMonitors() else {
+            updateAppearance(animated: true)
+            return
+        }
+
+        isJoystickCaptured = true
+        isVirtualJoystickCaptured = false
+        CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
+        hideJoystickCursorIfNeeded()
+        parkJoystickCursor()
+        scheduleJoystickCursorParking()
+        onJoystickCaptureChanged?(true)
+        updateAppearance(animated: true)
+        debugLog("[Button \(button.rawValue)] joystickCaptureStarted")
+    }
+
+    private func resetJoystickCaptureStartState() {
         joystickOffset = .zero
         activeJoystickDirection = nil
         activeJoystickBindings = []
@@ -824,19 +890,6 @@ final class GamepadButtonView: NSView {
         cancelJoystickAxisLockTimer()
         joystickIdleReturnGeneration &+= 1
         lastJoystickMovementTime = ProcessInfo.processInfo.systemUptime
-        guard installJoystickEventMonitors() else {
-            updateAppearance(animated: true)
-            return
-        }
-
-        isJoystickCaptured = true
-        CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
-        hideJoystickCursorIfNeeded()
-        parkJoystickCursor()
-        scheduleJoystickCursorParking()
-        onJoystickCaptureChanged?(true)
-        updateAppearance(animated: true)
-        debugLog("[Button \(button.rawValue)] joystickCaptureStarted")
     }
 
     private func updateJoystickCapture(deltaX: CGFloat, deltaY: CGFloat) {
@@ -861,6 +914,7 @@ final class GamepadButtonView: NSView {
 
     private func resetJoystickRuntimeState() {
         isJoystickDragActive = false
+        isVirtualJoystickCaptured = false
         joystickOffset = .zero
         activeJoystickDirection = nil
         activeJoystickBindings = []
@@ -962,16 +1016,22 @@ final class GamepadButtonView: NSView {
         }
 
         isJoystickCaptured = false
+        let wasVirtualJoystickCaptured = isVirtualJoystickCaptured
+        isVirtualJoystickCaptured = false
         isJoystickCaptureReleasePending = false
         pendingJoystickCaptureReleaseShouldWarp = false
-        removeJoystickEventMonitors()
-        if warpCursorToCenter {
-            warpCursorToJoystickCenter()
+
+        if !wasVirtualJoystickCaptured {
+            removeJoystickEventMonitors()
+            if warpCursorToCenter {
+                warpCursorToJoystickCenter()
+            }
+            reassociateMouseAndCursorAfterJoystickCaptureRelease()
+            unhideJoystickCursorIfNeeded()
         }
-        reassociateMouseAndCursorAfterJoystickCaptureRelease()
-        unhideJoystickCursorIfNeeded()
+
         onJoystickCaptureChanged?(false)
-        debugLog("[Button \(button.rawValue)] joystickCaptureEnded")
+        debugLog("[Button \(button.rawValue)] \(wasVirtualJoystickCaptured ? "virtualJoystickCaptureEnded" : "joystickCaptureEnded")")
     }
 
     private func handleJoystickMouseDown(with event: NSEvent) {
