@@ -49,6 +49,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     private var isJoystickCaptureActive = false
     private var globalMouseMonitor: Any?
     private var localMouseMonitor: Any?
+    private var loadedActiveProfileID: UUID?
     private let dwellActionController = DwellActionController()
 
     convenience init() {
@@ -68,6 +69,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
+        loadedActiveProfileID = ProfileStore.shared.activeProfileID
 
         level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.screenSaverWindow)))
         isOpaque = false
@@ -195,15 +197,24 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     }
 
     func reloadProfile() {
-        var profile = ProfileStore.shared.activeResolvedProfile
-        profile.name = ProfileStore.shared.activeProfile.name
+        let store = ProfileStore.shared
+        let activeProfileID = store.activeProfileID
+        let preservesCapture = MouseDiagnosticController.shared.hasCaptureState
+            && loadedActiveProfileID == activeProfileID
+        var profile = store.activeResolvedProfile
+        profile.name = store.activeProfile.name
         reconcileActiveDwellAction(with: profile)
         updateResizeConstraints()
         resizeForCurrentState(using: profile)
-        (contentView as? GamepadContentView)?.reload(profile: profile, minimized: isMinimized)
+        (contentView as? GamepadContentView)?.reload(
+            profile: profile,
+            minimized: isMinimized,
+            preservesCapture: preservesCapture
+        )
         (contentView as? GamepadContentView)?.setActiveDwellButton(dwellActionController.activeButton)
         applyCurrentAlpha(animated: false)
         resetInactivityTimer()
+        loadedActiveProfileID = activeProfileID
     }
 
     @objc private func hideOverlay() {

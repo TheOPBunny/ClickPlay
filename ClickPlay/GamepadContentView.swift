@@ -432,8 +432,11 @@ final class GamepadContentView: NSView {
 
     // MARK: - Profile Reloading
 
-    func reload(profile: Profile, minimized: Bool) {
-        MouseDiagnosticController.shared.cancelCapture(reason: "profileReload")
+    func reload(profile: Profile, minimized: Bool, preservesCapture: Bool = false) {
+        if !preservesCapture {
+            MouseDiagnosticController.shared.cancelCapture(reason: "profileReload")
+        }
+
         releaseAllVirtualInputs()
         currentProfile = profile
         isMinimized = minimized
@@ -442,6 +445,13 @@ final class GamepadContentView: NSView {
         updateHeader()
         updateLayout()
         buildButtons(profile: profile)
+
+        if MouseDiagnosticController.shared.isCaptureActive {
+            ensureVirtualCursorPoint()
+            if let virtualCursorPoint {
+                syncButtonHover(atContentPoint: virtualCursorPoint)
+            }
+        }
     }
 
     func setMinimized(_ minimized: Bool) {
