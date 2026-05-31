@@ -11,7 +11,6 @@ final class MouseDiagnosticController {
 
     static let stateDidChange = Notification.Name("MouseDiagnosticControllerStateDidChange")
     private static let captureStartDelay: TimeInterval = 10
-    private static let captureTimeout: TimeInterval = 180
     private static let temporaryReleaseDuration: TimeInterval = 15
     private static let escapeUnlockCount = 5
     private static let escapeSequenceMaximumGap: TimeInterval = 2
@@ -35,7 +34,6 @@ final class MouseDiagnosticController {
     private var keyboardEventTap: CFMachPort?
     private var keyboardEventTapRunLoopSource: CFRunLoopSource?
     private var captureStartTimer: Timer?
-    private var captureWatchdogTimer: Timer?
     private var temporaryReleaseTimer: Timer?
     private var escapePressCount = 0
     private var lastEscapePressTime: TimeInterval?
@@ -203,21 +201,14 @@ final class MouseDiagnosticController {
         isCaptureActive = true
         captureCountdownSeconds = 0
         resetEscapeSequence()
-        scheduleCaptureWatchdogTimer()
-        debugLog("[MouseDiagnostic] captureEnabled timeoutSeconds=\(Self.captureTimeout)")
+        debugLog("[MouseDiagnostic] captureEnabled")
         NotificationCenter.default.post(name: Self.stateDidChange, object: self)
         return true
     }
 
     private func deactivateCapture(reason: String) {
-        guard isCaptureActive else {
-            captureWatchdogTimer?.invalidate()
-            captureWatchdogTimer = nil
-            return
-        }
+        guard isCaptureActive else { return }
 
-        captureWatchdogTimer?.invalidate()
-        captureWatchdogTimer = nil
         isCaptureActive = false
         resetEscapeSequence()
         debugLog("[MouseDiagnostic] captureDisabled reason=\(reason)")
@@ -233,8 +224,6 @@ final class MouseDiagnosticController {
             return false
         }
 
-        captureWatchdogTimer?.invalidate()
-        captureWatchdogTimer = nil
         isCaptureActive = false
         isCaptureTemporarilyReleased = true
         temporaryReleaseCountdownSeconds = Int(Self.temporaryReleaseDuration)
@@ -307,20 +296,6 @@ final class MouseDiagnosticController {
         }
         RunLoop.main.add(timer, forMode: .common)
         temporaryReleaseTimer = timer
-    }
-
-    private func scheduleCaptureWatchdogTimer() {
-        captureWatchdogTimer?.invalidate()
-        let timer = Timer(timeInterval: Self.captureTimeout, repeats: false) { [weak self] _ in
-            guard let self, self.isCaptureActive else {
-                return
-            }
-
-            errorLog("[MouseDiagnostic] captureWatchdogReleased timeoutSeconds=\(Self.captureTimeout)")
-            self.deactivateCapture(reason: "watchdogTimeout")
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        captureWatchdogTimer = timer
     }
 
     @discardableResult
