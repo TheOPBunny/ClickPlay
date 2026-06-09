@@ -315,6 +315,8 @@ final class ProfileStore {
         resolvedProfile.displayPadWidth = profile.displayPadWidth
         resolvedProfile.displayPadHeight = profile.displayPadHeight
         resolvedProfile.showPointerLocation = profile.showPointerLocation
+        resolvedProfile.mouseCaptureArmDelaySeconds = profile.mouseCaptureArmDelaySeconds
+        resolvedProfile.mouseCaptureTemporaryReleaseSeconds = profile.mouseCaptureTemporaryReleaseSeconds
         return resolvedProfile
     }
 

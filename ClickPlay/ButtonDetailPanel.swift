@@ -39,6 +39,8 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
     var onGroupColorChanged: ((UUID, String) -> Void)?
     var onProfileBackgroundColorChanged: ((String) -> Void)?
     var onProfileBackgroundFrostedGlassIntensityChanged: ((Int) -> Void)?
+    var onProfileMouseCaptureArmDelayChanged: ((Int) -> Void)?
+    var onProfileMouseCaptureTemporaryReleaseChanged: ((Int) -> Void)?
 
     // Current selection context. Exactly one of button/group/profile mode drives the visible form sections.
     private var config: ButtonConfig?
@@ -50,6 +52,10 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
     private let profileBackgroundColorWell = NSColorWell()
     private let profileBackgroundResetButton = NSButton(title: "Reset", target: nil, action: nil)
     private let profileBackgroundFrostedGlassPopup = NSPopUpButton()
+    private let profileMouseCaptureArmDelayField = NSTextField()
+    private let profileMouseCaptureTemporaryReleaseField = NSTextField()
+    private var profileMouseCaptureArmDelayRow: NSStackView?
+    private var profileMouseCaptureTemporaryReleaseRow: NSStackView?
     private let header = NSStackView()
     private let titleLabel = NSTextField(labelWithString: "Select a button")
     private let scrollView = NSScrollView()
@@ -164,11 +170,20 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
     func clear() {
         loadProfileSettings(
             backgroundColorHex: Profile.defaultBackgroundColorHex,
-            frostedGlassIntensity: Profile.defaultBackgroundFrostedGlassIntensity
+            frostedGlassIntensity: Profile.defaultBackgroundFrostedGlassIntensity,
+            mouseCaptureArmDelaySeconds: Profile.defaultMouseCaptureArmDelaySeconds,
+            mouseCaptureTemporaryReleaseSeconds: Profile.defaultMouseCaptureTemporaryReleaseSeconds,
+            showsMouseCaptureTiming: true
         )
     }
 
-    func loadProfileSettings(backgroundColorHex: String, frostedGlassIntensity: Int) {
+    func loadProfileSettings(
+        backgroundColorHex: String,
+        frostedGlassIntensity: Int,
+        mouseCaptureArmDelaySeconds: Int,
+        mouseCaptureTemporaryReleaseSeconds: Int,
+        showsMouseCaptureTiming: Bool
+    ) {
         config = nil
         button = nil
         groupID = nil
@@ -178,6 +193,10 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         if profileBackgroundFrostedGlassPopup.selectedItem == nil {
             profileBackgroundFrostedGlassPopup.selectItem(withTag: Profile.defaultBackgroundFrostedGlassIntensity)
         }
+        profileMouseCaptureArmDelayField.stringValue = "\(max(1, mouseCaptureArmDelaySeconds))"
+        profileMouseCaptureTemporaryReleaseField.stringValue = "\(max(1, mouseCaptureTemporaryReleaseSeconds))"
+        profileMouseCaptureArmDelayRow?.isHidden = !showsMouseCaptureTiming
+        profileMouseCaptureTemporaryReleaseRow?.isHidden = !showsMouseCaptureTiming
         [labelField, labelSizeField, xField, yField, widthField, heightField].forEach { $0.stringValue = "" }
         buttonTypePopup.selectItem(withTag: ButtonType.keyboard.tag)
         systemEventPopup.selectItem(withTag: SystemEvent.brightnessDown.tag)
@@ -378,6 +397,14 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         profileBackgroundFrostedGlassPopup.target = self
         profileBackgroundFrostedGlassPopup.action = #selector(profileBackgroundFrostedGlassChanged)
         populateProfileBackgroundFrostedGlassIntensities()
+        [profileMouseCaptureArmDelayField, profileMouseCaptureTemporaryReleaseField].forEach { field in
+            field.bezelStyle = .roundedBezel
+            field.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+            field.widthAnchor.constraint(equalToConstant: 58).isActive = true
+            field.target = self
+            field.action = #selector(profileMouseCaptureTimingChanged(_:))
+            field.delegate = self
+        }
 
         widthField.bezelStyle = .roundedBezel
         widthField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
@@ -482,6 +509,19 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         profileFrostedGlassRow.orientation = .horizontal
         profileFrostedGlassRow.alignment = .centerY
         profileFrostedGlassRow.spacing = 8
+        profileMouseCaptureArmDelayRow = NSStackView(views: [
+            profileSettingsLabel("Capture Arm"),
+            makeUnitField(field: profileMouseCaptureArmDelayField, unit: "seconds")
+        ])
+        profileMouseCaptureTemporaryReleaseRow = NSStackView(views: [
+            profileSettingsLabel("Temp Release"),
+            makeUnitField(field: profileMouseCaptureTemporaryReleaseField, unit: "seconds")
+        ])
+        [profileMouseCaptureArmDelayRow, profileMouseCaptureTemporaryReleaseRow].compactMap { $0 }.forEach { row in
+            row.orientation = .horizontal
+            row.alignment = .centerY
+            row.spacing = 8
+        }
 
         profileSettingsStack.orientation = .vertical
         profileSettingsStack.alignment = .leading
@@ -490,6 +530,7 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         profileSettingsStack.addArrangedSubview(profileSettingsTitleLabel)
         profileSettingsStack.addArrangedSubview(profileBackgroundRow)
         profileSettingsStack.addArrangedSubview(profileFrostedGlassRow)
+        [profileMouseCaptureArmDelayRow, profileMouseCaptureTemporaryReleaseRow].compactMap { $0 }.forEach(profileSettingsStack.addArrangedSubview)
 
         contentStack.orientation = .vertical
         contentStack.alignment = .leading
@@ -688,6 +729,13 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         return label
     }
 
+    private func profileSettingsLabel(_ text: String) -> NSTextField {
+        let label = NSTextField(labelWithString: text)
+        label.font = .systemFont(ofSize: 12)
+        label.widthAnchor.constraint(equalToConstant: 86).isActive = true
+        return label
+    }
+
     private func configureKeyRecorderLayout(_ recorder: KeyRecorderButton) {
         recorder.translatesAutoresizingMaskIntoConstraints = false
         let preferredWidthConstraint = recorder.widthAnchor.constraint(equalToConstant: Metrics.keyRecorderWidth)
@@ -814,6 +862,12 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         }
 
         textField.stringValue = textView.string
+        if textField === profileMouseCaptureArmDelayField || textField === profileMouseCaptureTemporaryReleaseField {
+            profileMouseCaptureTimingChanged(textField)
+            endEditing(textField)
+            return true
+        }
+
         emitChange()
         endEditing(textField)
         return true
@@ -836,6 +890,17 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
 
     @objc private func profileBackgroundFrostedGlassChanged() {
         onProfileBackgroundFrostedGlassIntensityChanged?(profileBackgroundFrostedGlassPopup.selectedTag())
+    }
+
+    @objc private func profileMouseCaptureTimingChanged(_ sender: NSTextField) {
+        let value = clampedWholeSeconds(from: sender.stringValue)
+        sender.stringValue = "\(value)"
+
+        if sender === profileMouseCaptureArmDelayField {
+            onProfileMouseCaptureArmDelayChanged?(value)
+        } else if sender === profileMouseCaptureTemporaryReleaseField {
+            onProfileMouseCaptureTemporaryReleaseChanged?(value)
+        }
     }
 
     @objc private func labelSizeStepperChanged() {
@@ -1648,6 +1713,14 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         }
 
         return max(0.1, parsedValue)
+    }
+
+    private func clampedWholeSeconds(from stringValue: String) -> Int {
+        guard let parsedValue = Double(stringValue), parsedValue.isFinite else {
+            return 1
+        }
+
+        return max(1, Int(parsedValue.rounded()))
     }
 
     private func toleranceValue(from stringValue: String, fallback: Double) -> Double {

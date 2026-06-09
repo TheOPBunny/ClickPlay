@@ -3,7 +3,7 @@ import Cocoa
 /// Sidebar controller for top-level profiles and nested layers, including rename, drag/drop, templates, and undo.
 final class ProfileListViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate, NSMenuItemValidation, NSTextFieldDelegate {
 
-    var onProfileSelected: ((Profile) -> Void)?
+    var onProfileSelected: ((Profile, Bool) -> Void)?
     var onProfileSelectionRequested: (() -> Bool)?
     private typealias SidebarClipboard = (profile: Profile, isLayer: Bool)
 
@@ -299,7 +299,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
                 return false
             }
 
-            onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+            onProfileSelected?(ProfileStore.shared.activeResolvedProfile, false)
             return true
         }
 
@@ -312,7 +312,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
             return false
         }
 
-        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile, true)
         return true
     }
 
@@ -344,12 +344,12 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         if let parentID = item.parentID,
            let subProfile = subProfile(with: item.profileID, parentID: parentID) {
             ProfileStore.shared.setActiveSubProfile(subProfile.id, in: parentID)
-            onProfileSelected?(subProfile)
+            onProfileSelected?(subProfile, false)
             return
         }
 
         ProfileStore.shared.setActive(item.profileID)
-        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile, true)
     }
 
     @objc func addBlankProfile() {
@@ -393,7 +393,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
             return
         }
 
-        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile, false)
     }
 
     @objc func saveCurrentAsTemplate() {
@@ -440,7 +440,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
     private func add(profile: Profile) {
         ProfileStore.shared.upsert(profile)
         ProfileStore.shared.setActive(profile.id)
-        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile, true)
     }
 
     private func addSubProfile(fromTemplate: Bool) {
@@ -449,7 +449,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
             return
         }
 
-        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile, false)
     }
 
     @objc func duplicateSelection() {
@@ -461,7 +461,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
             guard ProfileStore.shared.duplicateSubProfile(item.profileID, in: parentID) != nil else {
                 return
             }
-            onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+            onProfileSelected?(ProfileStore.shared.activeResolvedProfile, false)
             return
         }
 
@@ -470,7 +470,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         }
 
         ProfileStore.shared.setActive(duplicatedProfile.id)
-        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile, true)
     }
 
     @objc func deleteSelection() {
@@ -495,7 +495,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
             )
             ProfileStore.shared.deleteSubProfile(item.profileID, in: parentID)
             registerLayerDeleteUndo(undoContext)
-            onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+            onProfileSelected?(ProfileStore.shared.activeResolvedProfile, false)
             return
         }
 
@@ -509,7 +509,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         )
         ProfileStore.shared.delete(item.profileID)
         registerProfileDeleteUndo(undoContext)
-        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile, true)
     }
 
     @objc func cut(_ sender: Any?) {
@@ -538,7 +538,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
             layer.subProfiles = []
             layer.activeSubProfileID = nil
             _ = ProfileStore.shared.addSubProfile(layer, to: parentID)
-            onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+            onProfileSelected?(ProfileStore.shared.activeResolvedProfile, false)
             return
         }
 
@@ -1007,7 +1007,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
             at: context.index,
             activeProfileID: context.activeProfileID
         )
-        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile, true)
         sidebarUndoManager.registerUndo(withTarget: self) { target in
             target.redoProfileDelete(context)
         }
@@ -1016,7 +1016,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
 
     private func redoProfileDelete(_ context: ProfileDeleteUndoContext) {
         ProfileStore.shared.delete(context.profile.id)
-        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile, true)
         registerProfileDeleteUndo(context)
     }
 
@@ -1035,7 +1035,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
             activeProfileID: context.activeProfileID,
             activeSubProfileID: context.activeSubProfileID
         )
-        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile, false)
         sidebarUndoManager.registerUndo(withTarget: self) { target in
             target.redoLayerDelete(context)
         }
@@ -1044,7 +1044,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
 
     private func redoLayerDelete(_ context: LayerDeleteUndoContext) {
         ProfileStore.shared.deleteSubProfile(context.layer.id, in: context.parentID)
-        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        onProfileSelected?(ProfileStore.shared.activeResolvedProfile, false)
         registerLayerDeleteUndo(context)
     }
 

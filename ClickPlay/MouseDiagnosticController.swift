@@ -10,8 +10,6 @@ final class MouseDiagnosticController {
     static let shared = MouseDiagnosticController()
 
     static let stateDidChange = Notification.Name("MouseDiagnosticControllerStateDidChange")
-    private static let captureStartDelay: TimeInterval = 10
-    private static let temporaryReleaseDuration: TimeInterval = 15
     private static let escapeUnlockCount = 5
     private static let escapeSequenceMaximumGap: TimeInterval = 2
     private static let escapeKeyCode: Int64 = 53
@@ -28,6 +26,8 @@ final class MouseDiagnosticController {
     private(set) var captureCountdownSeconds = 0
     private(set) var isCaptureTemporarilyReleased = false
     private(set) var temporaryReleaseCountdownSeconds = 0
+    private(set) var captureArmDelaySeconds = Profile.defaultMouseCaptureArmDelaySeconds
+    private(set) var temporaryReleaseDurationSeconds = Profile.defaultMouseCaptureTemporaryReleaseSeconds
 
     private var mouseEventTap: CFMachPort?
     private var mouseEventTapRunLoopSource: CFRunLoopSource?
@@ -49,6 +49,11 @@ final class MouseDiagnosticController {
 
     var hasCaptureState: Bool {
         isCapturePending || isCaptureActive || isCaptureTemporarilyReleased
+    }
+
+    func configureCaptureTiming(armDelaySeconds: Int, temporaryReleaseSeconds: Int) {
+        captureArmDelaySeconds = max(1, armDelaySeconds)
+        temporaryReleaseDurationSeconds = max(1, temporaryReleaseSeconds)
     }
 
     @discardableResult
@@ -131,10 +136,10 @@ final class MouseDiagnosticController {
         }
 
         isCapturePending = true
-        captureCountdownSeconds = Int(Self.captureStartDelay)
+        captureCountdownSeconds = captureArmDelaySeconds
         resetEscapeSequence()
         scheduleCaptureStartTimer()
-        debugLog("[MouseDiagnostic] captureArmed delaySeconds=\(Self.captureStartDelay)")
+        debugLog("[MouseDiagnostic] captureArmed delaySeconds=\(captureArmDelaySeconds)")
         NotificationCenter.default.post(name: Self.stateDidChange, object: self)
         return true
     }
@@ -226,9 +231,9 @@ final class MouseDiagnosticController {
 
         isCaptureActive = false
         isCaptureTemporarilyReleased = true
-        temporaryReleaseCountdownSeconds = Int(Self.temporaryReleaseDuration)
+        temporaryReleaseCountdownSeconds = temporaryReleaseDurationSeconds
         resetEscapeSequence()
-        debugLog("[MouseDiagnostic] captureTemporarilyReleased durationSeconds=\(Self.temporaryReleaseDuration)")
+        debugLog("[MouseDiagnostic] captureTemporarilyReleased durationSeconds=\(temporaryReleaseDurationSeconds)")
         onCaptureDeactivated?()
         uninstallMouseEventTapIfIdle()
         scheduleTemporaryReleaseTimer()

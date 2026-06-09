@@ -49,8 +49,8 @@ final class EditorViewController: NSViewController, NSSplitViewDelegate {
             self?.savePanelLayout()
         }
 
-        profileListViewController.onProfileSelected = { [weak self] profile in
-            self?.editorViewController.load(profile: profile)
+        profileListViewController.onProfileSelected = { [weak self] profile, isTopProfileSelection in
+            self?.editorViewController.load(profile: profile, isTopProfileSelection: isTopProfileSelection)
         }
         profileListViewController.onProfileSelectionRequested = { [weak self] in
             self?.confirmSaveIfNeeded() ?? true
@@ -63,6 +63,13 @@ final class EditorViewController: NSViewController, NSSplitViewDelegate {
             } else {
                 ProfileStore.shared.upsert(profile)
             }
+        }
+        editorViewController.onTopProfileMouseCaptureTimingSaved = { [weak self] armDelaySeconds, temporaryReleaseSeconds in
+            self?.shouldSkipNextEditorRefresh = true
+            var profile = ProfileStore.shared.activeProfile
+            profile.mouseCaptureArmDelaySeconds = armDelaySeconds
+            profile.mouseCaptureTemporaryReleaseSeconds = temporaryReleaseSeconds
+            ProfileStore.shared.upsert(profile)
         }
 
         addChild(profileListViewController)

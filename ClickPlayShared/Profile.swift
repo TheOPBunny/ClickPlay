@@ -649,6 +649,8 @@ private struct DynamicCodingKey: CodingKey {
 struct Profile: Codable, Identifiable {
     static let defaultBackgroundColorHex = "#000000"
     static let defaultBackgroundFrostedGlassIntensity = 0
+    static let defaultMouseCaptureArmDelaySeconds = 10
+    static let defaultMouseCaptureTemporaryReleaseSeconds = 15
 
     var id: UUID
     var name: String
@@ -656,6 +658,8 @@ struct Profile: Codable, Identifiable {
     var showPointerLocation: Bool
     var backgroundColorHex: String                   // "#RRGGBB"
     var backgroundFrostedGlassIntensity: Int         // 0–100
+    var mouseCaptureArmDelaySeconds: Int
+    var mouseCaptureTemporaryReleaseSeconds: Int
     var compatibilityMode: Bool
     var editorCoordinateMode: EditorCoordinateMode
     var padWidth: Double                             // absolute pts
@@ -674,6 +678,8 @@ struct Profile: Codable, Identifiable {
         case showPointerLocation
         case backgroundColorHex
         case backgroundFrostedGlassIntensity
+        case mouseCaptureArmDelaySeconds
+        case mouseCaptureTemporaryReleaseSeconds
         case compatibilityMode
         case editorCoordinateMode
         case padWidth
@@ -693,6 +699,8 @@ struct Profile: Codable, Identifiable {
         showPointerLocation: Bool = false,
         backgroundColorHex: String = Profile.defaultBackgroundColorHex,
         backgroundFrostedGlassIntensity: Int = Profile.defaultBackgroundFrostedGlassIntensity,
+        mouseCaptureArmDelaySeconds: Int = Profile.defaultMouseCaptureArmDelaySeconds,
+        mouseCaptureTemporaryReleaseSeconds: Int = Profile.defaultMouseCaptureTemporaryReleaseSeconds,
         compatibilityMode: Bool = false,
         editorCoordinateMode: EditorCoordinateMode = .legacyTopLeft,
         padWidth: Double,
@@ -710,6 +718,8 @@ struct Profile: Codable, Identifiable {
         self.showPointerLocation = showPointerLocation
         self.backgroundColorHex = backgroundColorHex
         self.backgroundFrostedGlassIntensity = backgroundFrostedGlassIntensity
+        self.mouseCaptureArmDelaySeconds = max(1, mouseCaptureArmDelaySeconds)
+        self.mouseCaptureTemporaryReleaseSeconds = max(1, mouseCaptureTemporaryReleaseSeconds)
         self.compatibilityMode = compatibilityMode
         self.editorCoordinateMode = editorCoordinateMode
         self.padWidth = padWidth
@@ -733,6 +743,16 @@ struct Profile: Codable, Identifiable {
         let legacyFrostedGlassKey = DynamicCodingKey("background" + "S" + "moke" + "Intensity")
         backgroundFrostedGlassIntensity = try container.decodeIfPresent(Int.self, forKey: .backgroundFrostedGlassIntensity)
             ?? (try legacyContainer.decodeIfPresent(Int.self, forKey: legacyFrostedGlassKey) ?? Self.defaultBackgroundFrostedGlassIntensity)
+        mouseCaptureArmDelaySeconds = max(
+            1,
+            try container.decodeIfPresent(Int.self, forKey: .mouseCaptureArmDelaySeconds)
+                ?? Self.defaultMouseCaptureArmDelaySeconds
+        )
+        mouseCaptureTemporaryReleaseSeconds = max(
+            1,
+            try container.decodeIfPresent(Int.self, forKey: .mouseCaptureTemporaryReleaseSeconds)
+                ?? Self.defaultMouseCaptureTemporaryReleaseSeconds
+        )
         compatibilityMode = try container.decodeIfPresent(Bool.self, forKey: .compatibilityMode) ?? false
         editorCoordinateMode = try container.decodeIfPresent(EditorCoordinateMode.self, forKey: .editorCoordinateMode) ?? .legacyTopLeft
         padWidth = try container.decode(Double.self, forKey: .padWidth)

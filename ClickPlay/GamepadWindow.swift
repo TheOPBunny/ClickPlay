@@ -56,6 +56,10 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         let screen = NSScreen.main ?? NSScreen.screens[0]
         var profile = ProfileStore.shared.activeResolvedProfile
         profile.name = ProfileStore.shared.activeProfile.name
+        MouseDiagnosticController.shared.configureCaptureTiming(
+            armDelaySeconds: profile.mouseCaptureArmDelaySeconds,
+            temporaryReleaseSeconds: profile.mouseCaptureTemporaryReleaseSeconds
+        )
         let size = GamepadContentView.windowSize(for: profile, minimized: false)
         let origin = NSPoint(
             x: screen.visibleFrame.minX + (screen.visibleFrame.width - size.width) / 2,
@@ -203,6 +207,10 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
             && loadedActiveProfileID == activeProfileID
         var profile = store.activeResolvedProfile
         profile.name = store.activeProfile.name
+        MouseDiagnosticController.shared.configureCaptureTiming(
+            armDelaySeconds: profile.mouseCaptureArmDelaySeconds,
+            temporaryReleaseSeconds: profile.mouseCaptureTemporaryReleaseSeconds
+        )
         reconcileActiveDwellAction(with: profile)
         updateResizeConstraints()
         resizeForCurrentState(using: profile)

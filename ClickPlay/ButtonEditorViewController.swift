@@ -168,6 +168,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     var onProfileSaved: ((Profile) -> Void)?
+    var onTopProfileMouseCaptureTimingSaved: ((Int, Int) -> Void)?
     var onToggleSidebar: (() -> Void)?
     var onSavePanelLayout: (() -> Void)?
 
@@ -180,6 +181,9 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     private var maximumWorkspaceSize = ButtonEditorViewController.workspaceSize(for: NSScreen.main)
     private var profile = ProfileStore.shared.activeResolvedProfile
+    private var showsTopProfileMouseCaptureTiming = false
+    private var topProfileMouseCaptureArmDelaySeconds = Profile.defaultMouseCaptureArmDelaySeconds
+    private var topProfileMouseCaptureTemporaryReleaseSeconds = Profile.defaultMouseCaptureTemporaryReleaseSeconds
     private var canvasObjects: [CanvasButtonObject] = []
     private var selectedIDs = Set<GamepadButton>()
     private var selectedGroupID: UUID?
@@ -426,11 +430,19 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         scrollToProfileContentIfNeeded()
     }
 
-    func load(profile: Profile) {
+    func load(profile: Profile, isTopProfileSelection: Bool = false) {
         hasLoadedEditableProfile = false
         editorUndoManager.removeAllActions()
         selectedIDs = []
         selectedGroupID = nil
+        showsTopProfileMouseCaptureTiming = isTopProfileSelection
+        let topProfile = ProfileStore.shared.activeProfile
+        topProfileMouseCaptureArmDelaySeconds = isTopProfileSelection
+            ? topProfile.mouseCaptureArmDelaySeconds
+            : profile.mouseCaptureArmDelaySeconds
+        topProfileMouseCaptureTemporaryReleaseSeconds = isTopProfileSelection
+            ? topProfile.mouseCaptureTemporaryReleaseSeconds
+            : profile.mouseCaptureTemporaryReleaseSeconds
         self.profile = makeEditableProfile(from: profile)
         hasLoadedEditableProfile = true
         previewView.usesCenteredOrigin = profile.editorCoordinateMode == .centered
@@ -456,11 +468,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     func refreshFromStoreIfNeeded() {
         if let parentProfile = ProfileStore.shared.parentProfile(containingSubProfileID: profile.id),
            let updatedProfile = parentProfile.subProfiles.first(where: { $0.id == profile.id }) {
-            load(profile: updatedProfile)
+            load(profile: updatedProfile, isTopProfileSelection: showsTopProfileMouseCaptureTiming)
         } else if let updatedProfile = ProfileStore.shared.profiles.first(where: { $0.id == profile.id }) {
-            load(profile: updatedProfile)
+            load(profile: updatedProfile, isTopProfileSelection: showsTopProfileMouseCaptureTiming)
         } else {
-            load(profile: ProfileStore.shared.activeResolvedProfile)
+            load(profile: ProfileStore.shared.activeResolvedProfile, isTopProfileSelection: showsTopProfileMouseCaptureTiming)
         }
     }
 
@@ -504,7 +516,13 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         reloadPreview(keepSelection: true)
 
         onProfileSaved?(savedProfile)
-        savedProfileFingerprint = fingerprint(for: savedProfile)
+        if showsTopProfileMouseCaptureTiming {
+            onTopProfileMouseCaptureTimingSaved?(
+                topProfileMouseCaptureArmDelaySeconds,
+                topProfileMouseCaptureTemporaryReleaseSeconds
+            )
+        }
+        savedProfileFingerprint = currentSavedProfileFingerprint()
         showSavedIndicator()
         return true
     }
@@ -641,6 +659,12 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         }
         detailPanel.onProfileBackgroundFrostedGlassIntensityChanged = { [weak self] intensity in
             self?.applyProfileBackgroundFrostedGlassIntensity(intensity)
+        }
+        detailPanel.onProfileMouseCaptureArmDelayChanged = { [weak self] seconds in
+            self?.applyTopProfileMouseCaptureArmDelay(seconds)
+        }
+        detailPanel.onProfileMouseCaptureTemporaryReleaseChanged = { [weak self] seconds in
+            self?.applyTopProfileMouseCaptureTemporaryRelease(seconds)
         }
 
         templatesDidChangeObserver = NotificationCenter.default.addObserver(
@@ -1662,7 +1686,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private func showProfileSettings() {
         detailPanel.loadProfileSettings(
             backgroundColorHex: profile.backgroundColorHex,
-            frostedGlassIntensity: profile.backgroundFrostedGlassIntensity
+            frostedGlassIntensity: profile.backgroundFrostedGlassIntensity,
+            mouseCaptureArmDelaySeconds: topProfileMouseCaptureArmDelaySeconds,
+            mouseCaptureTemporaryReleaseSeconds: topProfileMouseCaptureTemporaryReleaseSeconds,
+            showsMouseCaptureTiming: showsTopProfileMouseCaptureTiming
         )
     }
 
@@ -1672,6 +1699,14 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     private func applyProfileBackgroundFrostedGlassIntensity(_ intensity: Int) {
         profile.backgroundFrostedGlassIntensity = intensity
+    }
+
+    private func applyTopProfileMouseCaptureArmDelay(_ seconds: Int) {
+        topProfileMouseCaptureArmDelaySeconds = max(1, seconds)
+    }
+
+    private func applyTopProfileMouseCaptureTemporaryRelease(_ seconds: Int) {
+        topProfileMouseCaptureTemporaryReleaseSeconds = max(1, seconds)
     }
 
     private func focusPreviewForEditorCommands() {
@@ -2635,7 +2670,17 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     private func currentSavedProfileFingerprint() -> Data? {
-        fingerprint(for: currentSavedProfile())
+        guard var data = fingerprint(for: currentSavedProfile()) else {
+            return nil
+        }
+
+        if showsTopProfileMouseCaptureTiming,
+           let timingData = "|mouseCapture:\(topProfileMouseCaptureArmDelaySeconds):\(topProfileMouseCaptureTemporaryReleaseSeconds)"
+            .data(using: .utf8) {
+            data.append(timingData)
+        }
+
+        return data
     }
 
     private func fingerprint(for profile: Profile) -> Data? {
