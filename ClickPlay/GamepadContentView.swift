@@ -785,11 +785,11 @@ final class GamepadContentView: NSView {
             switch (button, isDown) {
             case (.left, true), (.left, false):
                 virtualJoystickCaptureView.handleVirtualJoystickLeftClick(isDown: isDown)
-            case (.right, true):
-                break
-            case (.right, false):
-                virtualJoystickCaptureView.releaseVirtualJoystickCapture()
-                self.virtualJoystickCaptureView = nil
+            case (.right, true), (.right, false):
+                let isStillCaptured = virtualJoystickCaptureView.handleVirtualJoystickRightClick(isDown: isDown)
+                if !isStillCaptured {
+                    self.virtualJoystickCaptureView = nil
+                }
             }
             return
         }

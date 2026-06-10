@@ -71,6 +71,7 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
     private let joystickDownRecorder = KeyRecorderButton()
     private let joystickLeftRecorder = KeyRecorderButton()
     private let joystickRightRecorder = KeyRecorderButton()
+    private let joystickLayerPopup = NSPopUpButton()
     private let joystickOperationModePopup = NSPopUpButton()
     private let joystickAxisLockModePopup = NSPopUpButton()
     private let joystickAxisLockHoldDurationField = NSTextField()
@@ -81,6 +82,8 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
     private let joystickRightClearButton = NSButton(title: "Clear", target: nil, action: nil)
     private let joystickLeftClickRecorder = KeyRecorderButton()
     private let joystickRightClickRecorder = KeyRecorderButton()
+    private let joystickLeftClickActionPopup = NSPopUpButton()
+    private let joystickRightClickActionPopup = NSPopUpButton()
     private let joystickLeftClickClearButton = NSButton(title: "Clear", target: nil, action: nil)
     private let joystickRightClickClearButton = NSButton(title: "Clear", target: nil, action: nil)
     private let joystickLeftClickModePopup = NSPopUpButton()
@@ -98,6 +101,8 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
     private let joystickScrollUpMultiKeyPopup = NSPopUpButton()
     private let joystickScrollDownMultiKeyPopup = NSPopUpButton()
     private var joystickSectionLabel: NSTextField?
+    private var selectedJoystickLayerIndex = 0
+    private var joystickLayerRow: NSStackView?
     private var joystickOperationModeRow: NSStackView?
     private var joystickAxisLockModeRow: NSStackView?
     private var joystickAxisLockHoldDurationRow: NSStackView?
@@ -105,6 +110,8 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
     private var joystickDownRow: NSStackView?
     private var joystickLeftRow: NSStackView?
     private var joystickRightRow: NSStackView?
+    private var joystickLeftClickActionRow: NSStackView?
+    private var joystickRightClickActionRow: NSStackView?
     private var joystickLeftClickKeyRow: NSStackView?
     private var joystickRightClickKeyRow: NSStackView?
     private var joystickLeftClickModeRow: NSStackView?
@@ -206,6 +213,8 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         dwellToleranceField.stringValue = String(format: "%.0f", DwellActionConfig.defaultMovementTolerance)
         keyRecorder.setKeyBindings([ButtonKeyBinding(keyCode: 49, keyModifiers: 0)])
         joystickOperationModePopup.selectItem(withTag: JoystickOperationMode.capture.tag)
+        selectedJoystickLayerIndex = 0
+        joystickLayerPopup.selectItem(withTag: 0)
         joystickAxisLockModePopup.selectItem(withTag: JoystickAxisLockMode.scrollWheel.tag)
         joystickAxisLockHoldDurationField.stringValue = String(format: "%.1f", JoystickConfig.defaultAxisLockHoldDuration)
         joystickAxisUnlockHoldDurationField.stringValue = String(format: "%.1f", JoystickConfig.defaultAxisUnlockHoldDuration)
@@ -213,8 +222,8 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         joystickDownRecorder.setKeyBindings([JoystickConfig.defaultBindings.down])
         joystickLeftRecorder.setKeyBindings([JoystickConfig.defaultBindings.left])
         joystickRightRecorder.setKeyBindings([JoystickConfig.defaultBindings.right])
-        syncJoystickInputControls(input: .empty, recorder: joystickLeftClickRecorder, modePopup: joystickLeftClickModePopup, multiKeyPopup: joystickLeftClickMultiKeyPopup)
-        syncJoystickInputControls(input: .empty, recorder: joystickRightClickRecorder, modePopup: joystickRightClickModePopup, multiKeyPopup: joystickRightClickMultiKeyPopup)
+        syncJoystickTriggerControls(action: .off, actionPopup: joystickLeftClickActionPopup, recorder: joystickLeftClickRecorder, modePopup: joystickLeftClickModePopup, multiKeyPopup: joystickLeftClickMultiKeyPopup)
+        syncJoystickTriggerControls(action: .off, actionPopup: joystickRightClickActionPopup, recorder: joystickRightClickRecorder, modePopup: joystickRightClickModePopup, multiKeyPopup: joystickRightClickMultiKeyPopup)
         joystickScrollUpActionPopup.selectItem(withTag: JoystickScrollActionKind.off.tag)
         joystickScrollDownActionPopup.selectItem(withTag: JoystickScrollActionKind.off.tag)
         syncJoystickInputControls(input: .empty, recorder: joystickScrollUpRecorder, modePopup: joystickScrollUpModePopup, multiKeyPopup: joystickScrollUpMultiKeyPopup)
@@ -278,27 +287,12 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         rightClickFallbackCheckbox.state = config.rightClickFallsBackToPrimary ? .on : .off
         rightClickModePopup.selectItem(withTag: config.rightClickInteractionMode?.tag ?? Self.sameAsLeftModeTag)
         joystickOperationModePopup.selectItem(withTag: config.joystick.operationMode.tag)
+        selectedJoystickLayerIndex = 0
+        joystickLayerPopup.selectItem(withTag: selectedJoystickLayerIndex)
         joystickAxisLockModePopup.selectItem(withTag: config.joystick.axisLockMode.tag)
         joystickAxisLockHoldDurationField.stringValue = String(format: "%.1f", config.joystick.axisLockHoldDuration)
         joystickAxisUnlockHoldDurationField.stringValue = String(format: "%.1f", config.joystick.axisUnlockHoldDuration)
-        joystickUpRecorder.setKeyBindings([config.joystick.up])
-        joystickDownRecorder.setKeyBindings([config.joystick.down])
-        joystickLeftRecorder.setKeyBindings([config.joystick.left])
-        joystickRightRecorder.setKeyBindings([config.joystick.right])
-        syncJoystickInputControls(
-            input: config.joystick.leftClickInput,
-            recorder: joystickLeftClickRecorder,
-            modePopup: joystickLeftClickModePopup,
-            multiKeyPopup: joystickLeftClickMultiKeyPopup
-        )
-        syncJoystickInputControls(
-            input: config.joystick.rightClickInput,
-            recorder: joystickRightClickRecorder,
-            modePopup: joystickRightClickModePopup,
-            multiKeyPopup: joystickRightClickMultiKeyPopup
-        )
-        syncJoystickScrollControls(action: config.joystick.scrollUpAction, direction: .up)
-        syncJoystickScrollControls(action: config.joystick.scrollDownAction, direction: .down)
+        syncJoystickLayerControls(from: config.joystick)
         updateJoystickScrollActionOptions(axisLockMode: config.joystick.axisLockMode)
         updateMultiKeyActivationModeVisibility()
         keyRecorder.setKeyBindings(config.keyBindings)
@@ -449,6 +443,9 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         joystickOperationModePopup.target = self
         joystickOperationModePopup.action = #selector(applyPressed)
         populateJoystickOperationModes()
+        joystickLayerPopup.target = self
+        joystickLayerPopup.action = #selector(joystickLayerChanged)
+        populateJoystickLayers()
         joystickAxisLockModePopup.target = self
         joystickAxisLockModePopup.action = #selector(applyPressed)
         populateJoystickAxisLockModes()
@@ -468,6 +465,12 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
             popup.action = #selector(applyPressed)
             populateMultiKeyActivationModes(popup)
         }
+        joystickLeftClickActionPopup.target = self
+        joystickLeftClickActionPopup.action = #selector(applyPressed)
+        populateJoystickTriggerActions(joystickLeftClickActionPopup, includeNested: true)
+        joystickRightClickActionPopup.target = self
+        joystickRightClickActionPopup.action = #selector(applyPressed)
+        populateJoystickTriggerActions(joystickRightClickActionPopup, includeNested: false)
         [joystickScrollUpActionPopup, joystickScrollDownActionPopup].forEach { popup in
             popup.target = self
             popup.action = #selector(applyPressed)
@@ -578,6 +581,10 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         if let joystickOperationModeRow {
             contentStack.addArrangedSubview(joystickOperationModeRow)
         }
+        joystickLayerRow = makeRow(label: "Layer:", control: joystickLayerPopup)
+        if let joystickLayerRow {
+            contentStack.addArrangedSubview(joystickLayerRow)
+        }
         joystickAxisLockModeRow = makeRow(label: "Axis Lock:", control: joystickAxisLockModePopup)
         joystickAxisLockHoldDurationRow = makeRow(label: "Lock Timer:", control: joystickAxisLockHoldDurationField)
         [joystickAxisLockModeRow, joystickAxisLockHoldDurationRow, ].compactMap { $0 }.forEach(contentStack.addArrangedSubview)
@@ -586,16 +593,20 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         joystickLeftRow = makeJoystickKeyRow(label: "Left:", recorder: joystickLeftRecorder, clearButton: joystickLeftClearButton)
         joystickRightRow = makeJoystickKeyRow(label: "Right:", recorder: joystickRightRecorder, clearButton: joystickRightClearButton)
         [joystickUpRow, joystickDownRow, joystickLeftRow, joystickRightRow].compactMap { $0 }.forEach(contentStack.addArrangedSubview)
+        joystickLeftClickActionRow = makeRow(label: "Left Click:", control: joystickLeftClickActionPopup)
         joystickLeftClickKeyRow = makeJoystickInputKeyRow(label: "Left Click:", recorder: joystickLeftClickRecorder, clearButton: joystickLeftClickClearButton)
         joystickLeftClickModeRow = makeRow(label: "L-click Mode:", control: joystickLeftClickModePopup)
         joystickLeftClickMultiKeyRow = makeRow(label: "L-click Keys:", control: joystickLeftClickMultiKeyPopup)
+        joystickRightClickActionRow = makeRow(label: "Right Click:", control: joystickRightClickActionPopup)
         joystickRightClickKeyRow = makeJoystickInputKeyRow(label: "Right Click:", recorder: joystickRightClickRecorder, clearButton: joystickRightClickClearButton)
         joystickRightClickModeRow = makeRow(label: "R-click Mode:", control: joystickRightClickModePopup)
         joystickRightClickMultiKeyRow = makeRow(label: "R-click Keys:", control: joystickRightClickMultiKeyPopup)
         [
+            joystickLeftClickActionRow,
             joystickLeftClickKeyRow,
             joystickLeftClickModeRow,
             joystickLeftClickMultiKeyRow,
+            joystickRightClickActionRow,
             joystickRightClickKeyRow,
             joystickRightClickModeRow,
             joystickRightClickMultiKeyRow,
@@ -908,6 +919,23 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         emitChange()
     }
 
+    @objc private func joystickLayerChanged() {
+        selectedJoystickLayerIndex = min(
+            max(0, joystickLayerPopup.selectedTag()),
+            JoystickConfig.maxLayerCount - 1
+        )
+        guard var config, config.type == .joystick else {
+            updateControlVisibility()
+            return
+        }
+
+        ensureNestedJoystickLayers(in: &config.joystick, through: selectedJoystickLayerIndex)
+        self.config = config
+        syncJoystickLayerControls(from: config.joystick)
+        updateControlVisibility()
+        emitChange()
+    }
+
     @objc private func clearPrimaryKey() {
         applyKeyBindings([Self.defaultKeyBinding])
         emitChange()
@@ -1078,10 +1106,14 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         popup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
     }
 
-    private func populateJoystickScrollActions(_ popup: NSPopUpButton, includeAxisLock: Bool = true) {
+    private func populateJoystickScrollActions(
+        _ popup: NSPopUpButton,
+        includeAxisLock: Bool = true,
+        includeNested: Bool = true
+    ) {
         popup.removeAllItems()
 
-        for kind in JoystickScrollActionKind.allCases(includeAxisLock: includeAxisLock) {
+        for kind in JoystickScrollActionKind.allCases(includeAxisLock: includeAxisLock, includeNested: includeNested) {
             popup.addItem(withTitle: kind.displayName)
             popup.lastItem?.tag = kind.tag
         }
@@ -1089,21 +1121,68 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         popup.selectItem(withTag: JoystickScrollActionKind.off.tag)
     }
 
-    private func updateJoystickScrollActionOptions(axisLockMode: JoystickAxisLockMode) {
-        let includeAxisLock = axisLockMode == .scrollWheel
-        updateJoystickScrollActionOptions(joystickScrollUpActionPopup, includeAxisLock: includeAxisLock)
-        updateJoystickScrollActionOptions(joystickScrollDownActionPopup, includeAxisLock: includeAxisLock)
+    private func populateJoystickLayers() {
+        joystickLayerPopup.removeAllItems()
+
+        for index in 0..<JoystickConfig.maxLayerCount {
+            let title = index == 0 ? "Layer 1 (Base)" : "Layer \(index + 1)"
+            joystickLayerPopup.addItem(withTitle: title)
+            joystickLayerPopup.lastItem?.tag = index
+        }
+
+        joystickLayerPopup.selectItem(withTag: 0)
     }
 
-    private func updateJoystickScrollActionOptions(_ popup: NSPopUpButton, includeAxisLock: Bool) {
-        let selectedKind = JoystickScrollActionKind(tag: popup.selectedTag()) ?? .off
-        populateJoystickScrollActions(popup, includeAxisLock: includeAxisLock)
+    private func populateJoystickTriggerActions(_ popup: NSPopUpButton, includeNested: Bool) {
+        popup.removeAllItems()
 
-        if includeAxisLock || selectedKind != .axisLock {
-            popup.selectItem(withTag: selectedKind.tag)
-        } else {
-            popup.selectItem(withTag: JoystickScrollActionKind.off.tag)
+        for kind in JoystickTriggerActionKind.allCases(includeNested: includeNested) {
+            popup.addItem(withTitle: kind.displayName)
+            popup.lastItem?.tag = kind.tag
         }
+
+        popup.selectItem(withTag: JoystickTriggerActionKind.off.tag)
+    }
+
+    private func updateJoystickScrollActionOptions(axisLockMode: JoystickAxisLockMode) {
+        let includeAxisLock = axisLockMode == .scrollWheel
+        let includeNested = selectedJoystickLayerIndex + 1 < JoystickConfig.maxLayerCount
+        updateJoystickScrollActionOptions(
+            joystickScrollUpActionPopup,
+            includeAxisLock: includeAxisLock,
+            includeNested: includeNested
+        )
+        updateJoystickScrollActionOptions(
+            joystickScrollDownActionPopup,
+            includeAxisLock: includeAxisLock,
+            includeNested: includeNested
+        )
+    }
+
+    private func updateJoystickScrollActionOptions(
+        _ popup: NSPopUpButton,
+        includeAxisLock: Bool,
+        includeNested: Bool
+    ) {
+        let selectedKind = JoystickScrollActionKind(tag: popup.selectedTag()) ?? .off
+        populateJoystickScrollActions(popup, includeAxisLock: includeAxisLock, includeNested: includeNested)
+
+        if (!includeAxisLock && selectedKind == .axisLock) || (!includeNested && selectedKind == .nestedJoystick) {
+            popup.selectItem(withTag: JoystickScrollActionKind.off.tag)
+        } else {
+            popup.selectItem(withTag: selectedKind.tag)
+        }
+    }
+
+    private func updateJoystickTriggerActionOptions() {
+        let selectedKind = JoystickTriggerActionKind(tag: joystickLeftClickActionPopup.selectedTag()) ?? .off
+        let includeNested = selectedJoystickLayerIndex + 1 < JoystickConfig.maxLayerCount
+        populateJoystickTriggerActions(joystickLeftClickActionPopup, includeNested: includeNested)
+        joystickLeftClickActionPopup.selectItem(
+            withTag: includeNested || selectedKind != .nestedJoystick
+                ? selectedKind.tag
+                : JoystickTriggerActionKind.off.tag
+        )
     }
 
     private func populateRightClickModes() {
@@ -1252,18 +1331,43 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
                 from: joystickAxisUnlockHoldDurationField.stringValue,
                 fallback: config.joystick.axisUnlockHoldDuration
             )
-            config.joystick.leftClickInput = joystickInput(
-                recorder: joystickLeftClickRecorder,
-                modePopup: joystickLeftClickModePopup,
-                multiKeyPopup: joystickLeftClickMultiKeyPopup
-            )
-            config.joystick.rightClickInput = joystickInput(
-                recorder: joystickRightClickRecorder,
-                modePopup: joystickRightClickModePopup,
-                multiKeyPopup: joystickRightClickMultiKeyPopup
-            )
-            config.joystick.scrollUpAction = joystickScrollAction(direction: .up)
-            config.joystick.scrollDownAction = joystickScrollAction(direction: .down)
+            ensureNestedJoystickLayers(in: &config.joystick, through: selectedJoystickLayerIndex)
+            if selectedJoystickLayerIndex == 0 {
+                config.joystick.up = joystickUpRecorder.recordedBindings.first ?? config.joystick.up
+                config.joystick.down = joystickDownRecorder.recordedBindings.first ?? config.joystick.down
+                config.joystick.left = joystickLeftRecorder.recordedBindings.first ?? config.joystick.left
+                config.joystick.right = joystickRightRecorder.recordedBindings.first ?? config.joystick.right
+                config.joystick.leftClickAction = joystickTriggerAction(
+                    actionPopup: joystickLeftClickActionPopup,
+                    recorder: joystickLeftClickRecorder,
+                    modePopup: joystickLeftClickModePopup,
+                    multiKeyPopup: joystickLeftClickMultiKeyPopup
+                )
+                config.joystick.rightClickAction = joystickTriggerAction(
+                    actionPopup: joystickRightClickActionPopup,
+                    recorder: joystickRightClickRecorder,
+                    modePopup: joystickRightClickModePopup,
+                    multiKeyPopup: joystickRightClickMultiKeyPopup
+                )
+                config.joystick.scrollUpAction = joystickScrollAction(direction: .up)
+                config.joystick.scrollDownAction = joystickScrollAction(direction: .down)
+            } else {
+                var layer = config.joystick.nestedLayers[selectedJoystickLayerIndex - 1]
+                layer.up = joystickUpRecorder.recordedBindings.first ?? layer.up
+                layer.down = joystickDownRecorder.recordedBindings.first ?? layer.down
+                layer.left = joystickLeftRecorder.recordedBindings.first ?? layer.left
+                layer.right = joystickRightRecorder.recordedBindings.first ?? layer.right
+                layer.leftClickAction = joystickTriggerAction(
+                    actionPopup: joystickLeftClickActionPopup,
+                    recorder: joystickLeftClickRecorder,
+                    modePopup: joystickLeftClickModePopup,
+                    multiKeyPopup: joystickLeftClickMultiKeyPopup
+                )
+                layer.scrollUpAction = joystickScrollAction(direction: .up)
+                layer.scrollDownAction = joystickScrollAction(direction: .down)
+                config.joystick.nestedLayers[selectedJoystickLayerIndex - 1] = layer
+            }
+            ensureNextNestedJoystickLayerIfNeeded(in: &config.joystick)
             interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
             multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
             rightClickRecorder.setOptionalKeyBindings(nil)
@@ -1369,19 +1473,21 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
             return
         }
 
-        switch direction {
-        case .up:
-            config?.joystick.up = binding
-            joystickUpRecorder.setKeyBindings([binding])
-        case .down:
-            config?.joystick.down = binding
-            joystickDownRecorder.setKeyBindings([binding])
-        case .left:
-            config?.joystick.left = binding
-            joystickLeftRecorder.setKeyBindings([binding])
-        case .right:
-            config?.joystick.right = binding
-            joystickRightRecorder.setKeyBindings([binding])
+        updateSelectedJoystickLayer { layer in
+            switch direction {
+            case .up:
+                layer.up = binding
+                joystickUpRecorder.setKeyBindings([binding])
+            case .down:
+                layer.down = binding
+                joystickDownRecorder.setKeyBindings([binding])
+            case .left:
+                layer.left = binding
+                joystickLeftRecorder.setKeyBindings([binding])
+            case .right:
+                layer.right = binding
+                joystickRightRecorder.setKeyBindings([binding])
+            }
         }
     }
 
@@ -1393,47 +1499,63 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         let normalizedBindings = bindings?.isEmpty == true ? nil : bindings
         switch target {
         case .leftClick:
-            let previousBindings = config?.joystick.leftClickInput.keyBindings ?? []
-            config?.joystick.leftClickInput.keyBindings = normalizedBindings ?? []
+            let previousBindings = selectedJoystickLayer(in: config?.joystick ?? .defaultBindings).leftClickAction.input.keyBindings
             let mode = preferredMultiKeyActivationMode(
                 for: normalizedBindings ?? [],
                 previousBindings: previousBindings,
-                existingMode: config?.joystick.leftClickInput.multiKeyActivationMode ?? .sequential
+                existingMode: selectedJoystickLayer(in: config?.joystick ?? .defaultBindings).leftClickAction.input.multiKeyActivationMode
             )
-            config?.joystick.leftClickInput.multiKeyActivationMode = mode
+            updateSelectedJoystickLayer { layer in
+                layer.leftClickAction.kind = normalizedBindings == nil ? .off : .keyCombo
+                layer.leftClickAction.input.keyBindings = normalizedBindings ?? []
+                layer.leftClickAction.input.multiKeyActivationMode = mode
+            }
+            joystickLeftClickActionPopup.selectItem(withTag: (normalizedBindings == nil ? JoystickTriggerActionKind.off : .keyCombo).tag)
             joystickLeftClickRecorder.setOptionalKeyBindings(normalizedBindings)
             joystickLeftClickMultiKeyPopup.selectItem(withTag: mode.tag)
         case .rightClick:
-            let previousBindings = config?.joystick.rightClickInput.keyBindings ?? []
-            config?.joystick.rightClickInput.keyBindings = normalizedBindings ?? []
+            let previousBindings = config?.joystick.rightClickAction.input.keyBindings ?? []
             let mode = preferredMultiKeyActivationMode(
                 for: normalizedBindings ?? [],
                 previousBindings: previousBindings,
-                existingMode: config?.joystick.rightClickInput.multiKeyActivationMode ?? .sequential
+                existingMode: config?.joystick.rightClickAction.input.multiKeyActivationMode ?? .sequential
             )
-            config?.joystick.rightClickInput.multiKeyActivationMode = mode
+            if selectedJoystickLayerIndex == 0 {
+                config?.joystick.rightClickAction.kind = normalizedBindings == nil ? .off : .keyCombo
+                config?.joystick.rightClickAction.input.keyBindings = normalizedBindings ?? []
+                config?.joystick.rightClickAction.input.multiKeyActivationMode = mode
+            }
+            joystickRightClickActionPopup.selectItem(withTag: (normalizedBindings == nil ? JoystickTriggerActionKind.off : .keyCombo).tag)
             joystickRightClickRecorder.setOptionalKeyBindings(normalizedBindings)
             joystickRightClickMultiKeyPopup.selectItem(withTag: mode.tag)
         case .scrollUp:
-            let previousBindings = config?.joystick.scrollUpAction.input.keyBindings ?? []
-            config?.joystick.scrollUpAction.input.keyBindings = normalizedBindings ?? []
+            let previousBindings = selectedJoystickLayer(in: config?.joystick ?? .defaultBindings).scrollUpAction.input.keyBindings
             let mode = preferredMultiKeyActivationMode(
                 for: normalizedBindings ?? [],
                 previousBindings: previousBindings,
-                existingMode: config?.joystick.scrollUpAction.input.multiKeyActivationMode ?? .sequential
+                existingMode: selectedJoystickLayer(in: config?.joystick ?? .defaultBindings).scrollUpAction.input.multiKeyActivationMode
             )
-            config?.joystick.scrollUpAction.input.multiKeyActivationMode = mode
+            updateSelectedJoystickLayer { layer in
+                layer.scrollUpAction.kind = normalizedBindings == nil ? .off : .keyCombo
+                layer.scrollUpAction.input.keyBindings = normalizedBindings ?? []
+                layer.scrollUpAction.input.multiKeyActivationMode = mode
+            }
+            joystickScrollUpActionPopup.selectItem(withTag: (normalizedBindings == nil ? JoystickScrollActionKind.off : .keyCombo).tag)
             joystickScrollUpRecorder.setOptionalKeyBindings(normalizedBindings)
             joystickScrollUpMultiKeyPopup.selectItem(withTag: mode.tag)
         case .scrollDown:
-            let previousBindings = config?.joystick.scrollDownAction.input.keyBindings ?? []
-            config?.joystick.scrollDownAction.input.keyBindings = normalizedBindings ?? []
+            let previousBindings = selectedJoystickLayer(in: config?.joystick ?? .defaultBindings).scrollDownAction.input.keyBindings
             let mode = preferredMultiKeyActivationMode(
                 for: normalizedBindings ?? [],
                 previousBindings: previousBindings,
-                existingMode: config?.joystick.scrollDownAction.input.multiKeyActivationMode ?? .sequential
+                existingMode: selectedJoystickLayer(in: config?.joystick ?? .defaultBindings).scrollDownAction.input.multiKeyActivationMode
             )
-            config?.joystick.scrollDownAction.input.multiKeyActivationMode = mode
+            updateSelectedJoystickLayer { layer in
+                layer.scrollDownAction.kind = normalizedBindings == nil ? .off : .keyCombo
+                layer.scrollDownAction.input.keyBindings = normalizedBindings ?? []
+                layer.scrollDownAction.input.multiKeyActivationMode = mode
+            }
+            joystickScrollDownActionPopup.selectItem(withTag: (normalizedBindings == nil ? JoystickScrollActionKind.off : .keyCombo).tag)
             joystickScrollDownRecorder.setOptionalKeyBindings(normalizedBindings)
             joystickScrollDownMultiKeyPopup.selectItem(withTag: mode.tag)
         }
@@ -1481,6 +1603,26 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         )
     }
 
+    private func joystickTriggerAction(
+        actionPopup: NSPopUpButton,
+        recorder: KeyRecorderButton,
+        modePopup: NSPopUpButton,
+        multiKeyPopup: NSPopUpButton
+    ) -> JoystickTriggerAction {
+        let kind = JoystickTriggerActionKind(tag: actionPopup.selectedTag()) ?? .off
+        switch kind {
+        case .off:
+            return .off
+        case .keyCombo:
+            return JoystickTriggerAction(
+                kind: .keyCombo,
+                input: joystickInput(recorder: recorder, modePopup: modePopup, multiKeyPopup: multiKeyPopup)
+            )
+        case .nestedJoystick:
+            return .nestedJoystick
+        }
+    }
+
     private func joystickScrollAction(direction: JoystickScrollDirection) -> JoystickScrollAction {
         let actionPopup: NSPopUpButton
         let recorder: KeyRecorderButton
@@ -1511,6 +1653,8 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
                 kind: .keyCombo,
                 input: joystickInput(recorder: recorder, modePopup: modePopup, multiKeyPopup: multiKeyPopup)
             )
+        case .nestedJoystick:
+            return .nestedJoystick
         }
     }
 
@@ -1546,6 +1690,120 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         }
     }
 
+    private func syncJoystickTriggerControls(
+        action: JoystickTriggerAction,
+        actionPopup: NSPopUpButton,
+        recorder: KeyRecorderButton,
+        modePopup: NSPopUpButton,
+        multiKeyPopup: NSPopUpButton
+    ) {
+        actionPopup.selectItem(withTag: action.kind.tag)
+        syncJoystickInputControls(
+            input: action.input,
+            recorder: recorder,
+            modePopup: modePopup,
+            multiKeyPopup: multiKeyPopup
+        )
+    }
+
+    private func syncJoystickLayerControls(from joystick: JoystickConfig) {
+        let layer = selectedJoystickLayer(in: joystick)
+        joystickUpRecorder.setKeyBindings([layer.up])
+        joystickDownRecorder.setKeyBindings([layer.down])
+        joystickLeftRecorder.setKeyBindings([layer.left])
+        joystickRightRecorder.setKeyBindings([layer.right])
+        syncJoystickTriggerControls(
+            action: layer.leftClickAction,
+            actionPopup: joystickLeftClickActionPopup,
+            recorder: joystickLeftClickRecorder,
+            modePopup: joystickLeftClickModePopup,
+            multiKeyPopup: joystickLeftClickMultiKeyPopup
+        )
+        syncJoystickTriggerControls(
+            action: selectedJoystickLayerIndex == 0 ? joystick.rightClickAction : .off,
+            actionPopup: joystickRightClickActionPopup,
+            recorder: joystickRightClickRecorder,
+            modePopup: joystickRightClickModePopup,
+            multiKeyPopup: joystickRightClickMultiKeyPopup
+        )
+        syncJoystickScrollControls(action: layer.scrollUpAction, direction: .up)
+        syncJoystickScrollControls(action: layer.scrollDownAction, direction: .down)
+        updateJoystickInputVisibility()
+    }
+
+    private func selectedJoystickLayer(in joystick: JoystickConfig) -> JoystickLayerConfig {
+        guard selectedJoystickLayerIndex > 0,
+              selectedJoystickLayerIndex - 1 < joystick.nestedLayers.count else {
+            return JoystickLayerConfig(
+                up: joystick.up,
+                down: joystick.down,
+                left: joystick.left,
+                right: joystick.right,
+                leftClickAction: joystick.leftClickAction,
+                scrollUpAction: joystick.scrollUpAction,
+                scrollDownAction: joystick.scrollDownAction
+            )
+        }
+
+        return joystick.nestedLayers[selectedJoystickLayerIndex - 1]
+    }
+
+    private func ensureNestedJoystickLayers(in joystick: inout JoystickConfig, through layerIndex: Int) {
+        guard layerIndex > 0 else {
+            return
+        }
+
+        let requiredCount = min(layerIndex, JoystickConfig.maxLayerCount - 1)
+        while joystick.nestedLayers.count < requiredCount {
+            joystick.nestedLayers.append(.defaultBindings)
+        }
+
+        if joystick.nestedLayers.count > JoystickConfig.maxLayerCount - 1 {
+            joystick.nestedLayers = Array(joystick.nestedLayers.prefix(JoystickConfig.maxLayerCount - 1))
+        }
+    }
+
+    private func ensureNextNestedJoystickLayerIfNeeded(in joystick: inout JoystickConfig) {
+        guard selectedJoystickLayerIndex + 1 < JoystickConfig.maxLayerCount else {
+            return
+        }
+
+        let layer = selectedJoystickLayer(in: joystick)
+        let usesNestedTrigger = layer.leftClickAction.kind == .nestedJoystick
+            || layer.scrollUpAction.kind == .nestedJoystick
+            || layer.scrollDownAction.kind == .nestedJoystick
+        guard usesNestedTrigger else {
+            return
+        }
+
+        ensureNestedJoystickLayers(in: &joystick, through: selectedJoystickLayerIndex + 1)
+    }
+
+    private func updateSelectedJoystickLayer(_ update: (inout JoystickLayerConfig) -> Void) {
+        guard var config else {
+            return
+        }
+
+        if selectedJoystickLayerIndex == 0 {
+            var layer = selectedJoystickLayer(in: config.joystick)
+            update(&layer)
+            config.joystick.up = layer.up
+            config.joystick.down = layer.down
+            config.joystick.left = layer.left
+            config.joystick.right = layer.right
+            config.joystick.leftClickAction = layer.leftClickAction
+            config.joystick.scrollUpAction = layer.scrollUpAction
+            config.joystick.scrollDownAction = layer.scrollDownAction
+        } else {
+            ensureNestedJoystickLayers(in: &config.joystick, through: selectedJoystickLayerIndex)
+            var layer = config.joystick.nestedLayers[selectedJoystickLayerIndex - 1]
+            update(&layer)
+            config.joystick.nestedLayers[selectedJoystickLayerIndex - 1] = layer
+        }
+
+        self.config = config
+    }
+
     private func updateMultiKeyActivationModeVisibility(for bindings: [ButtonKeyBinding]? = nil) {
         let currentBindings = bindings ?? config?.keyBindings ?? []
         let rightClickBindings = config?.rightClickKeyBindings ?? []
@@ -1554,18 +1812,23 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
     }
 
     private func updateJoystickInputVisibility() {
-        let isJoystick = config?.type == .joystick
-        let operationMode = JoystickOperationMode(tag: joystickOperationModePopup.selectedTag()) ?? .capture
-        let showsCaptureInputs = isJoystick && operationMode == .capture
-        let showsClickDragInputs = isJoystick && operationMode == .clickDrag
+        let isJoystick = config?.type == .joystick && config?.action.isProtectedSwitch != true
+        let isBaseLayer = selectedJoystickLayerIndex == 0
+        let leftClickKind = JoystickTriggerActionKind(tag: joystickLeftClickActionPopup.selectedTag()) ?? .off
+        let rightClickKind = JoystickTriggerActionKind(tag: joystickRightClickActionPopup.selectedTag()) ?? .off
+        let showsLeftClickKeyCombo = isJoystick && leftClickKind == .keyCombo
+        let showsRightClickAction = isJoystick && isBaseLayer
+        let showsRightClickKeyCombo = showsRightClickAction && rightClickKind == .keyCombo
 
-        joystickLeftClickKeyRow?.isHidden = !showsCaptureInputs
-        joystickLeftClickModeRow?.isHidden = !showsCaptureInputs
-        joystickLeftClickMultiKeyRow?.isHidden = !showsCaptureInputs
+        joystickLeftClickActionRow?.isHidden = !isJoystick
+        joystickLeftClickKeyRow?.isHidden = !showsLeftClickKeyCombo
+        joystickLeftClickModeRow?.isHidden = !showsLeftClickKeyCombo
+        joystickLeftClickMultiKeyRow?.isHidden = !showsLeftClickKeyCombo
             || joystickLeftClickRecorder.recordedBindings.count <= 1
-        joystickRightClickKeyRow?.isHidden = !showsClickDragInputs
-        joystickRightClickModeRow?.isHidden = !showsClickDragInputs
-        joystickRightClickMultiKeyRow?.isHidden = !showsClickDragInputs
+        joystickRightClickActionRow?.isHidden = !showsRightClickAction
+        joystickRightClickKeyRow?.isHidden = !showsRightClickKeyCombo
+        joystickRightClickModeRow?.isHidden = !showsRightClickKeyCombo
+        joystickRightClickMultiKeyRow?.isHidden = !showsRightClickKeyCombo
             || joystickRightClickRecorder.recordedBindings.count <= 1
 
         updateJoystickScrollInputVisibility(
@@ -1594,13 +1857,11 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         modeRow: NSStackView?,
         multiKeyRow: NSStackView?
     ) {
-        let isJoystick = config?.type == .joystick
-        let operationMode = JoystickOperationMode(tag: joystickOperationModePopup.selectedTag()) ?? .capture
-        let showsCaptureInputs = isJoystick && operationMode == .capture
+        let isJoystick = config?.type == .joystick && config?.action.isProtectedSwitch != true
         let isKeyCombo = JoystickScrollActionKind(tag: actionPopup.selectedTag()) == .keyCombo
-        keyRow?.isHidden = !showsCaptureInputs || !isKeyCombo
-        modeRow?.isHidden = !showsCaptureInputs || !isKeyCombo
-        multiKeyRow?.isHidden = !showsCaptureInputs
+        keyRow?.isHidden = !isJoystick || !isKeyCombo
+        modeRow?.isHidden = !isJoystick || !isKeyCombo
+        multiKeyRow?.isHidden = !isJoystick
             || !isKeyCombo
             || recorder.recordedBindings.count <= 1
     }
@@ -1626,10 +1887,9 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         let isProtectedSwitch = config?.action.isProtectedSwitch == true
         let isJoystick = config?.type == .joystick
         let isDwellAction = config?.type == .dwellAction
-        let joystickOperationMode = JoystickOperationMode(tag: joystickOperationModePopup.selectedTag()) ?? .capture
         let joystickAxisLockMode = JoystickAxisLockMode(tag: joystickAxisLockModePopup.selectedTag()) ?? .scrollWheel
+        updateJoystickTriggerActionOptions()
         updateJoystickScrollActionOptions(axisLockMode: joystickAxisLockMode)
-        let showsJoystickCaptureInputs = isJoystick && joystickOperationMode == .capture
         let showsHoldDirectionAxisLock = isJoystick && joystickAxisLockMode == .holdDirection
         let isSystemEvent = config?.type == .systemEvent
         let hidesKeyboardControls = isProtectedSwitch || isJoystick || isSystemEvent || isDwellAction
@@ -1650,19 +1910,22 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         rightClickModeRow?.isHidden = hidesKeyboardControls
         joystickSectionLabel?.isHidden = !isJoystick || isProtectedSwitch
         joystickOperationModeRow?.isHidden = !isJoystick || isProtectedSwitch
+        joystickLayerRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickAxisLockModeRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickAxisLockHoldDurationRow?.isHidden = !showsHoldDirectionAxisLock || isProtectedSwitch
         joystickUpRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickDownRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickLeftRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickRightRow?.isHidden = !isJoystick || isProtectedSwitch
+        joystickLeftClickActionRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickLeftClickKeyRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickLeftClickModeRow?.isHidden = !isJoystick || isProtectedSwitch
+        joystickRightClickActionRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickRightClickKeyRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickRightClickModeRow?.isHidden = !isJoystick || isProtectedSwitch
-        joystickScrollSectionLabel?.isHidden = !showsJoystickCaptureInputs || isProtectedSwitch
-        joystickScrollUpActionRow?.isHidden = !showsJoystickCaptureInputs || isProtectedSwitch
-        joystickScrollDownActionRow?.isHidden = !showsJoystickCaptureInputs || isProtectedSwitch
+        joystickScrollSectionLabel?.isHidden = !isJoystick || isProtectedSwitch
+        joystickScrollUpActionRow?.isHidden = !isJoystick || isProtectedSwitch
+        joystickScrollDownActionRow?.isHidden = !isJoystick || isProtectedSwitch
 
         if hidesKeyboardControls {
             multiKeyActivationModeRow?.isHidden = true
@@ -2048,8 +2311,12 @@ private extension MultiKeyActivationMode {
 }
 
 private extension JoystickScrollActionKind {
-    static func allCases(includeAxisLock: Bool = true) -> [JoystickScrollActionKind] {
-        includeAxisLock ? [.off, .axisLock, .keyCombo] : [.off, .keyCombo]
+    static func allCases(includeAxisLock: Bool = true, includeNested: Bool = true) -> [JoystickScrollActionKind] {
+        var cases: [JoystickScrollActionKind] = includeAxisLock ? [.off, .axisLock, .keyCombo] : [.off, .keyCombo]
+        if includeNested {
+            cases.append(.nestedJoystick)
+        }
+        return cases
     }
 
     var displayName: String {
@@ -2060,6 +2327,8 @@ private extension JoystickScrollActionKind {
             return "Axis Lock"
         case .keyCombo:
             return "Key/Combo"
+        case .nestedJoystick:
+            return "Nested Joystick"
         }
     }
 
@@ -2071,6 +2340,8 @@ private extension JoystickScrollActionKind {
             return 1
         case .keyCombo:
             return 2
+        case .nestedJoystick:
+            return 3
         }
     }
 
@@ -2082,6 +2353,49 @@ private extension JoystickScrollActionKind {
             self = .axisLock
         case 2:
             self = .keyCombo
+        case 3:
+            self = .nestedJoystick
+        default:
+            return nil
+        }
+    }
+}
+
+private extension JoystickTriggerActionKind {
+    static func allCases(includeNested: Bool) -> [JoystickTriggerActionKind] {
+        includeNested ? [.off, .keyCombo, .nestedJoystick] : [.off, .keyCombo]
+    }
+
+    var displayName: String {
+        switch self {
+        case .off:
+            return "Off"
+        case .keyCombo:
+            return "Key/Combo"
+        case .nestedJoystick:
+            return "Nested Joystick"
+        }
+    }
+
+    var tag: Int {
+        switch self {
+        case .off:
+            return 0
+        case .keyCombo:
+            return 1
+        case .nestedJoystick:
+            return 2
+        }
+    }
+
+    init?(tag: Int) {
+        switch tag {
+        case 0:
+            self = .off
+        case 1:
+            self = .keyCombo
+        case 2:
+            self = .nestedJoystick
         default:
             return nil
         }

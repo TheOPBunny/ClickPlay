@@ -213,10 +213,25 @@ struct JoystickInputConfig: Codable, Equatable {
     )
 }
 
+enum JoystickTriggerActionKind: String, Codable, Equatable {
+    case off
+    case keyCombo
+    case nestedJoystick
+}
+
+struct JoystickTriggerAction: Codable, Equatable {
+    var kind: JoystickTriggerActionKind
+    var input: JoystickInputConfig
+
+    static let off = JoystickTriggerAction(kind: .off, input: .empty)
+    static let nestedJoystick = JoystickTriggerAction(kind: .nestedJoystick, input: .empty)
+}
+
 enum JoystickScrollActionKind: String, Codable, Equatable {
     case off
     case axisLock
     case keyCombo
+    case nestedJoystick
 }
 
 struct JoystickScrollAction: Codable, Equatable {
@@ -225,10 +240,32 @@ struct JoystickScrollAction: Codable, Equatable {
 
     static let off = JoystickScrollAction(kind: .off, input: .empty)
     static let axisLock = JoystickScrollAction(kind: .axisLock, input: .empty)
+    static let nestedJoystick = JoystickScrollAction(kind: .nestedJoystick, input: .empty)
+}
+
+struct JoystickLayerConfig: Codable, Equatable {
+    var up: ButtonKeyBinding
+    var down: ButtonKeyBinding
+    var left: ButtonKeyBinding
+    var right: ButtonKeyBinding
+    var leftClickAction: JoystickTriggerAction
+    var scrollUpAction: JoystickScrollAction
+    var scrollDownAction: JoystickScrollAction
+
+    static let defaultBindings = JoystickLayerConfig(
+        up: ButtonKeyBinding(keyCode: 13, keyModifiers: 0),
+        down: ButtonKeyBinding(keyCode: 1, keyModifiers: 0),
+        left: ButtonKeyBinding(keyCode: 0, keyModifiers: 0),
+        right: ButtonKeyBinding(keyCode: 2, keyModifiers: 0),
+        leftClickAction: .off,
+        scrollUpAction: .off,
+        scrollDownAction: .off
+    )
 }
 
 /// Four directional bindings plus optional click/scroll behavior for joystick-style controls.
 struct JoystickConfig: Codable, Equatable {
+    static let maxLayerCount = 5
     static let defaultAxisLockHoldDuration = 5.0
     static let defaultAxisUnlockHoldDuration = 1.0
 
@@ -240,10 +277,11 @@ struct JoystickConfig: Codable, Equatable {
     var down: ButtonKeyBinding
     var left: ButtonKeyBinding
     var right: ButtonKeyBinding
-    var leftClickInput: JoystickInputConfig
-    var rightClickInput: JoystickInputConfig
+    var leftClickAction: JoystickTriggerAction
+    var rightClickAction: JoystickTriggerAction
     var scrollUpAction: JoystickScrollAction
     var scrollDownAction: JoystickScrollAction
+    var nestedLayers: [JoystickLayerConfig]
 
     private enum CodingKeys: String, CodingKey {
         case operationMode
@@ -254,10 +292,13 @@ struct JoystickConfig: Codable, Equatable {
         case down
         case left
         case right
+        case leftClickAction
+        case rightClickAction
         case leftClickInput
         case rightClickInput
         case scrollUpAction
         case scrollDownAction
+        case nestedLayers
     }
 
     static let defaultBindings = JoystickConfig(
@@ -269,10 +310,11 @@ struct JoystickConfig: Codable, Equatable {
         down: ButtonKeyBinding(keyCode: 1, keyModifiers: 0),
         left: ButtonKeyBinding(keyCode: 0, keyModifiers: 0),
         right: ButtonKeyBinding(keyCode: 2, keyModifiers: 0),
-        leftClickInput: .empty,
-        rightClickInput: .empty,
+        leftClickAction: .off,
+        rightClickAction: .off,
         scrollUpAction: .off,
-        scrollDownAction: .off
+        scrollDownAction: .off,
+        nestedLayers: []
     )
 
     init(
@@ -284,10 +326,11 @@ struct JoystickConfig: Codable, Equatable {
         down: ButtonKeyBinding,
         left: ButtonKeyBinding,
         right: ButtonKeyBinding,
-        leftClickInput: JoystickInputConfig = .empty,
-        rightClickInput: JoystickInputConfig = .empty,
+        leftClickAction: JoystickTriggerAction = .off,
+        rightClickAction: JoystickTriggerAction = .off,
         scrollUpAction: JoystickScrollAction = .off,
-        scrollDownAction: JoystickScrollAction = .off
+        scrollDownAction: JoystickScrollAction = .off,
+        nestedLayers: [JoystickLayerConfig] = []
     ) {
         self.operationMode = operationMode
         self.axisLockMode = axisLockMode
@@ -297,10 +340,11 @@ struct JoystickConfig: Codable, Equatable {
         self.down = down
         self.left = left
         self.right = right
-        self.leftClickInput = leftClickInput
-        self.rightClickInput = rightClickInput
+        self.leftClickAction = leftClickAction
+        self.rightClickAction = rightClickAction
         self.scrollUpAction = scrollUpAction
         self.scrollDownAction = scrollDownAction
+        self.nestedLayers = Array(nestedLayers.prefix(Self.maxLayerCount - 1))
     }
 
     init(from decoder: Decoder) throws {
@@ -313,10 +357,47 @@ struct JoystickConfig: Codable, Equatable {
         down = try container.decode(ButtonKeyBinding.self, forKey: .down)
         left = try container.decode(ButtonKeyBinding.self, forKey: .left)
         right = try container.decode(ButtonKeyBinding.self, forKey: .right)
-        leftClickInput = try container.decodeIfPresent(JoystickInputConfig.self, forKey: .leftClickInput) ?? .empty
-        rightClickInput = try container.decodeIfPresent(JoystickInputConfig.self, forKey: .rightClickInput) ?? .empty
+        leftClickAction = try container.decodeIfPresent(JoystickTriggerAction.self, forKey: .leftClickAction)
+            ?? Self.triggerAction(fromLegacyInput: try container.decodeIfPresent(JoystickInputConfig.self, forKey: .leftClickInput))
+        rightClickAction = try container.decodeIfPresent(JoystickTriggerAction.self, forKey: .rightClickAction)
+            ?? Self.triggerAction(fromLegacyInput: try container.decodeIfPresent(JoystickInputConfig.self, forKey: .rightClickInput))
         scrollUpAction = try container.decodeIfPresent(JoystickScrollAction.self, forKey: .scrollUpAction) ?? .off
         scrollDownAction = try container.decodeIfPresent(JoystickScrollAction.self, forKey: .scrollDownAction) ?? .off
+        nestedLayers = Array(
+            (try container.decodeIfPresent([JoystickLayerConfig].self, forKey: .nestedLayers) ?? [])
+                .prefix(Self.maxLayerCount - 1)
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(operationMode, forKey: .operationMode)
+        try container.encode(axisLockMode, forKey: .axisLockMode)
+        try container.encode(axisLockHoldDuration, forKey: .axisLockHoldDuration)
+        try container.encode(axisUnlockHoldDuration, forKey: .axisUnlockHoldDuration)
+        try container.encode(up, forKey: .up)
+        try container.encode(down, forKey: .down)
+        try container.encode(left, forKey: .left)
+        try container.encode(right, forKey: .right)
+        try container.encode(leftClickAction, forKey: .leftClickAction)
+        try container.encode(rightClickAction, forKey: .rightClickAction)
+        try container.encode(legacyInput(from: leftClickAction), forKey: .leftClickInput)
+        try container.encode(legacyInput(from: rightClickAction), forKey: .rightClickInput)
+        try container.encode(scrollUpAction, forKey: .scrollUpAction)
+        try container.encode(scrollDownAction, forKey: .scrollDownAction)
+        try container.encode(Array(nestedLayers.prefix(Self.maxLayerCount - 1)), forKey: .nestedLayers)
+    }
+
+    private static func triggerAction(fromLegacyInput input: JoystickInputConfig?) -> JoystickTriggerAction {
+        guard let input, !input.keyBindings.isEmpty else {
+            return .off
+        }
+
+        return JoystickTriggerAction(kind: .keyCombo, input: input)
+    }
+
+    private func legacyInput(from action: JoystickTriggerAction) -> JoystickInputConfig {
+        action.kind == .keyCombo ? action.input : .empty
     }
 }
 
