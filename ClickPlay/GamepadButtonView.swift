@@ -2210,7 +2210,9 @@ final class GamepadButtonView: NSView {
         case .joystickLeftClick:
             return resolvedInput(for: joystickLeftClickAction())
         case .joystickRightClick:
-            return activeJoystickLayerIndex == 0 ? resolvedInput(for: config.joystick.rightClickAction) : nil
+            return isJoystickClickDragMode && activeJoystickLayerIndex == 0
+                ? resolvedInput(for: config.joystick.rightClickAction)
+                : nil
         case .joystickScrollUp:
             return resolvedInput(for: joystickScrollAction(for: .up))
         case .joystickScrollDown:

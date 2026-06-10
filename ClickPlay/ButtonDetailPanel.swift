@@ -1319,7 +1319,8 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
             config.rightClickKeyBindings = nil
             config.rightClickFallsBackToPrimary = false
             config.rightClickInteractionMode = nil
-            config.joystick.operationMode = JoystickOperationMode(tag: joystickOperationModePopup.selectedTag()) ?? .capture
+            let operationMode = JoystickOperationMode(tag: joystickOperationModePopup.selectedTag()) ?? .capture
+            config.joystick.operationMode = operationMode
             let axisLockMode = JoystickAxisLockMode(tag: joystickAxisLockModePopup.selectedTag()) ?? .scrollWheel
             config.joystick.axisLockMode = axisLockMode
             updateJoystickScrollActionOptions(axisLockMode: axisLockMode)
@@ -1343,12 +1344,14 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
                     modePopup: joystickLeftClickModePopup,
                     multiKeyPopup: joystickLeftClickMultiKeyPopup
                 )
-                config.joystick.rightClickAction = joystickTriggerAction(
-                    actionPopup: joystickRightClickActionPopup,
-                    recorder: joystickRightClickRecorder,
-                    modePopup: joystickRightClickModePopup,
-                    multiKeyPopup: joystickRightClickMultiKeyPopup
-                )
+                config.joystick.rightClickAction = operationMode == .clickDrag
+                    ? joystickTriggerAction(
+                        actionPopup: joystickRightClickActionPopup,
+                        recorder: joystickRightClickRecorder,
+                        modePopup: joystickRightClickModePopup,
+                        multiKeyPopup: joystickRightClickMultiKeyPopup
+                    )
+                    : .off
                 config.joystick.scrollUpAction = joystickScrollAction(direction: .up)
                 config.joystick.scrollDownAction = joystickScrollAction(direction: .down)
             } else {
@@ -1814,10 +1817,11 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
     private func updateJoystickInputVisibility() {
         let isJoystick = config?.type == .joystick && config?.action.isProtectedSwitch != true
         let isBaseLayer = selectedJoystickLayerIndex == 0
+        let operationMode = JoystickOperationMode(tag: joystickOperationModePopup.selectedTag()) ?? .capture
         let leftClickKind = JoystickTriggerActionKind(tag: joystickLeftClickActionPopup.selectedTag()) ?? .off
         let rightClickKind = JoystickTriggerActionKind(tag: joystickRightClickActionPopup.selectedTag()) ?? .off
         let showsLeftClickKeyCombo = isJoystick && leftClickKind == .keyCombo
-        let showsRightClickAction = isJoystick && isBaseLayer
+        let showsRightClickAction = isJoystick && isBaseLayer && operationMode == .clickDrag
         let showsRightClickKeyCombo = showsRightClickAction && rightClickKind == .keyCombo
 
         joystickLeftClickActionRow?.isHidden = !isJoystick
