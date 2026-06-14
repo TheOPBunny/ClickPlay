@@ -56,6 +56,169 @@ final class GamepadContentView: NSView {
         }
     }
 
+    private final class JoystickCaptureHUDView: NSView {
+        private static let labelHeight: CGFloat = 18
+        private static let horizontalPadding: CGFloat = 6
+        private static let rowHeight: CGFloat = 20
+
+        private var state: JoystickCaptureHUDState?
+        private var joystickFrame: NSRect = .zero
+        private var foregroundColor: NSColor = .white
+
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            wantsLayer = true
+            layer?.backgroundColor = NSColor.clear.cgColor
+            isHidden = true
+        }
+
+        required init?(coder: NSCoder) { fatalError() }
+
+        override var isOpaque: Bool { false }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        func update(state: JoystickCaptureHUDState?, joystickFrame: NSRect, foregroundColor: NSColor) {
+            self.state = state
+            self.joystickFrame = joystickFrame
+            self.foregroundColor = foregroundColor
+            isHidden = state == nil
+            needsDisplay = true
+        }
+
+        override func draw(_ dirtyRect: NSRect) {
+            super.draw(dirtyRect)
+            guard let state else { return }
+
+            drawLayerText(state.layerText)
+            drawAxisLabels(state)
+            drawMappingRows(state.rows)
+        }
+
+        private func drawLayerText(_ text: String) {
+            let width = min(max(90, bounds.width * 0.42), 180)
+            let rect = NSRect(
+                x: bounds.midX - width / 2,
+                y: max(4, bounds.maxY - Self.labelHeight - 4),
+                width: width,
+                height: Self.labelHeight
+            )
+            drawText(text, in: rect, alignment: .center, isActive: false, color: foregroundColor)
+        }
+
+        private func drawAxisLabels(_ state: JoystickCaptureHUDState) {
+            let labelWidth = min(max(54, joystickFrame.width * 0.9), 96)
+            let labelHeight = Self.labelHeight
+            let gap: CGFloat = 7
+            let upRect = NSRect(
+                x: clampedX(joystickFrame.midX - labelWidth / 2, width: labelWidth),
+                y: min(bounds.maxY - labelHeight - 4, joystickFrame.maxY + gap),
+                width: labelWidth,
+                height: labelHeight
+            )
+            let downRect = NSRect(
+                x: clampedX(joystickFrame.midX - labelWidth / 2, width: labelWidth),
+                y: max(4, joystickFrame.minY - labelHeight - gap),
+                width: labelWidth,
+                height: labelHeight
+            )
+            let sideWidth = min(max(58, bounds.width * 0.22), 110)
+            let sideY = min(max(4, joystickFrame.midY - labelHeight / 2), bounds.maxY - labelHeight - 4)
+            let leftRect = NSRect(
+                x: clampedX(joystickFrame.minX - sideWidth - gap, width: sideWidth),
+                y: sideY,
+                width: sideWidth,
+                height: labelHeight
+            )
+            let rightRect = NSRect(
+                x: clampedX(joystickFrame.maxX + gap, width: sideWidth),
+                y: sideY,
+                width: sideWidth,
+                height: labelHeight
+            )
+
+            drawText(state.up.label, in: upRect, alignment: .center, isActive: state.up.isActive, color: foregroundColor)
+            drawText(state.down.label, in: downRect, alignment: .center, isActive: state.down.isActive, color: foregroundColor)
+            drawText(state.left.label, in: leftRect, alignment: .right, isActive: state.left.isActive, color: foregroundColor)
+            drawText(state.right.label, in: rightRect, alignment: .left, isActive: state.right.isActive, color: foregroundColor)
+        }
+
+        private func drawMappingRows(_ rows: [JoystickCaptureHUDState.MappingRow]) {
+            guard !rows.isEmpty else { return }
+
+            let rowWidth = min(max(132, bounds.width * 0.36), 210)
+            let gap: CGFloat = 12
+            let preferredRightX = joystickFrame.maxX + gap
+            let preferredLeftX = joystickFrame.minX - rowWidth - gap
+            let rowX: CGFloat
+            if preferredRightX + rowWidth <= bounds.maxX - 4 {
+                rowX = preferredRightX
+            } else if preferredLeftX >= bounds.minX + 4 {
+                rowX = preferredLeftX
+            } else {
+                rowX = clampedX(bounds.midX - rowWidth / 2, width: rowWidth)
+            }
+
+            let totalHeight = CGFloat(rows.count) * Self.rowHeight
+            let topY = min(bounds.maxY - 30, max(joystickFrame.maxY, joystickFrame.midY + totalHeight / 2))
+            let startY = min(max(4, topY - Self.rowHeight), bounds.maxY - totalHeight - 4)
+
+            for (index, row) in rows.enumerated() {
+                let rect = NSRect(
+                    x: rowX,
+                    y: startY + CGFloat(rows.count - 1 - index) * Self.rowHeight,
+                    width: rowWidth,
+                    height: Self.rowHeight
+                )
+                let color = row.isActive ? accentColor(for: row.accent) : foregroundColor
+                drawText(
+                    "\(row.title): \(row.value)",
+                    in: rect,
+                    alignment: .left,
+                    isActive: row.isActive,
+                    color: color
+                )
+            }
+        }
+
+        private func drawText(
+            _ text: String,
+            in rect: NSRect,
+            alignment: NSTextAlignment,
+            isActive: Bool,
+            color: NSColor
+        ) {
+            let paragraphStyle = NSMutableParagraphStyle()
+            paragraphStyle.alignment = alignment
+            paragraphStyle.lineBreakMode = .byTruncatingTail
+            let font = NSFont.systemFont(ofSize: 13, weight: isActive ? .bold : .semibold)
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: color,
+                .paragraphStyle: paragraphStyle,
+            ]
+            NSAttributedString(string: text, attributes: attributes).draw(
+                in: rect.insetBy(dx: Self.horizontalPadding, dy: 1)
+            )
+        }
+
+        private func accentColor(for accent: JoystickCaptureHUDState.ActionAccent?) -> NSColor {
+            switch accent {
+            case .toggleHold:
+                return .systemRed
+            case .turbo:
+                return .systemGreen
+            case .action:
+                return .systemBlue
+            case nil:
+                return foregroundColor
+            }
+        }
+
+        private func clampedX(_ x: CGFloat, width: CGFloat) -> CGFloat {
+            min(max(x, bounds.minX + 4), max(bounds.minX + 4, bounds.maxX - width - 4))
+        }
+    }
+
     /// Header controls are separated from the pad surface so minimize/menu/hide interactions do not press buttons.
     private final class HeaderBarView: NSView {
         var onToggleMinimize: (() -> Void)?
@@ -396,10 +559,13 @@ final class GamepadContentView: NSView {
     private let blurView = PassthroughVisualEffectView(frame: .zero)
     private let backgroundTintView = PassthroughView(frame: .zero)
     private let pointerLocationView = PointerLocationView(frame: .zero)
+    private let joystickCaptureHUDView = JoystickCaptureHUDView(frame: .zero)
 
     private var currentProfile: Profile
     private var isMinimized = false
     private var capturedJoystickButton: GamepadButton?
+    private var authoredButtonFrames: [GamepadButton: NSRect] = [:]
+    private var currentJoystickHUDState: JoystickCaptureHUDState?
     private var activeDwellButton: GamepadButton?
     private var virtualCursorPoint: NSPoint?
     private weak var virtualPrimaryButtonView: GamepadButtonView?
@@ -581,6 +747,7 @@ final class GamepadContentView: NSView {
             self?.endWindowDrag()
         }
         addSubview(padSurface)
+        padSurface.addSubview(joystickCaptureHUDView)
 
         addSubview(pointerLocationView)
         configureVirtualCursorCapture()
@@ -616,6 +783,7 @@ final class GamepadContentView: NSView {
         blurView.isHidden = frostedGlassIntensity <= 0
         backgroundTintView.layer?.backgroundColor = color.withAlphaComponent(1 - frostedGlassIntensity).cgColor
         pointerLocationView.updateStrokeColor(headerForegroundColor())
+        syncJoystickCaptureHUDView()
     }
 
     private func updateLayout() {
@@ -633,12 +801,15 @@ final class GamepadContentView: NSView {
         if isMinimized {
             padSurface.isHidden = true
             pointerLocationView.hide()
+            joystickCaptureHUDView.update(state: nil, joystickFrame: .zero, foregroundColor: headerForegroundColor())
             return
         }
 
         let padHeight = max(0, bounds.height - Self.headerHeight - Self.contentGap)
         padSurface.isHidden = false
         padSurface.frame = NSRect(x: 0, y: 0, width: bounds.width, height: padHeight)
+        joystickCaptureHUDView.frame = padSurface.bounds
+        syncJoystickCaptureHUDView()
     }
 
     private func updatePointerLocationVisibility(atScreenPoint screenPoint: NSPoint) {
@@ -857,6 +1028,13 @@ final class GamepadContentView: NSView {
         }
 
         onVirtualCursorActivity?()
+        if let virtualJoystickCaptureView {
+            if !virtualJoystickCaptureView.handleVirtualScroll(delta: delta) {
+                debugLog("[ContentView] virtualScroll swallowed delta=\(delta)")
+            }
+            return
+        }
+
         ensureVirtualCursorPoint()
         guard let virtualCursorPoint,
               let targetView = buttonView(atContentPoint: virtualCursorPoint),
@@ -955,7 +1133,10 @@ final class GamepadContentView: NSView {
         if isMinimized || padSurface.bounds.isEmpty {
             buttonViews.values.forEach { $0.removeFromSuperview() }
             buttonViews.removeAll()
+            authoredButtonFrames.removeAll()
             capturedJoystickButton = nil
+            currentJoystickHUDState = nil
+            joystickCaptureHUDView.update(state: nil, joystickFrame: .zero, foregroundColor: headerForegroundColor())
             return
         }
 
@@ -968,6 +1149,7 @@ final class GamepadContentView: NSView {
             buttonViews[button]?.releaseIfNeeded()
             buttonViews[button]?.removeFromSuperview()
             buttonViews.removeValue(forKey: button)
+            authoredButtonFrames.removeValue(forKey: button)
         }
 
         let width = padSurface.bounds.width
@@ -982,9 +1164,13 @@ final class GamepadContentView: NSView {
             let cx = min(max(CGFloat(cfg.x) * width, bw / 2), width - bw / 2)
             let cy = min(max(CGFloat(cfg.y) * height, bh / 2), height - bh / 2)
             let frame = CGRect(x: cx - bw / 2, y: cy - bh / 2, width: bw, height: bh)
+            authoredButtonFrames[button] = frame
+            let displayFrame = capturedJoystickButton == button
+                ? centeredCapturedJoystickFrame(for: frame)
+                : frame
 
             if let view = buttonViews[button] {
-                view.frame = frame
+                view.frame = displayFrame
                 if releasesExistingInputs {
                     view.updateConfig(
                         cfg,
@@ -1006,10 +1192,16 @@ final class GamepadContentView: NSView {
                     }
                     self.setJoystickCapture(captured, for: view.button)
                 }
+                view.onJoystickCaptureHUDChanged = { [weak self, weak view] state in
+                    guard let self, let view else {
+                        return
+                    }
+                    self.updateJoystickCaptureHUD(state, for: view.button)
+                }
                 view.onDwellActionToggled = { [weak self] button, config in
                     self?.onDwellActionToggled?(button, config) ?? false
                 }
-                view.frame = frame
+                view.frame = displayFrame
                 view.setDwellActionActive(activeDwellButton == button)
                 padSurface.addSubview(view)
                 buttonViews[button] = view
@@ -1063,6 +1255,7 @@ final class GamepadContentView: NSView {
         let hadJoystickCapture = capturedJoystickButton != nil
         buttonViews.values.forEach { $0.releaseIfNeeded() }
         capturedJoystickButton = nil
+        currentJoystickHUDState = nil
         updateButtonVisibilityForJoystickCapture()
         if hadJoystickCapture {
             onJoystickCaptureChanged?(false)
@@ -1083,8 +1276,10 @@ final class GamepadContentView: NSView {
         let wasCaptured = capturedJoystickButton != nil
         if captured {
             capturedJoystickButton = button
+            currentJoystickHUDState = nil
         } else if capturedJoystickButton == button {
             capturedJoystickButton = nil
+            currentJoystickHUDState = nil
         }
 
         updateButtonVisibilityForJoystickCapture()
@@ -1097,8 +1292,52 @@ final class GamepadContentView: NSView {
 
     private func updateButtonVisibilityForJoystickCapture() {
         for (button, view) in buttonViews {
+            let isCapturedButton = capturedJoystickButton == button
             view.isHidden = capturedJoystickButton.map { $0 != button } ?? false
+            if let authoredFrame = authoredButtonFrames[button] {
+                view.frame = isCapturedButton ? centeredCapturedJoystickFrame(for: authoredFrame) : authoredFrame
+            }
         }
+
+        syncJoystickCaptureHUDView()
+    }
+
+    private func centeredCapturedJoystickFrame(for authoredFrame: NSRect) -> NSRect {
+        let size = authoredFrame.size
+        return NSRect(
+            x: min(max(padSurface.bounds.midX - size.width / 2, 0), max(0, padSurface.bounds.width - size.width)),
+            y: min(max(padSurface.bounds.midY - size.height / 2, 0), max(0, padSurface.bounds.height - size.height)),
+            width: size.width,
+            height: size.height
+        )
+    }
+
+    private func updateJoystickCaptureHUD(_ state: JoystickCaptureHUDState?, for button: GamepadButton) {
+        guard capturedJoystickButton == button else {
+            return
+        }
+
+        currentJoystickHUDState = state
+        syncJoystickCaptureHUDView()
+    }
+
+    private func syncJoystickCaptureHUDView() {
+        guard let capturedJoystickButton,
+              let capturedView = buttonViews[capturedJoystickButton],
+              let currentJoystickHUDState,
+              !isMinimized,
+              !padSurface.isHidden else {
+            joystickCaptureHUDView.update(state: nil, joystickFrame: .zero, foregroundColor: headerForegroundColor())
+            return
+        }
+
+        joystickCaptureHUDView.frame = padSurface.bounds
+        joystickCaptureHUDView.update(
+            state: currentJoystickHUDState,
+            joystickFrame: capturedView.frame,
+            foregroundColor: headerForegroundColor()
+        )
+        padSurface.addSubview(joystickCaptureHUDView, positioned: .above, relativeTo: nil)
     }
 
     // MARK: - Window Dragging

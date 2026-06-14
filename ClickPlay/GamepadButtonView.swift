@@ -1,5 +1,32 @@
 import Cocoa
 
+struct JoystickCaptureHUDState: Equatable {
+    enum ActionAccent: Equatable {
+        case toggleHold
+        case turbo
+        case action
+    }
+
+    struct Axis: Equatable {
+        var label: String
+        var isActive: Bool
+    }
+
+    struct MappingRow: Equatable {
+        var title: String
+        var value: String
+        var isActive: Bool
+        var accent: ActionAccent?
+    }
+
+    var layerText: String
+    var up: Axis
+    var down: Axis
+    var left: Axis
+    var right: Axis
+    var rows: [MappingRow]
+}
+
 /// Draws a single on-screen gamepad control and maps mouse gestures into keyboard, system, or joystick actions.
 final class GamepadButtonView: NSView {
 
@@ -112,7 +139,7 @@ final class GamepadButtonView: NSView {
         let multiKeyActivationMode: MultiKeyActivationMode
     }
 
-    private enum JoystickDirection: CaseIterable, Equatable {
+    private enum JoystickDirection: CaseIterable, Hashable {
         case up
         case upRight
         case right
@@ -136,6 +163,12 @@ final class GamepadButtonView: NSView {
     private enum JoystickScrollDirection {
         case up
         case down
+    }
+
+    private enum JoystickHUDControl: Hashable {
+        case rightClick
+        case scrollUp
+        case scrollDown
     }
 
     // Timing and movement constants tune joystick feel without changing the key-injection contract.
@@ -204,11 +237,15 @@ final class GamepadButtonView: NSView {
     private var pendingJoystickAxisLockStartedAt: TimeInterval?
     private var lastJoystickAxisLockMovementTime: TimeInterval?
     private var requiresJoystickAxisLockNeutralBeforeLock = false
+    private var flashedJoystickHUDControls = Set<JoystickHUDControl>()
+    private var joystickHUDFlashWorkItems: [JoystickHUDControl: DispatchWorkItem] = [:]
     private var trackingArea: NSTrackingArea?
     private var visualScale: CGFloat = 1
     private var visualPalette: VisualPalette?
     private var lastAppliedVisualState: ButtonVisualState?
+    private var lastPublishedJoystickCaptureHUDState: JoystickCaptureHUDState?
     var onJoystickCaptureChanged: ((Bool) -> Void)?
+    var onJoystickCaptureHUDChanged: ((JoystickCaptureHUDState?) -> Void)?
     var onDwellActionToggled: ((GamepadButton, DwellActionConfig) -> Bool)?
 
     init(button: GamepadButton, config: ButtonConfig, compatibilityModeEnabled: Bool, activeSubProfileID: UUID?) {
@@ -865,6 +902,7 @@ final class GamepadButtonView: NSView {
         }
 
         if isDown {
+            flashJoystickHUDControl(.rightClick)
             virtualJoystickRightClickReturnedToPreviousLayer = returnToPreviousJoystickLayer()
         } else if virtualJoystickRightClickReturnedToPreviousLayer {
             virtualJoystickRightClickReturnedToPreviousLayer = false
@@ -962,6 +1000,7 @@ final class GamepadButtonView: NSView {
         isJoystickCaptureReleasePending = false
         pendingJoystickCaptureReleaseShouldWarp = false
         cancelJoystickAxisLockTimer()
+        clearJoystickHUDFlashes()
     }
 
     private func releaseJoystickCapture(warpCursorToCenter: Bool) {
@@ -1039,6 +1078,7 @@ final class GamepadButtonView: NSView {
         joystickParkingWorkItem = nil
         clearPendingJoystickParkingSuppression()
         cancelJoystickAxisLockTimer()
+        clearJoystickHUDFlashes()
     }
 
     @discardableResult
@@ -1609,6 +1649,7 @@ final class GamepadButtonView: NSView {
             return nil
 
         case .rightMouseDown, .rightMouseDragged:
+            flashJoystickHUDControl(.rightClick)
             if returnToPreviousJoystickLayer() {
                 return nil
             }
@@ -1915,6 +1956,8 @@ final class GamepadButtonView: NSView {
         guard shouldActivateJoystickScroll(direction) else {
             return true
         }
+
+        flashJoystickHUDControl(direction == .up ? .scrollUp : .scrollDown)
 
         switch action.kind {
         case .off:
@@ -2591,6 +2634,7 @@ final class GamepadButtonView: NSView {
         let shouldUpdateVisibility = previousState.map { $0.isJoystick != nextState.isJoystick } ?? true
 
         if let previousState, previousState == nextState {
+            publishJoystickCaptureHUDStateIfNeeded()
             return
         }
 
@@ -2624,6 +2668,8 @@ final class GamepadButtonView: NSView {
 
         lastAppliedVisualState = nextState
         CATransaction.commit()
+
+        publishJoystickCaptureHUDStateIfNeeded()
 
         if shouldUpdateOutline {
             CATransaction.flush()
@@ -2793,6 +2839,191 @@ final class GamepadButtonView: NSView {
         joystickKnobLayer.lineWidth = 1
 
         updateJoystickLockIndicatorLayer(baseColor: baseColor)
+    }
+
+    private func publishJoystickCaptureHUDStateIfNeeded() {
+        let nextState = makeJoystickCaptureHUDState()
+        guard nextState != lastPublishedJoystickCaptureHUDState else {
+            return
+        }
+
+        lastPublishedJoystickCaptureHUDState = nextState
+        onJoystickCaptureHUDChanged?(nextState)
+    }
+
+    private func makeJoystickCaptureHUDState() -> JoystickCaptureHUDState? {
+        guard isJoystickCaptureMode, isJoystickCaptured else {
+            return nil
+        }
+
+        let layer = activeJoystickLayer
+        let components = activeJoystickDirection.map(joystickAxisComponents(for:)) ?? []
+        let totalLayers = 1 + config.joystick.nestedLayers.count
+        let leftClickAction = joystickLeftClickAction()
+        let scrollUpAction = joystickScrollAction(for: .up)
+        let scrollDownAction = joystickScrollAction(for: .down)
+
+        return JoystickCaptureHUDState(
+            layerText: "Layer \(currentJoystickLayerDisplayIndex) / \(max(1, totalLayers))",
+            up: JoystickCaptureHUDState.Axis(
+                label: bindingDisplayName(layer?.up ?? config.joystick.up),
+                isActive: components.contains(.up)
+            ),
+            down: JoystickCaptureHUDState.Axis(
+                label: bindingDisplayName(layer?.down ?? config.joystick.down),
+                isActive: components.contains(.down)
+            ),
+            left: JoystickCaptureHUDState.Axis(
+                label: bindingDisplayName(layer?.left ?? config.joystick.left),
+                isActive: components.contains(.left)
+            ),
+            right: JoystickCaptureHUDState.Axis(
+                label: bindingDisplayName(layer?.right ?? config.joystick.right),
+                isActive: components.contains(.right)
+            ),
+            rows: [
+                JoystickCaptureHUDState.MappingRow(
+                    title: "Right click",
+                    value: activeJoystickLayerIndex > 0 ? "Previous layer" : "Release",
+                    isActive: flashedJoystickHUDControls.contains(.rightClick) || isJoystickCaptureReleasePending,
+                    accent: .action
+                ),
+                JoystickCaptureHUDState.MappingRow(
+                    title: "Left click",
+                    value: triggerActionDisplayName(leftClickAction),
+                    isActive: joystickLeftClickState.isPressed,
+                    accent: actionAccent(for: leftClickAction)
+                ),
+                JoystickCaptureHUDState.MappingRow(
+                    title: "Scroll up",
+                    value: scrollActionDisplayName(scrollUpAction),
+                    isActive: joystickScrollUpState.isPressed || flashedJoystickHUDControls.contains(.scrollUp),
+                    accent: actionAccent(for: scrollUpAction)
+                ),
+                JoystickCaptureHUDState.MappingRow(
+                    title: "Scroll down",
+                    value: scrollActionDisplayName(scrollDownAction),
+                    isActive: joystickScrollDownState.isPressed || flashedJoystickHUDControls.contains(.scrollDown),
+                    accent: actionAccent(for: scrollDownAction)
+                ),
+            ]
+        )
+    }
+
+    private func bindingDisplayName(_ binding: ButtonKeyBinding) -> String {
+        ButtonConfig.keyDisplayName(
+            code: binding.keyCode,
+            modifiers: NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
+        )
+    }
+
+    private func inputDisplayName(_ input: JoystickInputConfig) -> String {
+        guard !input.keyBindings.isEmpty else {
+            return "Off"
+        }
+
+        if input.keyBindings.count == 1, let binding = input.keyBindings.first {
+            return bindingDisplayName(binding)
+        }
+
+        return "[" + input.keyBindings.map(bindingDisplayName).joined() + "]"
+    }
+
+    private func triggerActionDisplayName(_ action: JoystickTriggerAction) -> String {
+        switch action.kind {
+        case .off:
+            return "Off"
+        case .keyCombo:
+            return inputDisplayName(action.input)
+        case .nestedJoystick:
+            return canEnterNestedJoystickLayer ? "Next layer" : "Next layer unavailable"
+        }
+    }
+
+    private func scrollActionDisplayName(_ action: JoystickScrollAction) -> String {
+        switch action.kind {
+        case .off:
+            return "Off"
+        case .axisLock:
+            return "Axis lock"
+        case .keyCombo:
+            return inputDisplayName(action.input)
+        case .nestedJoystick:
+            return canEnterNestedJoystickLayer ? "Next layer" : "Next layer unavailable"
+        }
+    }
+
+    private func actionAccent(for action: JoystickTriggerAction) -> JoystickCaptureHUDState.ActionAccent? {
+        guard action.kind == .keyCombo else {
+            return action.kind == .nestedJoystick ? .action : nil
+        }
+
+        return actionAccent(for: action.input)
+    }
+
+    private func actionAccent(for action: JoystickScrollAction) -> JoystickCaptureHUDState.ActionAccent? {
+        switch action.kind {
+        case .off:
+            return nil
+        case .axisLock, .nestedJoystick:
+            return .action
+        case .keyCombo:
+            return actionAccent(for: action.input)
+        }
+    }
+
+    private func actionAccent(for input: JoystickInputConfig) -> JoystickCaptureHUDState.ActionAccent? {
+        switch input.interactionMode {
+        case .momentary:
+            return nil
+        case .toggleHold:
+            return .toggleHold
+        case .turbo:
+            return .turbo
+        }
+    }
+
+    private func joystickAxisComponents(for direction: JoystickDirection) -> Set<JoystickDirection> {
+        switch direction {
+        case .up:
+            return [.up]
+        case .upRight:
+            return [.up, .right]
+        case .right:
+            return [.right]
+        case .downRight:
+            return [.down, .right]
+        case .down:
+            return [.down]
+        case .downLeft:
+            return [.down, .left]
+        case .left:
+            return [.left]
+        case .upLeft:
+            return [.up, .left]
+        }
+    }
+
+    private func flashJoystickHUDControl(_ control: JoystickHUDControl) {
+        joystickHUDFlashWorkItems[control]?.cancel()
+        flashedJoystickHUDControls.insert(control)
+        updateAppearance(animated: false)
+
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+
+            self.flashedJoystickHUDControls.remove(control)
+            self.joystickHUDFlashWorkItems[control] = nil
+            self.updateAppearance(animated: false)
+        }
+        joystickHUDFlashWorkItems[control] = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: workItem)
+    }
+
+    private func clearJoystickHUDFlashes() {
+        joystickHUDFlashWorkItems.values.forEach { $0.cancel() }
+        joystickHUDFlashWorkItems.removeAll()
+        flashedJoystickHUDControls.removeAll()
     }
 
     private func updateJoystickLockIndicatorLayer(baseColor _: NSColor) {
