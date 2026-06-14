@@ -132,10 +132,15 @@ final class GamepadContentView: NSView {
                 width: leftWidth,
                 height: labelHeight
             )
+            let rightWidth = min(max(96, bounds.width * 0.28), 170)
+            let rightX = min(
+                max(joystickFrame.maxX + gap, joystickFrame.midX + gap),
+                max(bounds.minX + 4, bounds.maxX - rightWidth - 4)
+            )
             let rightRect = NSRect(
-                x: clampedX(joystickFrame.maxX + gap, width: sideWidth),
+                x: rightX,
                 y: sideY,
-                width: sideWidth,
+                width: rightWidth,
                 height: labelHeight
             )
 
