@@ -163,15 +163,16 @@ final class GamepadContentView: NSView {
                     in: rect,
                     alignment: .left,
                     isActive: row.isActive,
-                    color: color
+                    color: color,
+                    minimumFontSize: 10
                 )
             }
         }
 
         private func mappingRowsFrame(forCount rowCount: Int) -> NSRect {
             let totalHeight = CGFloat(rowCount) * Self.rowHeight
-            let availableWidth = max(68, joystickFrame.minX - 14)
-            let preferredWidth = min(max(128, bounds.width * 0.34), 210)
+            let availableWidth = max(68, joystickFrame.minX - 10)
+            let preferredWidth = min(max(150, bounds.width * 0.44), 260)
             let rowWidth = min(preferredWidth, availableWidth)
             let startY = min(
                 max(4, joystickFrame.midY - totalHeight / 2),
@@ -191,20 +192,30 @@ final class GamepadContentView: NSView {
             in rect: NSRect,
             alignment: NSTextAlignment,
             isActive: Bool,
-            color: NSColor
+            color: NSColor,
+            minimumFontSize: CGFloat = 11
         ) {
             let paragraphStyle = NSMutableParagraphStyle()
             paragraphStyle.alignment = alignment
             paragraphStyle.lineBreakMode = .byTruncatingTail
-            let font = NSFont.systemFont(ofSize: 13, weight: isActive ? .bold : .semibold)
+            let insetRect = rect.insetBy(dx: Self.horizontalPadding, dy: 1)
+            var fontSize: CGFloat = 13
+            let weight: NSFont.Weight = isActive ? .bold : .semibold
+            var font = NSFont.systemFont(ofSize: fontSize, weight: weight)
+            let measuredWidth = NSAttributedString(
+                string: text,
+                attributes: [.font: font]
+            ).size().width
+            if measuredWidth > insetRect.width, insetRect.width > 0 {
+                fontSize = max(minimumFontSize, floor(fontSize * (insetRect.width / measuredWidth)))
+                font = NSFont.systemFont(ofSize: fontSize, weight: weight)
+            }
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: font,
                 .foregroundColor: color,
                 .paragraphStyle: paragraphStyle,
             ]
-            NSAttributedString(string: text, attributes: attributes).draw(
-                in: rect.insetBy(dx: Self.horizontalPadding, dy: 1)
-            )
+            NSAttributedString(string: text, attributes: attributes).draw(in: insetRect)
         }
 
         private func accentColor(for accent: JoystickCaptureHUDState.ActionAccent?) -> NSColor {
@@ -1310,7 +1321,7 @@ final class GamepadContentView: NSView {
 
     private func centeredCapturedJoystickFrame(for authoredFrame: NSRect) -> NSRect {
         let size = authoredFrame.size
-        let targetCenterX = padSurface.bounds.minX + (padSurface.bounds.width * 0.68)
+        let targetCenterX = padSurface.bounds.minX + (padSurface.bounds.width * 0.74)
         return NSRect(
             x: min(max(targetCenterX - size.width / 2, 0), max(0, padSurface.bounds.width - size.width)),
             y: min(max(padSurface.bounds.midY - size.height / 2, 0), max(0, padSurface.bounds.height - size.height)),
