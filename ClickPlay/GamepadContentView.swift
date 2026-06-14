@@ -106,12 +106,13 @@ final class GamepadContentView: NSView {
         }
 
         private func drawAxisLabels(_ state: JoystickCaptureHUDState) {
+            let mappingFrame = mappingRowsFrame(forCount: state.rows.count)
             let labelWidth = min(max(54, joystickFrame.width * 0.9), 96)
             let labelHeight = Self.labelHeight
             let gap: CGFloat = 7
             let upRect = NSRect(
                 x: clampedX(joystickFrame.midX - labelWidth / 2, width: labelWidth),
-                y: min(bounds.maxY - labelHeight - 4, joystickFrame.maxY + gap),
+                y: min(bounds.maxY - (labelHeight * 2) - 6, joystickFrame.maxY + gap),
                 width: labelWidth,
                 height: labelHeight
             )
@@ -123,10 +124,12 @@ final class GamepadContentView: NSView {
             )
             let sideWidth = min(max(58, bounds.width * 0.22), 110)
             let sideY = min(max(4, joystickFrame.midY - labelHeight / 2), bounds.maxY - labelHeight - 4)
+            let leftMinX = min(mappingFrame.maxX + 6, max(bounds.minX + 4, joystickFrame.minX - 42))
+            let leftWidth = max(36, min(sideWidth, joystickFrame.minX - gap - leftMinX))
             let leftRect = NSRect(
-                x: clampedX(joystickFrame.minX - sideWidth - gap, width: sideWidth),
+                x: leftMinX,
                 y: sideY,
-                width: sideWidth,
+                width: leftWidth,
                 height: labelHeight
             )
             let rightRect = NSRect(
@@ -145,28 +148,13 @@ final class GamepadContentView: NSView {
         private func drawMappingRows(_ rows: [JoystickCaptureHUDState.MappingRow]) {
             guard !rows.isEmpty else { return }
 
-            let rowWidth = min(max(132, bounds.width * 0.36), 210)
-            let gap: CGFloat = 12
-            let preferredRightX = joystickFrame.maxX + gap
-            let preferredLeftX = joystickFrame.minX - rowWidth - gap
-            let rowX: CGFloat
-            if preferredRightX + rowWidth <= bounds.maxX - 4 {
-                rowX = preferredRightX
-            } else if preferredLeftX >= bounds.minX + 4 {
-                rowX = preferredLeftX
-            } else {
-                rowX = clampedX(bounds.midX - rowWidth / 2, width: rowWidth)
-            }
-
-            let totalHeight = CGFloat(rows.count) * Self.rowHeight
-            let topY = min(bounds.maxY - 30, max(joystickFrame.maxY, joystickFrame.midY + totalHeight / 2))
-            let startY = min(max(4, topY - Self.rowHeight), bounds.maxY - totalHeight - 4)
+            let stackFrame = mappingRowsFrame(forCount: rows.count)
 
             for (index, row) in rows.enumerated() {
                 let rect = NSRect(
-                    x: rowX,
-                    y: startY + CGFloat(rows.count - 1 - index) * Self.rowHeight,
-                    width: rowWidth,
+                    x: stackFrame.minX,
+                    y: stackFrame.minY + CGFloat(rows.count - 1 - index) * Self.rowHeight,
+                    width: stackFrame.width,
                     height: Self.rowHeight
                 )
                 let color = row.isActive ? accentColor(for: row.accent) : foregroundColor
@@ -178,6 +166,24 @@ final class GamepadContentView: NSView {
                     color: color
                 )
             }
+        }
+
+        private func mappingRowsFrame(forCount rowCount: Int) -> NSRect {
+            let totalHeight = CGFloat(rowCount) * Self.rowHeight
+            let availableWidth = max(68, joystickFrame.minX - 14)
+            let preferredWidth = min(max(128, bounds.width * 0.34), 210)
+            let rowWidth = min(preferredWidth, availableWidth)
+            let startY = min(
+                max(4, joystickFrame.midY - totalHeight / 2),
+                max(4, bounds.maxY - totalHeight - 4)
+            )
+
+            return NSRect(
+                x: bounds.minX + 6,
+                y: startY,
+                width: rowWidth,
+                height: totalHeight
+            )
         }
 
         private func drawText(
