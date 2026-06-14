@@ -1139,7 +1139,7 @@ final class GamepadButtonView: NSView {
 
         updateJoystickDrag(with: event)
         handlePressEnded(source: .joystickLeftClick)
-        releaseJoystickDrag(clearLock: false)
+        releaseJoystickDrag(clearLock: false, resetLayer: false)
     }
 
     private func beginJoystickDrag(with event: NSEvent) {
@@ -1177,7 +1177,7 @@ final class GamepadButtonView: NSView {
         updateAppearance(animated: false)
     }
 
-    private func releaseJoystickDrag(clearLock: Bool = true) {
+    private func releaseJoystickDrag(clearLock: Bool = true, resetLayer: Bool = true) {
         guard isJoystickDragActive
             || activeJoystickDirection != nil
             || !activeJoystickBindings.isEmpty
@@ -1197,7 +1197,9 @@ final class GamepadButtonView: NSView {
         releaseState(joystickRightClickState)
         releaseState(joystickScrollUpState)
         releaseState(joystickScrollDownState)
-        activeJoystickLayerIndex = 0
+        if resetLayer {
+            activeJoystickLayerIndex = 0
+        }
         activeJoystickDirection = nil
         joystickOffset = .zero
         if clearLock {
@@ -2067,12 +2069,16 @@ final class GamepadButtonView: NSView {
     private func performJoystickTriggerActionIfNeeded(source: PressSource) -> Bool {
         switch source {
         case .joystickLeftClick:
-            guard joystickLeftClickAction().kind == .nestedJoystick else {
+            return false
+        case .joystickRightClick:
+            guard isJoystickClickDragMode,
+                  activeJoystickLayerIndex == 0,
+                  config.joystick.rightClickAction.kind == .nestedJoystick else {
                 return false
             }
 
             return enterNestedJoystickLayer()
-        case .primary, .secondary, .joystickRightClick, .joystickScrollUp, .joystickScrollDown:
+        case .primary, .secondary, .joystickScrollUp, .joystickScrollDown:
             return false
         }
     }
