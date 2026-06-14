@@ -132,11 +132,8 @@ final class GamepadContentView: NSView {
                 width: leftWidth,
                 height: labelHeight
             )
-            let rightWidth = min(max(96, bounds.width * 0.28), 170)
-            let rightX = min(
-                max(joystickFrame.maxX + gap, joystickFrame.midX + gap),
-                max(bounds.minX + 4, bounds.maxX - rightWidth - 4)
-            )
+            let rightX = joystickFrame.maxX + gap
+            let rightWidth = max(72, bounds.maxX - rightX - 4)
             let rightRect = NSRect(
                 x: rightX,
                 y: sideY,
@@ -1327,8 +1324,10 @@ final class GamepadContentView: NSView {
     private func centeredCapturedJoystickFrame(for authoredFrame: NSRect) -> NSRect {
         let size = authoredFrame.size
         let targetCenterX = padSurface.bounds.minX + (padSurface.bounds.width * 0.74)
+        let rightLabelGutter = min(max(88, padSurface.bounds.width * 0.18), 132)
+        let maxX = max(0, padSurface.bounds.width - size.width - rightLabelGutter)
         return NSRect(
-            x: min(max(targetCenterX - size.width / 2, 0), max(0, padSurface.bounds.width - size.width)),
+            x: min(max(targetCenterX - size.width / 2, 0), maxX),
             y: min(max(padSurface.bounds.midY - size.height / 2, 0), max(0, padSurface.bounds.height - size.height)),
             width: size.width,
             height: size.height
