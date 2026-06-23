@@ -585,7 +585,7 @@ final class GamepadButtonView: NSView {
 
     @discardableResult
     func handleVirtualScroll(delta: CGFloat) -> Bool {
-        guard config.type == .joystick, delta != 0 else {
+        guard canHandleJoystickScroll, delta != 0 else {
             return false
         }
 
@@ -593,7 +593,7 @@ final class GamepadButtonView: NSView {
     }
 
     override func scrollWheel(with event: NSEvent) {
-        if config.type == .joystick, handleJoystickScrollDelta(event.scrollingDeltaY) {
+        if canHandleJoystickScroll, handleJoystickScrollDelta(event.scrollingDeltaY) {
             return
         }
 
@@ -694,6 +694,10 @@ final class GamepadButtonView: NSView {
 
     private var isJoystickClickDragMode: Bool {
         isJoystick && config.joystick.operationMode == .clickDrag
+    }
+
+    private var canHandleJoystickScroll: Bool {
+        isJoystickClickDragMode || isJoystickCaptured
     }
 
     private var activeModeOutline: ActiveModeOutline? {
@@ -866,6 +870,7 @@ final class GamepadButtonView: NSView {
             return isVirtualJoystickCaptured
         }
 
+        releaseJoystickScrollStates()
         resetJoystickCaptureStartState()
         isJoystickCaptured = true
         isVirtualJoystickCaptured = true
@@ -926,6 +931,7 @@ final class GamepadButtonView: NSView {
             return
         }
 
+        releaseJoystickScrollStates()
         resetJoystickCaptureStartState()
         guard installJoystickEventMonitors() else {
             updateAppearance(animated: true)
@@ -1079,6 +1085,12 @@ final class GamepadButtonView: NSView {
         clearPendingJoystickParkingSuppression()
         cancelJoystickAxisLockTimer()
         clearJoystickHUDFlashes()
+    }
+
+    private func releaseJoystickScrollStates() {
+        releaseState(joystickScrollUpState)
+        releaseState(joystickScrollDownState)
+        lastJoystickScrollActivation = nil
     }
 
     @discardableResult

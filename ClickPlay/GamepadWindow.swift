@@ -198,6 +198,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     func releaseAllInputs() {
         dwellActionController.deactivate()
         (contentView as? GamepadContentView)?.releaseAllInputs()
+        KeyInjector.shared.releaseAllHeldKeys()
     }
 
     func reloadProfile() {
