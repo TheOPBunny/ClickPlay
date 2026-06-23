@@ -91,8 +91,14 @@ final class EditorViewController: NSViewController, NSSplitViewDelegate {
             forName: ProfileStore.profilesDidChange,
             object: nil,
             queue: .main
-        ) { [weak self] _ in
+        ) { [weak self] notification in
             guard let self else {
+                return
+            }
+
+            let changeKind = notification.userInfo?[ProfileStore.changeKindUserInfoKey] as? ProfileStore.ChangeKind ?? .content
+            if changeKind == .activeSelection {
+                self.profileListViewController.reloadPreservingSelection()
                 return
             }
 

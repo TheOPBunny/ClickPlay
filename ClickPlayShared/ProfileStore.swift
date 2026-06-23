@@ -233,6 +233,12 @@ final class ProfileStore {
 
     static let shared = ProfileStore()
     static let profilesDidChange = Notification.Name("profilesDidChange")
+    static let changeKindUserInfoKey = "changeKind"
+
+    enum ChangeKind {
+        case content
+        case activeSelection
+    }
 
     private(set) var profiles: [Profile] = []
     private(set) var activeProfileID: UUID
@@ -285,7 +291,7 @@ final class ProfileStore {
         }
     }
 
-    func save() {
+    func save(changeKind: ChangeKind = .content) {
         profiles = profiles.map { reconciledSubProfileSwitchButtons(in: $0.normalizedActiveSubProfileSelection()).withSanitizedButtonGroups() }
         let saved = SavedData(profiles: profiles, activeProfileID: activeProfileID)
         do {
@@ -294,7 +300,11 @@ final class ProfileStore {
         } catch {
             NSLog("[ProfileStore] ERROR: Could not save profiles to \(fileURL.path): \(error)")
         }
-        NotificationCenter.default.post(name: ProfileStore.profilesDidChange, object: nil)
+        NotificationCenter.default.post(
+            name: ProfileStore.profilesDidChange,
+            object: nil,
+            userInfo: [Self.changeKindUserInfoKey: changeKind]
+        )
     }
 
     // MARK: - Profile Resolution
@@ -351,7 +361,7 @@ final class ProfileStore {
         }
 
         activeProfileID = id
-        save()
+        save(changeKind: .activeSelection)
     }
 
     func upsert(_ profile: Profile) {
@@ -453,7 +463,7 @@ final class ProfileStore {
 
         activeProfileID = parentProfileID
         profiles[parentIndex].activeSubProfileID = subProfileID
-        save()
+        save(changeKind: .activeSelection)
     }
 
     func setActiveSubProfile(_ subProfileID: UUID) {

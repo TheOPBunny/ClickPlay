@@ -134,11 +134,25 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
     }
 
     func reload() {
+        reload(selectingProfileID: nil, parentID: nil)
+    }
+
+    func reloadPreservingSelection() {
+        let selectedItem = selectedSidebarItem()
+        reload(selectingProfileID: selectedItem?.profileID, parentID: selectedItem?.parentID)
+    }
+
+    private func reload(selectingProfileID profileID: UUID?, parentID: UUID?) {
         isReloadingSelection = true
         defer { isReloadingSelection = false }
 
         outlineView.reloadData()
         expandAllProfiles()
+
+        if let profileID, selectSidebarItem(profileID: profileID, parentID: parentID) {
+            return
+        }
+
         selectActiveSubProfile()
     }
 
@@ -627,18 +641,36 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         let activeProfile = ProfileStore.shared.activeProfile
         let selectedID = activeProfile.activeSubProfileID ?? activeProfile.subProfiles.first?.id ?? activeProfile.id
 
+        _ = selectSidebarItem(profileID: selectedID, parentID: nil)
+    }
+
+    private func selectSidebarItem(profileID: UUID, parentID: UUID?) -> Bool {
         for row in 0..<outlineView.numberOfRows {
             guard let item = outlineView.item(atRow: row) as? SidebarItem else {
                 continue
             }
 
-            if item.profileID == selectedID {
+            if item.profileID == profileID && (parentID == nil || item.parentID == parentID) {
                 outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-                return
+                return true
+            }
+        }
+
+        if parentID == nil {
+            for row in 0..<outlineView.numberOfRows {
+                guard let item = outlineView.item(atRow: row) as? SidebarItem else {
+                    continue
+                }
+
+                if item.profileID == profileID {
+                    outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+                    return true
+                }
             }
         }
 
         outlineView.deselectAll(nil)
+        return false
     }
 
     private func restoreActiveSelection() {

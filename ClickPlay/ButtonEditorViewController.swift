@@ -2670,7 +2670,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     private func currentSavedProfileFingerprint() -> Data? {
-        guard var data = fingerprint(for: currentSavedProfile()) else {
+        let profileForFingerprint = makeSavedProfile(from: profile).normalizedForEditorFingerprint()
+        guard var data = fingerprint(for: profileForFingerprint) else {
             return nil
         }
 
@@ -3246,5 +3247,75 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     private func clamp(_ value: CGFloat, min minimum: CGFloat, max maximum: CGFloat) -> CGFloat {
         Swift.min(Swift.max(value, minimum), maximum)
+    }
+}
+
+private extension Profile {
+    func normalizedForEditorFingerprint() -> Profile {
+        var normalizedProfile = self
+        var normalizedButtons: [String: ButtonConfig] = [:]
+        var remappedButtonIDs: [String: String] = [:]
+
+        for button in orderedButtonIDs {
+            guard let config = buttons[button.rawValue] else {
+                continue
+            }
+
+            let key = stableFingerprintKey(for: button)
+            normalizedButtons[key] = config
+            remappedButtonIDs[button.rawValue] = key
+        }
+
+        normalizedProfile.buttons = normalizedButtons
+        normalizedProfile.buttonGroups = Self.sanitizedFingerprintGroups(
+            buttonGroups.map { group in
+                ButtonGroup(
+                    id: group.id,
+                    name: group.name,
+                    memberButtonIDs: group.memberButtonIDs.compactMap { remappedButtonIDs[$0] }
+                )
+            },
+            validButtonIDs: Set(normalizedButtons.keys)
+        )
+        normalizedProfile.subProfiles = subProfiles.map { $0.normalizedForEditorFingerprint() }
+        return normalizedProfile
+    }
+
+    private func stableFingerprintKey(for button: GamepadButton) -> String {
+        if button.isGenerated || button.isSubProfileSwitch {
+            return button.rawValue
+        }
+
+        return "legacy:\(button.rawValue)"
+    }
+
+    private static func sanitizedFingerprintGroups(_ groups: [ButtonGroup], validButtonIDs: Set<String>) -> [ButtonGroup] {
+        var claimedButtonIDs = Set<String>()
+
+        return groups.compactMap { group in
+            var seen = Set<String>()
+            let members = group.memberButtonIDs.filter { buttonID in
+                guard validButtonIDs.contains(buttonID),
+                      !seen.contains(buttonID),
+                      !claimedButtonIDs.contains(buttonID) else {
+                    return false
+                }
+
+                seen.insert(buttonID)
+                claimedButtonIDs.insert(buttonID)
+                return true
+            }
+
+            guard members.count >= 2 else {
+                return nil
+            }
+
+            let trimmedName = group.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            return ButtonGroup(
+                id: group.id,
+                name: trimmedName.isEmpty ? "Group" : trimmedName,
+                memberButtonIDs: members
+            )
+        }
     }
 }

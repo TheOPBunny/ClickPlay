@@ -481,21 +481,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
 
     @discardableResult
     func activateProfileIfAllowed(_ id: UUID) -> Bool {
-        guard confirmEditorNavigationIfNeeded() else {
-            rebuildMenu()
-            return false
-        }
-
         ProfileStore.shared.setActive(id)
         return true
     }
 
     @discardableResult
     func activateSubProfileIfAllowed(_ id: UUID) -> Bool {
-        guard confirmEditorNavigationIfNeeded() else {
-            return false
-        }
-
         ProfileStore.shared.setActiveSubProfile(id)
         return true
     }
@@ -652,10 +643,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         default:
             return false
         }
-    }
-
-    private func confirmEditorNavigationIfNeeded() -> Bool {
-        editorWindowController?.confirmSaveIfNeeded() ?? true
     }
 
     private func templateID(from sender: NSMenuItem) -> UUID? {
