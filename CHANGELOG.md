@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Fixed false editor save prompts during runtime profile and layer switching.
+- Fixed editor sidebar navigation changing the live gamepad profile or layer.
 
 ## [1.4.0] - 2026-05-25
 

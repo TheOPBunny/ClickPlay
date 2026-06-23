@@ -102,7 +102,7 @@ final class EditorViewController: NSViewController, NSSplitViewDelegate {
                 return
             }
 
-            self.profileListViewController.reload()
+            self.profileListViewController.reloadPreservingSelection()
 
             if self.shouldSkipNextEditorRefresh {
                 self.shouldSkipNextEditorRefresh = false
