@@ -3,7 +3,7 @@ import Cocoa
 /// Sidebar controller for top-level profiles and nested layers, including rename, drag/drop, templates, and undo.
 final class ProfileListViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate, NSMenuItemValidation, NSTextFieldDelegate {
 
-    var onProfileSelected: ((Profile, Bool) -> Void)?
+    var onProfileSelected: ((Profile, Bool, UUID) -> Void)?
     var onProfileSelectionRequested: (() -> Bool)?
     private typealias SidebarClipboard = (profile: Profile, isLayer: Bool)
 
@@ -360,7 +360,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         if let parentID = item.parentID,
            let subProfile = subProfile(with: item.profileID, parentID: parentID) {
             updateEditorSelection(profileID: subProfile.id, parentID: parentID)
-            onProfileSelected?(subProfile, false)
+            onProfileSelected?(subProfile, false, parentID)
             return
         }
 
@@ -369,7 +369,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         }
 
         updateEditorSelection(profileID: profile.id, parentID: nil)
-        onProfileSelected?(ProfileStore.shared.resolvedProfile(for: profile), true)
+        onProfileSelected?(ProfileStore.shared.resolvedProfile(for: profile), true, profile.id)
     }
 
     @objc func addBlankProfile() {
@@ -714,7 +714,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
 
         if let parentID,
            let subProfile = subProfile(with: profileID, parentID: parentID) {
-            onProfileSelected?(subProfile, false)
+            onProfileSelected?(subProfile, false, parentID)
             return
         }
 
@@ -722,7 +722,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
             return
         }
 
-        onProfileSelected?(ProfileStore.shared.resolvedProfile(for: profile), true)
+        onProfileSelected?(ProfileStore.shared.resolvedProfile(for: profile), true, profile.id)
     }
 
     private func loadNearestProfileForEditing(preferredIndex: Int) {

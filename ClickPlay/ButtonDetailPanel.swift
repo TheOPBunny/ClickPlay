@@ -37,25 +37,12 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
     var onDelete: ((GamepadButton) -> Void)?
     var onDeleteGroup: ((UUID) -> Void)?
     var onGroupColorChanged: ((UUID, String) -> Void)?
-    var onProfileBackgroundColorChanged: ((String) -> Void)?
-    var onProfileBackgroundFrostedGlassIntensityChanged: ((Int) -> Void)?
-    var onProfileMouseCaptureArmDelayChanged: ((Int) -> Void)?
-    var onProfileMouseCaptureTemporaryReleaseChanged: ((Int) -> Void)?
 
-    // Current selection context. Exactly one of button/group/profile mode drives the visible form sections.
+    // Current selection context. Exactly one of button/group mode drives the visible form sections.
     private var config: ButtonConfig?
     private var button: GamepadButton?
     private var groupID: UUID?
 
-    private let profileSettingsStack = NSStackView()
-    private let profileSettingsTitleLabel = NSTextField(labelWithString: "Profile")
-    private let profileBackgroundColorWell = NSColorWell()
-    private let profileBackgroundResetButton = NSButton(title: "Reset", target: nil, action: nil)
-    private let profileBackgroundFrostedGlassPopup = NSPopUpButton()
-    private let profileMouseCaptureArmDelayField = NSTextField()
-    private let profileMouseCaptureTemporaryReleaseField = NSTextField()
-    private var profileMouseCaptureArmDelayRow: NSStackView?
-    private var profileMouseCaptureTemporaryReleaseRow: NSStackView?
     private let header = NSStackView()
     private let titleLabel = NSTextField(labelWithString: "Select a button")
     private let scrollView = NSScrollView()
@@ -175,35 +162,11 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
     }
 
     func clear() {
-        loadProfileSettings(
-            backgroundColorHex: Profile.defaultBackgroundColorHex,
-            frostedGlassIntensity: Profile.defaultBackgroundFrostedGlassIntensity,
-            mouseCaptureArmDelaySeconds: Profile.defaultMouseCaptureArmDelaySeconds,
-            mouseCaptureTemporaryReleaseSeconds: Profile.defaultMouseCaptureTemporaryReleaseSeconds,
-            showsMouseCaptureTiming: true
-        )
-    }
-
-    func loadProfileSettings(
-        backgroundColorHex: String,
-        frostedGlassIntensity: Int,
-        mouseCaptureArmDelaySeconds: Int,
-        mouseCaptureTemporaryReleaseSeconds: Int,
-        showsMouseCaptureTiming: Bool
-    ) {
         config = nil
         button = nil
         groupID = nil
-        setShowsProfileSettings(true)
-        profileBackgroundColorWell.color = NSColor(hex: backgroundColorHex)
-        profileBackgroundFrostedGlassPopup.selectItem(withTag: frostedGlassIntensity)
-        if profileBackgroundFrostedGlassPopup.selectedItem == nil {
-            profileBackgroundFrostedGlassPopup.selectItem(withTag: Profile.defaultBackgroundFrostedGlassIntensity)
-        }
-        profileMouseCaptureArmDelayField.stringValue = "\(max(1, mouseCaptureArmDelaySeconds))"
-        profileMouseCaptureTemporaryReleaseField.stringValue = "\(max(1, mouseCaptureTemporaryReleaseSeconds))"
-        profileMouseCaptureArmDelayRow?.isHidden = !showsMouseCaptureTiming
-        profileMouseCaptureTemporaryReleaseRow?.isHidden = !showsMouseCaptureTiming
+        titleLabel.stringValue = "Select a button or group"
+        contentStack.arrangedSubviews.forEach { $0.isHidden = true }
         [labelField, labelSizeField, xField, yField, widthField, heightField].forEach { $0.stringValue = "" }
         buttonTypePopup.selectItem(withTag: ButtonType.keyboard.tag)
         systemEventPopup.selectItem(withTag: SystemEvent.brightnessDown.tag)
@@ -240,14 +203,12 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         updateMultiKeyActivationModeVisibility()
         deleteButton.title = "Delete Button"
         deleteButton.isEnabled = false
-        updateControlVisibility()
     }
 
     func loadGroup(_ group: ButtonGroup, colorHex: String?) {
         config = nil
         button = nil
         groupID = group.id
-        setShowsProfileSettings(false)
         titleLabel.stringValue = "Editing group: \(group.name)"
         colorWell.color = NSColor(hex: colorHex ?? "#888888")
         deleteButton.title = "Delete Group"
@@ -259,7 +220,6 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         self.button = button
         self.config = config
         groupID = nil
-        setShowsProfileSettings(false)
         deleteButton.title = "Delete Button"
         deleteButton.isEnabled = true
         let isProtectedSwitch = config.action.isProtectedSwitch
@@ -379,26 +339,6 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         deleteButton.target = self
         deleteButton.action = #selector(deletePressed)
         deleteButton.isEnabled = false
-        profileBackgroundColorWell.widthAnchor.constraint(equalToConstant: 44).isActive = true
-        profileBackgroundColorWell.heightAnchor.constraint(equalToConstant: 22).isActive = true
-        profileBackgroundColorWell.isContinuous = true
-        profileBackgroundColorWell.target = self
-        profileBackgroundColorWell.action = #selector(profileBackgroundColorChanged)
-        profileBackgroundColorWell.toolTip = "Gamepad background color"
-        profileBackgroundResetButton.bezelStyle = .rounded
-        profileBackgroundResetButton.target = self
-        profileBackgroundResetButton.action = #selector(resetProfileBackgroundColor)
-        profileBackgroundFrostedGlassPopup.target = self
-        profileBackgroundFrostedGlassPopup.action = #selector(profileBackgroundFrostedGlassChanged)
-        populateProfileBackgroundFrostedGlassIntensities()
-        [profileMouseCaptureArmDelayField, profileMouseCaptureTemporaryReleaseField].forEach { field in
-            field.bezelStyle = .roundedBezel
-            field.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
-            field.widthAnchor.constraint(equalToConstant: 58).isActive = true
-            field.target = self
-            field.action = #selector(profileMouseCaptureTimingChanged(_:))
-            field.delegate = self
-        }
 
         widthField.bezelStyle = .roundedBezel
         widthField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
@@ -498,42 +438,6 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         header.spacing = 6
         header.edgeInsets = NSEdgeInsets(top: 4, left: 6, bottom: 4, right: 6)
         header.translatesAutoresizingMaskIntoConstraints = false
-
-        profileSettingsTitleLabel.font = .boldSystemFont(ofSize: 14)
-        let profileBackgroundLabel = NSTextField(labelWithString: "Gamepad Color")
-        profileBackgroundLabel.font = .systemFont(ofSize: 12)
-        let profileBackgroundRow = NSStackView(views: [profileBackgroundLabel, profileBackgroundColorWell, profileBackgroundResetButton])
-        profileBackgroundRow.orientation = .horizontal
-        profileBackgroundRow.alignment = .centerY
-        profileBackgroundRow.spacing = 8
-        let profileFrostedGlassLabel = NSTextField(labelWithString: "Frosted Glass")
-        profileFrostedGlassLabel.font = .systemFont(ofSize: 12)
-        let profileFrostedGlassRow = NSStackView(views: [profileFrostedGlassLabel, profileBackgroundFrostedGlassPopup])
-        profileFrostedGlassRow.orientation = .horizontal
-        profileFrostedGlassRow.alignment = .centerY
-        profileFrostedGlassRow.spacing = 8
-        profileMouseCaptureArmDelayRow = NSStackView(views: [
-            profileSettingsLabel("Capture Arm"),
-            makeUnitField(field: profileMouseCaptureArmDelayField, unit: "seconds")
-        ])
-        profileMouseCaptureTemporaryReleaseRow = NSStackView(views: [
-            profileSettingsLabel("Temp Release"),
-            makeUnitField(field: profileMouseCaptureTemporaryReleaseField, unit: "seconds")
-        ])
-        [profileMouseCaptureArmDelayRow, profileMouseCaptureTemporaryReleaseRow].compactMap { $0 }.forEach { row in
-            row.orientation = .horizontal
-            row.alignment = .centerY
-            row.spacing = 8
-        }
-
-        profileSettingsStack.orientation = .vertical
-        profileSettingsStack.alignment = .leading
-        profileSettingsStack.spacing = 12
-        profileSettingsStack.translatesAutoresizingMaskIntoConstraints = false
-        profileSettingsStack.addArrangedSubview(profileSettingsTitleLabel)
-        profileSettingsStack.addArrangedSubview(profileBackgroundRow)
-        profileSettingsStack.addArrangedSubview(profileFrostedGlassRow)
-        [profileMouseCaptureArmDelayRow, profileMouseCaptureTemporaryReleaseRow].compactMap { $0 }.forEach(profileSettingsStack.addArrangedSubview)
 
         contentStack.orientation = .vertical
         contentStack.alignment = .leading
@@ -662,7 +566,6 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         scrollView.documentView = contentContainer
         addSubview(header)
         addSubview(scrollView)
-        addSubview(profileSettingsStack)
 
         let headerHeightConstraint = header.heightAnchor.constraint(equalToConstant: 32)
         headerHeightConstraint.priority = .defaultHigh
@@ -678,9 +581,6 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            profileSettingsStack.topAnchor.constraint(equalTo: topAnchor, constant: 12),
-            profileSettingsStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
-            profileSettingsStack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -14),
             contentContainer.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
             contentContainerMinHeightConstraint,
             contentStack.topAnchor.constraint(equalTo: contentContainer.topAnchor, constant: 8),
@@ -708,12 +608,6 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         clear()
     }
 
-    private func setShowsProfileSettings(_ showsProfileSettings: Bool) {
-        profileSettingsStack.isHidden = !showsProfileSettings
-        header.isHidden = showsProfileSettings
-        scrollView.isHidden = showsProfileSettings
-    }
-
     private func makeRow(label: String, control: NSView) -> NSStackView {
         let row = NSStackView(views: [makeFieldLabel(label), control])
         row.orientation = .horizontal
@@ -737,13 +631,6 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         let label = NSTextField(labelWithString: text)
         label.font = .systemFont(ofSize: 12)
         label.widthAnchor.constraint(equalToConstant: 75).isActive = true
-        return label
-    }
-
-    private func profileSettingsLabel(_ text: String) -> NSTextField {
-        let label = NSTextField(labelWithString: text)
-        label.font = .systemFont(ofSize: 12)
-        label.widthAnchor.constraint(equalToConstant: 86).isActive = true
         return label
     }
 
@@ -873,12 +760,6 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         }
 
         textField.stringValue = textView.string
-        if textField === profileMouseCaptureArmDelayField || textField === profileMouseCaptureTemporaryReleaseField {
-            profileMouseCaptureTimingChanged(textField)
-            endEditing(textField)
-            return true
-        }
-
         emitChange()
         endEditing(textField)
         return true
@@ -888,30 +769,6 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         textField.currentEditor()?.selectedRange = NSRange(location: textField.stringValue.utf16.count, length: 0)
         textField.window?.endEditing(for: textField)
         textField.window?.makeFirstResponder(nil)
-    }
-
-    @objc private func profileBackgroundColorChanged() {
-        onProfileBackgroundColorChanged?(profileBackgroundColorWell.color.hexString)
-    }
-
-    @objc private func resetProfileBackgroundColor() {
-        profileBackgroundColorWell.color = NSColor(hex: Profile.defaultBackgroundColorHex)
-        onProfileBackgroundColorChanged?(Profile.defaultBackgroundColorHex)
-    }
-
-    @objc private func profileBackgroundFrostedGlassChanged() {
-        onProfileBackgroundFrostedGlassIntensityChanged?(profileBackgroundFrostedGlassPopup.selectedTag())
-    }
-
-    @objc private func profileMouseCaptureTimingChanged(_ sender: NSTextField) {
-        let value = clampedWholeSeconds(from: sender.stringValue)
-        sender.stringValue = "\(value)"
-
-        if sender === profileMouseCaptureArmDelayField {
-            onProfileMouseCaptureArmDelayChanged?(value)
-        } else if sender === profileMouseCaptureTemporaryReleaseField {
-            onProfileMouseCaptureTemporaryReleaseChanged?(value)
-        }
     }
 
     @objc private func labelSizeStepperChanged() {
@@ -1001,17 +858,6 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
 
     private func populateInteractionModes() {
         populateInteractionModes(interactionModePopup)
-    }
-
-    private func populateProfileBackgroundFrostedGlassIntensities() {
-        profileBackgroundFrostedGlassPopup.removeAllItems()
-        profileBackgroundFrostedGlassPopup.addItem(withTitle: "Off")
-        profileBackgroundFrostedGlassPopup.lastItem?.tag = Profile.defaultBackgroundFrostedGlassIntensity
-
-        for intensity in stride(from: 10, through: 100, by: 10) {
-            profileBackgroundFrostedGlassPopup.addItem(withTitle: "\(intensity)%")
-            profileBackgroundFrostedGlassPopup.lastItem?.tag = intensity
-        }
     }
 
     private func populateInteractionModes(_ popup: NSPopUpButton) {

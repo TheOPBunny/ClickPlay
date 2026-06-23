@@ -49,8 +49,12 @@ final class EditorViewController: NSViewController, NSSplitViewDelegate {
             self?.savePanelLayout()
         }
 
-        profileListViewController.onProfileSelected = { [weak self] profile, isTopProfileSelection in
-            self?.editorViewController.load(profile: profile, isTopProfileSelection: isTopProfileSelection)
+        profileListViewController.onProfileSelected = { [weak self] profile, isTopProfileSelection, topProfileID in
+            self?.editorViewController.load(
+                profile: profile,
+                isTopProfileSelection: isTopProfileSelection,
+                topProfileID: topProfileID
+            )
         }
         profileListViewController.onProfileSelectionRequested = { [weak self] in
             self?.confirmSaveIfNeeded() ?? true
@@ -64,9 +68,14 @@ final class EditorViewController: NSViewController, NSSplitViewDelegate {
                 ProfileStore.shared.upsert(profile)
             }
         }
-        editorViewController.onTopProfileMouseCaptureTimingSaved = { [weak self] armDelaySeconds, temporaryReleaseSeconds in
+        editorViewController.onProfileMouseCaptureTimingSaved = { [weak self] profileID, armDelaySeconds, temporaryReleaseSeconds in
+            guard var profile = ProfileStore.shared.profiles.first(where: { $0.id == profileID }),
+                  profile.mouseCaptureArmDelaySeconds != armDelaySeconds
+                    || profile.mouseCaptureTemporaryReleaseSeconds != temporaryReleaseSeconds else {
+                return
+            }
+
             self?.shouldSkipNextEditorRefresh = true
-            var profile = ProfileStore.shared.activeProfile
             profile.mouseCaptureArmDelaySeconds = armDelaySeconds
             profile.mouseCaptureTemporaryReleaseSeconds = temporaryReleaseSeconds
             ProfileStore.shared.upsert(profile)
@@ -112,7 +121,11 @@ final class EditorViewController: NSViewController, NSSplitViewDelegate {
             self.editorViewController.refreshFromStoreIfNeeded()
         }
 
-        editorViewController.load(profile: ProfileStore.shared.activeResolvedProfile)
+        editorViewController.load(
+            profile: ProfileStore.shared.activeResolvedProfile,
+            isTopProfileSelection: true,
+            topProfileID: ProfileStore.shared.activeProfileID
+        )
     }
 
     override func viewDidLayout() {

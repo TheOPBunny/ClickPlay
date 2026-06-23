@@ -18,7 +18,7 @@ private extension NSView {
 }
 
 /// Full profile layout editor: preview canvas, inspector, selection, clipboard, grouping, snapping, and undo.
-final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, NSSplitViewDelegate {
+final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, NSSplitViewDelegate, NSTextFieldDelegate {
 
     // Editor-only helper types keep command logic readable without becoming persisted profile state.
     private struct ClipboardButton: Codable {
@@ -168,7 +168,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     var onProfileSaved: ((Profile) -> Void)?
-    var onTopProfileMouseCaptureTimingSaved: ((Int, Int) -> Void)?
+    var onProfileMouseCaptureTimingSaved: ((UUID, Int, Int) -> Void)?
     var onToggleSidebar: (() -> Void)?
     var onSavePanelLayout: (() -> Void)?
 
@@ -181,7 +181,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     private var maximumWorkspaceSize = ButtonEditorViewController.workspaceSize(for: NSScreen.main)
     private var profile = ProfileStore.shared.activeResolvedProfile
-    private var showsTopProfileMouseCaptureTiming = false
+    private var profileMouseCaptureTimingProfileID = ProfileStore.shared.activeProfileID
     private var topProfileMouseCaptureArmDelaySeconds = Profile.defaultMouseCaptureArmDelaySeconds
     private var topProfileMouseCaptureTemporaryReleaseSeconds = Profile.defaultMouseCaptureTemporaryReleaseSeconds
     private var canvasObjects: [CanvasButtonObject] = []
@@ -206,7 +206,14 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private var screenParametersObserver: NSObjectProtocol?
     private var editorMouseDownMonitor: Any?
 
-    private let compatibilityModeCheckbox = NSButton(checkboxWithTitle: "Compatibility Mode", target: nil, action: nil)
+    private let profileSettingsButton = NSButton(title: "Profile Settings", target: nil, action: nil)
+    private let profileSettingsPopover = NSPopover()
+    private let profileCompatibilityModeCheckbox = NSButton(checkboxWithTitle: "Compatibility Mode", target: nil, action: nil)
+    private let profileBackgroundColorWell = NSColorWell()
+    private let profileBackgroundResetButton = NSButton(title: "Reset", target: nil, action: nil)
+    private let profileBackgroundFrostedGlassPopup = NSPopUpButton()
+    private let profileMouseCaptureArmDelayField = NSTextField()
+    private let profileMouseCaptureTemporaryReleaseField = NSTextField()
     private let showGridCheckbox = NSButton(checkboxWithTitle: "Show Grid", target: nil, action: nil)
     private let snappingCheckbox = NSButton(checkboxWithTitle: "Snapping", target: nil, action: nil)
     private let groupButton = NSButton(title: "Group", target: nil, action: nil)
@@ -256,7 +263,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         buildLayout()
         installEditorFocusMonitor()
         installScreenParametersObserver()
-        load(profile: ProfileStore.shared.activeResolvedProfile)
+        load(
+            profile: ProfileStore.shared.activeResolvedProfile,
+            isTopProfileSelection: true,
+            topProfileID: ProfileStore.shared.activeProfileID
+        )
     }
 
     override func viewDidAppear() {
@@ -430,34 +441,56 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         scrollToProfileContentIfNeeded()
     }
 
-    func load(profile: Profile, isTopProfileSelection: Bool = false) {
+    func load(profile: Profile, isTopProfileSelection: Bool = false, topProfileID: UUID? = nil) {
         hasLoadedEditableProfile = false
         editorUndoManager.removeAllActions()
         selectedIDs = []
         selectedGroupID = nil
-        showsTopProfileMouseCaptureTiming = isTopProfileSelection
-        let topProfile = ProfileStore.shared.activeProfile
-        topProfileMouseCaptureArmDelaySeconds = isTopProfileSelection
-            ? topProfile.mouseCaptureArmDelaySeconds
-            : profile.mouseCaptureArmDelaySeconds
-        topProfileMouseCaptureTemporaryReleaseSeconds = isTopProfileSelection
-            ? topProfile.mouseCaptureTemporaryReleaseSeconds
-            : profile.mouseCaptureTemporaryReleaseSeconds
+        let timingProfile = mouseCaptureTimingProfile(
+            for: profile,
+            topProfileID: topProfileID,
+            isTopProfileSelection: isTopProfileSelection
+        )
+        profileMouseCaptureTimingProfileID = timingProfile.id
+        topProfileMouseCaptureArmDelaySeconds = timingProfile.mouseCaptureArmDelaySeconds
+        topProfileMouseCaptureTemporaryReleaseSeconds = timingProfile.mouseCaptureTemporaryReleaseSeconds
         self.profile = makeEditableProfile(from: profile)
         hasLoadedEditableProfile = true
         previewView.usesCenteredOrigin = profile.editorCoordinateMode == .centered
         clampEditableProfileToWorkspace()
         self.profile.buttonGroups = sanitizedEditorGroups(self.profile.buttonGroups)
         canvasObjects = makeCanvasObjects(from: self.profile)
-        compatibilityModeCheckbox.state = self.profile.compatibilityMode ? .on : .off
+        syncProfileSettingsControls()
         refreshFittedPadSizeFields()
         updatePreviewCanvasLayout()
         previewView.reload(objects: canvasObjects, groups: makeCanvasGroups(from: self.profile), keepSelection: false)
-        showProfileSettings()
+        clearInspector()
         updateGroupToolbarState()
         savedProfileFingerprint = currentSavedProfileFingerprint()
         prepareProfileContentScroll()
         scrollToProfileContentIfNeeded()
+    }
+
+    private func mouseCaptureTimingProfile(
+        for profile: Profile,
+        topProfileID: UUID?,
+        isTopProfileSelection: Bool
+    ) -> Profile {
+        let store = ProfileStore.shared
+        if let topProfileID,
+           let selectedTopProfile = store.profiles.first(where: { $0.id == topProfileID }) {
+            return selectedTopProfile
+        }
+
+        if let parentProfile = store.parentProfile(containingSubProfileID: profile.id) {
+            return parentProfile
+        }
+
+        if isTopProfileSelection {
+            return store.activeProfile
+        }
+
+        return store.profiles.first(where: { $0.id == profile.id }) ?? store.activeProfile
     }
 
     func centerCanvasOnProfileContentWhenReady() {
@@ -468,11 +501,15 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     func refreshFromStoreIfNeeded() {
         if let parentProfile = ProfileStore.shared.parentProfile(containingSubProfileID: profile.id),
            let updatedProfile = parentProfile.subProfiles.first(where: { $0.id == profile.id }) {
-            load(profile: updatedProfile, isTopProfileSelection: showsTopProfileMouseCaptureTiming)
+            load(profile: updatedProfile, topProfileID: parentProfile.id)
         } else if let updatedProfile = ProfileStore.shared.profiles.first(where: { $0.id == profile.id }) {
-            load(profile: updatedProfile, isTopProfileSelection: showsTopProfileMouseCaptureTiming)
+            load(profile: updatedProfile, isTopProfileSelection: true, topProfileID: updatedProfile.id)
         } else {
-            load(profile: ProfileStore.shared.activeResolvedProfile, isTopProfileSelection: showsTopProfileMouseCaptureTiming)
+            load(
+                profile: ProfileStore.shared.activeResolvedProfile,
+                isTopProfileSelection: true,
+                topProfileID: ProfileStore.shared.activeProfileID
+            )
         }
     }
 
@@ -506,7 +543,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     @discardableResult
     func saveChanges() -> Bool {
-        profile.compatibilityMode = compatibilityModeCheckbox.state == .on
+        applyProfileMouseCaptureTimingFields()
+        profile.compatibilityMode = profileCompatibilityModeCheckbox.state == .on
         clampEditableProfileToWorkspace()
         profile.buttonGroups = sanitizedEditorGroups(profile.buttonGroups)
         let savedProfile = currentSavedProfile()
@@ -516,12 +554,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         reloadPreview(keepSelection: true)
 
         onProfileSaved?(savedProfile)
-        if showsTopProfileMouseCaptureTiming {
-            onTopProfileMouseCaptureTimingSaved?(
-                topProfileMouseCaptureArmDelaySeconds,
-                topProfileMouseCaptureTemporaryReleaseSeconds
-            )
-        }
+        onProfileMouseCaptureTimingSaved?(
+            profileMouseCaptureTimingProfileID,
+            topProfileMouseCaptureArmDelaySeconds,
+            topProfileMouseCaptureTemporaryReleaseSeconds
+        )
         savedProfileFingerprint = currentSavedProfileFingerprint()
         showSavedIndicator()
         return true
@@ -531,8 +568,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         previewView.maximumWorkspaceSize = maximumWorkspaceSize
         previewView.zoomScale = canvasZoomScale
         previewCanvasView.zoomScale = canvasZoomScale
-        compatibilityModeCheckbox.target = self
-        compatibilityModeCheckbox.action = #selector(compatibilityModeChanged)
+        configureProfileSettingsPopover()
+        profileSettingsButton.bezelStyle = .rounded
+        profileSettingsButton.target = self
+        profileSettingsButton.action = #selector(toggleProfileSettingsPopover)
         showGridCheckbox.state = .on
         showGridCheckbox.target = self
         showGridCheckbox.action = #selector(showGridChanged)
@@ -571,7 +610,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
         let topBar = NSStackView(views: [
             leftSidebarToggleButton,
-            compatibilityModeCheckbox,
+            profileSettingsButton,
             showGridCheckbox,
             snappingCheckbox,
             groupButton,
@@ -610,7 +649,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             }
 
             guard selectedIDs.count == 1, let button = selectedIDs.first, let config = self.profile.buttons[button.rawValue] else {
-                self.showProfileSettings()
+                self.clearInspector()
                 return
             }
 
@@ -653,18 +692,6 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         }
         detailPanel.onGroupColorChanged = { [weak self] groupID, colorHex in
             self?.applyColor(colorHex, toGroup: groupID)
-        }
-        detailPanel.onProfileBackgroundColorChanged = { [weak self] colorHex in
-            self?.applyProfileBackgroundColor(colorHex)
-        }
-        detailPanel.onProfileBackgroundFrostedGlassIntensityChanged = { [weak self] intensity in
-            self?.applyProfileBackgroundFrostedGlassIntensity(intensity)
-        }
-        detailPanel.onProfileMouseCaptureArmDelayChanged = { [weak self] seconds in
-            self?.applyTopProfileMouseCaptureArmDelay(seconds)
-        }
-        detailPanel.onProfileMouseCaptureTemporaryReleaseChanged = { [weak self] seconds in
-            self?.applyTopProfileMouseCaptureTemporaryRelease(seconds)
         }
 
         templatesDidChangeObserver = NotificationCenter.default.addObserver(
@@ -1156,9 +1183,199 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         equalizeSelectedButtons(.both)
     }
 
-    @objc private func compatibilityModeChanged() {
-        profile.compatibilityMode = compatibilityModeCheckbox.state == .on
+    private func configureProfileSettingsPopover() {
+        profileCompatibilityModeCheckbox.target = self
+        profileCompatibilityModeCheckbox.action = #selector(profileCompatibilityModeChanged)
+
+        profileBackgroundColorWell.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        profileBackgroundColorWell.heightAnchor.constraint(equalToConstant: 22).isActive = true
+        profileBackgroundColorWell.isContinuous = true
+        profileBackgroundColorWell.target = self
+        profileBackgroundColorWell.action = #selector(profileBackgroundColorChanged)
+        profileBackgroundColorWell.toolTip = "Gamepad background color"
+
+        profileBackgroundResetButton.bezelStyle = .rounded
+        profileBackgroundResetButton.target = self
+        profileBackgroundResetButton.action = #selector(resetProfileBackgroundColor)
+
+        profileBackgroundFrostedGlassPopup.target = self
+        profileBackgroundFrostedGlassPopup.action = #selector(profileBackgroundFrostedGlassChanged)
+        populateProfileBackgroundFrostedGlassIntensities()
+
+        [profileMouseCaptureArmDelayField, profileMouseCaptureTemporaryReleaseField].forEach { field in
+            field.bezelStyle = .roundedBezel
+            field.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+            field.widthAnchor.constraint(equalToConstant: 58).isActive = true
+            field.target = self
+            field.action = #selector(profileMouseCaptureTimingChanged(_:))
+            field.delegate = self
+        }
+
+        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 190))
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 12
+        stack.edgeInsets = NSEdgeInsets(top: 14, left: 14, bottom: 14, right: 14)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        let titleLabel = NSTextField(labelWithString: "Profile Settings")
+        titleLabel.font = .boldSystemFont(ofSize: 14)
+
+        let colorControls = NSStackView(views: [profileBackgroundColorWell, profileBackgroundResetButton])
+        colorControls.orientation = .horizontal
+        colorControls.alignment = .centerY
+        colorControls.spacing = 8
+
+        stack.addArrangedSubview(titleLabel)
+        stack.addArrangedSubview(profileCompatibilityModeCheckbox)
+        stack.addArrangedSubview(makeProfileSettingsRow(label: "Gamepad Color", control: colorControls))
+        stack.addArrangedSubview(makeProfileSettingsRow(label: "Frosted Glass", control: profileBackgroundFrostedGlassPopup))
+        stack.addArrangedSubview(makeProfileSettingsRow(label: "Arm Capture Timer", control: makeProfileSettingsUnitField(field: profileMouseCaptureArmDelayField, unit: "seconds")))
+        stack.addArrangedSubview(makeProfileSettingsRow(label: "Temporary Release", control: makeProfileSettingsUnitField(field: profileMouseCaptureTemporaryReleaseField, unit: "seconds")))
+
+        contentView.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: contentView.topAnchor),
+            stack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            stack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+        ])
+
+        let contentController = NSViewController()
+        contentController.view = contentView
+        profileSettingsPopover.contentViewController = contentController
+        profileSettingsPopover.behavior = .transient
+        profileSettingsPopover.animates = true
+    }
+
+    private func makeProfileSettingsRow(label: String, control: NSView) -> NSStackView {
+        let labelView = NSTextField(labelWithString: label)
+        labelView.font = .systemFont(ofSize: 12)
+        labelView.widthAnchor.constraint(equalToConstant: 132).isActive = true
+
+        let row = NSStackView(views: [labelView, control])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 8
+        return row
+    }
+
+    private func makeProfileSettingsUnitField(field: NSTextField, unit: String) -> NSStackView {
+        let unitLabel = NSTextField(labelWithString: unit)
+        unitLabel.font = .systemFont(ofSize: 12)
+        unitLabel.textColor = .secondaryLabelColor
+
+        let stack = NSStackView(views: [field, unitLabel])
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 6
+        return stack
+    }
+
+    private func populateProfileBackgroundFrostedGlassIntensities() {
+        profileBackgroundFrostedGlassPopup.removeAllItems()
+        profileBackgroundFrostedGlassPopup.addItem(withTitle: "Off")
+        profileBackgroundFrostedGlassPopup.lastItem?.tag = Profile.defaultBackgroundFrostedGlassIntensity
+
+        for intensity in stride(from: 10, through: 100, by: 10) {
+            profileBackgroundFrostedGlassPopup.addItem(withTitle: "\(intensity)%")
+            profileBackgroundFrostedGlassPopup.lastItem?.tag = intensity
+        }
+    }
+
+    private func syncProfileSettingsControls() {
+        profileCompatibilityModeCheckbox.state = profile.compatibilityMode ? .on : .off
+        profileBackgroundColorWell.color = NSColor(hex: profile.backgroundColorHex)
+        profileBackgroundFrostedGlassPopup.selectItem(withTag: profile.backgroundFrostedGlassIntensity)
+        if profileBackgroundFrostedGlassPopup.selectedItem == nil {
+            profileBackgroundFrostedGlassPopup.selectItem(withTag: Profile.defaultBackgroundFrostedGlassIntensity)
+        }
+        profileMouseCaptureArmDelayField.stringValue = "\(max(1, topProfileMouseCaptureArmDelaySeconds))"
+        profileMouseCaptureTemporaryReleaseField.stringValue = "\(max(1, topProfileMouseCaptureTemporaryReleaseSeconds))"
+    }
+
+    @objc private func toggleProfileSettingsPopover() {
+        if profileSettingsPopover.isShown {
+            profileSettingsPopover.performClose(nil)
+            return
+        }
+
+        syncProfileSettingsControls()
+        profileSettingsPopover.show(
+            relativeTo: profileSettingsButton.bounds,
+            of: profileSettingsButton,
+            preferredEdge: .maxY
+        )
+    }
+
+    @objc private func profileCompatibilityModeChanged() {
+        profile.compatibilityMode = profileCompatibilityModeCheckbox.state == .on
         reloadPreview(keepSelection: true)
+    }
+
+    @objc private func profileBackgroundColorChanged() {
+        profile.backgroundColorHex = profileBackgroundColorWell.color.hexString
+    }
+
+    @objc private func resetProfileBackgroundColor() {
+        profileBackgroundColorWell.color = NSColor(hex: Profile.defaultBackgroundColorHex)
+        profile.backgroundColorHex = Profile.defaultBackgroundColorHex
+    }
+
+    @objc private func profileBackgroundFrostedGlassChanged() {
+        profile.backgroundFrostedGlassIntensity = profileBackgroundFrostedGlassPopup.selectedTag()
+    }
+
+    @objc private func profileMouseCaptureTimingChanged(_ sender: NSTextField) {
+        applyProfileMouseCaptureTimingField(sender)
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        guard let field = obj.object as? NSTextField,
+              field === profileMouseCaptureArmDelayField || field === profileMouseCaptureTemporaryReleaseField else {
+            return
+        }
+
+        applyProfileMouseCaptureTimingField(field)
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard commandSelector == #selector(NSResponder.insertNewline(_:)),
+              let textField = control as? NSTextField,
+              textField === profileMouseCaptureArmDelayField || textField === profileMouseCaptureTemporaryReleaseField else {
+            return false
+        }
+
+        textField.stringValue = textView.string
+        applyProfileMouseCaptureTimingField(textField)
+        textField.window?.endEditing(for: textField)
+        textField.window?.makeFirstResponder(nil)
+        return true
+    }
+
+    private func applyProfileMouseCaptureTimingFields() {
+        applyProfileMouseCaptureTimingField(profileMouseCaptureArmDelayField)
+        applyProfileMouseCaptureTimingField(profileMouseCaptureTemporaryReleaseField)
+    }
+
+    private func applyProfileMouseCaptureTimingField(_ field: NSTextField) {
+        let value = clampedWholeSeconds(from: field.stringValue)
+        field.stringValue = "\(value)"
+
+        if field === profileMouseCaptureArmDelayField {
+            topProfileMouseCaptureArmDelaySeconds = value
+        } else if field === profileMouseCaptureTemporaryReleaseField {
+            topProfileMouseCaptureTemporaryReleaseSeconds = value
+        }
+    }
+
+    private func clampedWholeSeconds(from stringValue: String) -> Int {
+        guard let parsedValue = Double(stringValue), parsedValue.isFinite else {
+            return 1
+        }
+
+        return max(1, Int(parsedValue.rounded()))
     }
 
     @objc private func showGridChanged() {
@@ -1359,7 +1576,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         self.selectedGroupID = nil
         reloadPreview(keepSelection: false)
         previewView.select(buttons: [])
-        showProfileSettings()
+        clearInspector()
         updateGroupToolbarState()
         registerGroupStateUndo(before: beforeGroups, after: profile.buttonGroups, actionName: "Ungroup Buttons")
     }
@@ -1501,7 +1718,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         updatePreviewCanvasLayout()
         canvasObjects = makeCanvasObjects(from: profile)
         reloadPreview(keepSelection: false)
-        showProfileSettings()
+        clearInspector()
     }
 
     private func deleteGroup(_ groupID: UUID) {
@@ -1628,7 +1845,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         if selection.count == 1, let button = selection.first, let config = profile.buttons[button.rawValue] {
             detailPanel.load(button: button, config: config)
         } else {
-            showProfileSettings()
+            clearInspector()
         }
     }
 
@@ -1680,33 +1897,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             return
         }
 
-        showProfileSettings()
+        clearInspector()
     }
 
-    private func showProfileSettings() {
-        detailPanel.loadProfileSettings(
-            backgroundColorHex: profile.backgroundColorHex,
-            frostedGlassIntensity: profile.backgroundFrostedGlassIntensity,
-            mouseCaptureArmDelaySeconds: topProfileMouseCaptureArmDelaySeconds,
-            mouseCaptureTemporaryReleaseSeconds: topProfileMouseCaptureTemporaryReleaseSeconds,
-            showsMouseCaptureTiming: showsTopProfileMouseCaptureTiming
-        )
-    }
-
-    private func applyProfileBackgroundColor(_ colorHex: String) {
-        profile.backgroundColorHex = colorHex
-    }
-
-    private func applyProfileBackgroundFrostedGlassIntensity(_ intensity: Int) {
-        profile.backgroundFrostedGlassIntensity = intensity
-    }
-
-    private func applyTopProfileMouseCaptureArmDelay(_ seconds: Int) {
-        topProfileMouseCaptureArmDelaySeconds = max(1, seconds)
-    }
-
-    private func applyTopProfileMouseCaptureTemporaryRelease(_ seconds: Int) {
-        topProfileMouseCaptureTemporaryReleaseSeconds = max(1, seconds)
+    private func clearInspector() {
+        detailPanel.clear()
     }
 
     private func focusPreviewForEditorCommands() {
@@ -2321,7 +2516,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             previewView.select(button: button)
             detailPanel.load(button: button, config: config)
         } else {
-            showProfileSettings()
+            clearInspector()
         }
 
         editorUndoManager.registerUndo(withTarget: self) { target in
@@ -2565,7 +2760,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 height: config.editorHeight > 0 ? config.editorHeight : config.height
             )
         } else {
-            showProfileSettings()
+            clearInspector()
         }
     }
 
@@ -2675,8 +2870,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             return nil
         }
 
-        if showsTopProfileMouseCaptureTiming,
-           let timingData = "|mouseCapture:\(topProfileMouseCaptureArmDelaySeconds):\(topProfileMouseCaptureTemporaryReleaseSeconds)"
+        if let timingData = "|mouseCapture:\(profileMouseCaptureTimingProfileID.uuidString):\(topProfileMouseCaptureArmDelaySeconds):\(topProfileMouseCaptureTemporaryReleaseSeconds)"
             .data(using: .utf8) {
             data.append(timingData)
         }
