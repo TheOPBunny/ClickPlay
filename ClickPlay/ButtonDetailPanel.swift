@@ -75,6 +75,10 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
     private let joystickRightClickClearButton = NSButton(title: "Clear", target: nil, action: nil)
     private let joystickLeftClickModePopup = NSPopUpButton()
     private let joystickRightClickModePopup = NSPopUpButton()
+    private let joystickLeftClickTurboRateField = NSTextField()
+    private let joystickLeftClickTurboRateStepper = NSStepper()
+    private let joystickRightClickTurboRateField = NSTextField()
+    private let joystickRightClickTurboRateStepper = NSStepper()
     private let joystickLeftClickMultiKeyPopup = NSPopUpButton()
     private let joystickRightClickMultiKeyPopup = NSPopUpButton()
     private let joystickScrollUpActionPopup = NSPopUpButton()
@@ -85,6 +89,10 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
     private let joystickScrollDownClearButton = NSButton(title: "Clear", target: nil, action: nil)
     private let joystickScrollUpModePopup = NSPopUpButton()
     private let joystickScrollDownModePopup = NSPopUpButton()
+    private let joystickScrollUpTurboRateField = NSTextField()
+    private let joystickScrollUpTurboRateStepper = NSStepper()
+    private let joystickScrollDownTurboRateField = NSTextField()
+    private let joystickScrollDownTurboRateStepper = NSStepper()
     private let joystickScrollUpMultiKeyPopup = NSPopUpButton()
     private let joystickScrollDownMultiKeyPopup = NSPopUpButton()
     private var joystickSectionLabel: NSTextField?
@@ -103,6 +111,8 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
     private var joystickRightClickKeyRow: NSStackView?
     private var joystickLeftClickModeRow: NSStackView?
     private var joystickRightClickModeRow: NSStackView?
+    private var joystickLeftClickTurboRateRow: NSStackView?
+    private var joystickRightClickTurboRateRow: NSStackView?
     private var joystickLeftClickMultiKeyRow: NSStackView?
     private var joystickRightClickMultiKeyRow: NSStackView?
     private var joystickScrollSectionLabel: NSTextField?
@@ -112,16 +122,21 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
     private var joystickScrollDownKeyRow: NSStackView?
     private var joystickScrollUpModeRow: NSStackView?
     private var joystickScrollDownModeRow: NSStackView?
+    private var joystickScrollUpTurboRateRow: NSStackView?
+    private var joystickScrollDownTurboRateRow: NSStackView?
     private var joystickScrollUpMultiKeyRow: NSStackView?
     private var joystickScrollDownMultiKeyRow: NSStackView?
     private let rightClickRecorder = KeyRecorderButton()
     private let rightClickFallbackCheckbox = NSButton(checkboxWithTitle: "Use left-click key when unset", target: nil, action: nil)
     private let rightClickModePopup = NSPopUpButton()
+    private let rightClickTurboRateField = NSTextField()
+    private let rightClickTurboRateStepper = NSStepper()
     private let rightClickClearButton = NSButton(title: "Clear", target: nil, action: nil)
     private var rightClickSectionLabel: NSTextField?
     private var rightClickKeyRow: NSStackView?
     private var rightClickFallbackRow: NSView?
     private var rightClickModeRow: NSStackView?
+    private var rightClickTurboRateRow: NSStackView?
     private let colorWell = NSColorWell()
     private var colorRow: NSStackView?
     private let labelSizeField = NSTextField()
@@ -148,6 +163,9 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
     private var dwellToleranceRow: NSStackView?
     private let interactionModePopup = NSPopUpButton()
     private var interactionModeRow: NSStackView?
+    private let turboRateField = NSTextField()
+    private let turboRateStepper = NSStepper()
+    private var turboRateRow: NSStackView?
     private let multiKeyActivationModePopup = NSPopUpButton()
     private var multiKeyActivationModeRow: NSStackView?
     private let deleteButton = NSButton(title: "Delete Button", target: nil, action: nil)
@@ -185,12 +203,12 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         joystickDownRecorder.setKeyBindings([JoystickConfig.defaultBindings.down])
         joystickLeftRecorder.setKeyBindings([JoystickConfig.defaultBindings.left])
         joystickRightRecorder.setKeyBindings([JoystickConfig.defaultBindings.right])
-        syncJoystickTriggerControls(action: .off, actionPopup: joystickLeftClickActionPopup, recorder: joystickLeftClickRecorder, modePopup: joystickLeftClickModePopup, multiKeyPopup: joystickLeftClickMultiKeyPopup)
-        syncJoystickTriggerControls(action: .off, actionPopup: joystickRightClickActionPopup, recorder: joystickRightClickRecorder, modePopup: joystickRightClickModePopup, multiKeyPopup: joystickRightClickMultiKeyPopup)
+        syncJoystickTriggerControls(action: .off, actionPopup: joystickLeftClickActionPopup, recorder: joystickLeftClickRecorder, modePopup: joystickLeftClickModePopup, multiKeyPopup: joystickLeftClickMultiKeyPopup, turboRateField: joystickLeftClickTurboRateField, turboRateStepper: joystickLeftClickTurboRateStepper)
+        syncJoystickTriggerControls(action: .off, actionPopup: joystickRightClickActionPopup, recorder: joystickRightClickRecorder, modePopup: joystickRightClickModePopup, multiKeyPopup: joystickRightClickMultiKeyPopup, turboRateField: joystickRightClickTurboRateField, turboRateStepper: joystickRightClickTurboRateStepper)
         joystickScrollUpActionPopup.selectItem(withTag: JoystickScrollActionKind.off.tag)
         joystickScrollDownActionPopup.selectItem(withTag: JoystickScrollActionKind.off.tag)
-        syncJoystickInputControls(input: .empty, recorder: joystickScrollUpRecorder, modePopup: joystickScrollUpModePopup, multiKeyPopup: joystickScrollUpMultiKeyPopup)
-        syncJoystickInputControls(input: .empty, recorder: joystickScrollDownRecorder, modePopup: joystickScrollDownModePopup, multiKeyPopup: joystickScrollDownMultiKeyPopup)
+        syncJoystickInputControls(input: .empty, recorder: joystickScrollUpRecorder, modePopup: joystickScrollUpModePopup, multiKeyPopup: joystickScrollUpMultiKeyPopup, turboRateField: joystickScrollUpTurboRateField, turboRateStepper: joystickScrollUpTurboRateStepper)
+        syncJoystickInputControls(input: .empty, recorder: joystickScrollDownRecorder, modePopup: joystickScrollDownModePopup, multiKeyPopup: joystickScrollDownMultiKeyPopup, turboRateField: joystickScrollDownTurboRateField, turboRateStepper: joystickScrollDownTurboRateStepper)
         rightClickRecorder.setOptionalKeyBindings(nil)
         rightClickFallbackCheckbox.state = .on
         rightClickModePopup.selectItem(withTag: Self.sameAsLeftModeTag)
@@ -200,6 +218,12 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         shapePopup.selectItem(withTag: ButtonShape.roundedRectangle.tag)
         interactionModePopup.selectItem(withTag: ButtonInteractionMode.momentary.tag)
         multiKeyActivationModePopup.selectItem(withTag: MultiKeyActivationMode.sequential.tag)
+        syncTurboRateControls(turboRateField, stepper: turboRateStepper, value: TurboConfiguration.defaultClicksPerSecond)
+        syncTurboRateControls(rightClickTurboRateField, stepper: rightClickTurboRateStepper, value: TurboConfiguration.defaultClicksPerSecond)
+        syncTurboRateControls(joystickLeftClickTurboRateField, stepper: joystickLeftClickTurboRateStepper, value: TurboConfiguration.defaultClicksPerSecond)
+        syncTurboRateControls(joystickRightClickTurboRateField, stepper: joystickRightClickTurboRateStepper, value: TurboConfiguration.defaultClicksPerSecond)
+        syncTurboRateControls(joystickScrollUpTurboRateField, stepper: joystickScrollUpTurboRateStepper, value: TurboConfiguration.defaultClicksPerSecond)
+        syncTurboRateControls(joystickScrollDownTurboRateField, stepper: joystickScrollDownTurboRateStepper, value: TurboConfiguration.defaultClicksPerSecond)
         updateMultiKeyActivationModeVisibility()
         deleteButton.title = "Delete Button"
         deleteButton.isEnabled = false
@@ -238,6 +262,12 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         shapePopup.selectItem(withTag: config.shape.tag)
         interactionModePopup.selectItem(withTag: config.interactionMode.tag)
         multiKeyActivationModePopup.selectItem(withTag: config.multiKeyActivationMode.tag)
+        syncTurboRateControls(turboRateField, stepper: turboRateStepper, value: config.turboClicksPerSecond)
+        syncTurboRateControls(
+            rightClickTurboRateField,
+            stepper: rightClickTurboRateStepper,
+            value: config.rightClickTurboClicksPerSecond
+        )
         systemEventPopup.selectItem(withTag: (config.action.systemEvent ?? .brightnessDown).tag)
         systemEventIconSizePopup.selectItem(withTag: config.systemEventIconSize.tag)
         dwellActionPopup.selectItem(withTag: config.dwellAction.kind.tag)
@@ -419,6 +449,16 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         rightClickModePopup.target = self
         rightClickModePopup.action = #selector(applyPressed)
         populateRightClickModes()
+        [
+            (turboRateField, turboRateStepper),
+            (rightClickTurboRateField, rightClickTurboRateStepper),
+            (joystickLeftClickTurboRateField, joystickLeftClickTurboRateStepper),
+            (joystickRightClickTurboRateField, joystickRightClickTurboRateStepper),
+            (joystickScrollUpTurboRateField, joystickScrollUpTurboRateStepper),
+            (joystickScrollDownTurboRateField, joystickScrollDownTurboRateStepper),
+        ].forEach { controls in
+            configureTurboRateControls(controls.0, stepper: controls.1)
+        }
         rightClickFallbackCheckbox.target = self
         rightClickFallbackCheckbox.action = #selector(applyPressed)
         rightClickClearButton.bezelStyle = .rounded
@@ -500,19 +540,29 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         joystickLeftClickActionRow = makeRow(label: "Left Click:", control: joystickLeftClickActionPopup)
         joystickLeftClickKeyRow = makeJoystickInputKeyRow(label: "Left Click:", recorder: joystickLeftClickRecorder, clearButton: joystickLeftClickClearButton)
         joystickLeftClickModeRow = makeRow(label: "L-click Mode:", control: joystickLeftClickModePopup)
+        joystickLeftClickTurboRateRow = makeRow(
+            label: "Turbo:",
+            control: makeTurboRateControl(field: joystickLeftClickTurboRateField, stepper: joystickLeftClickTurboRateStepper)
+        )
         joystickLeftClickMultiKeyRow = makeRow(label: "L-click Keys:", control: joystickLeftClickMultiKeyPopup)
         joystickRightClickActionRow = makeRow(label: "Right Click:", control: joystickRightClickActionPopup)
         joystickRightClickKeyRow = makeJoystickInputKeyRow(label: "Right Click:", recorder: joystickRightClickRecorder, clearButton: joystickRightClickClearButton)
         joystickRightClickModeRow = makeRow(label: "R-click Mode:", control: joystickRightClickModePopup)
+        joystickRightClickTurboRateRow = makeRow(
+            label: "Turbo:",
+            control: makeTurboRateControl(field: joystickRightClickTurboRateField, stepper: joystickRightClickTurboRateStepper)
+        )
         joystickRightClickMultiKeyRow = makeRow(label: "R-click Keys:", control: joystickRightClickMultiKeyPopup)
         [
             joystickLeftClickActionRow,
             joystickLeftClickKeyRow,
             joystickLeftClickModeRow,
+            joystickLeftClickTurboRateRow,
             joystickLeftClickMultiKeyRow,
             joystickRightClickActionRow,
             joystickRightClickKeyRow,
             joystickRightClickModeRow,
+            joystickRightClickTurboRateRow,
             joystickRightClickMultiKeyRow,
         ].compactMap { $0 }.forEach(contentStack.addArrangedSubview)
         let joystickScrollSectionLabel = makeSectionLabel("Scroll Wheel")
@@ -521,19 +571,29 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         joystickScrollUpActionRow = makeRow(label: "Up:", control: joystickScrollUpActionPopup)
         joystickScrollUpKeyRow = makeJoystickInputKeyRow(label: "Up Key:", recorder: joystickScrollUpRecorder, clearButton: joystickScrollUpClearButton)
         joystickScrollUpModeRow = makeRow(label: "Up Mode:", control: joystickScrollUpModePopup)
+        joystickScrollUpTurboRateRow = makeRow(
+            label: "Up Turbo:",
+            control: makeTurboRateControl(field: joystickScrollUpTurboRateField, stepper: joystickScrollUpTurboRateStepper)
+        )
         joystickScrollUpMultiKeyRow = makeRow(label: "Up Keys:", control: joystickScrollUpMultiKeyPopup)
         joystickScrollDownActionRow = makeRow(label: "Down:", control: joystickScrollDownActionPopup)
         joystickScrollDownKeyRow = makeJoystickInputKeyRow(label: "Down Key:", recorder: joystickScrollDownRecorder, clearButton: joystickScrollDownClearButton)
         joystickScrollDownModeRow = makeRow(label: "Down Mode:", control: joystickScrollDownModePopup)
+        joystickScrollDownTurboRateRow = makeRow(
+            label: "Down Turbo:",
+            control: makeTurboRateControl(field: joystickScrollDownTurboRateField, stepper: joystickScrollDownTurboRateStepper)
+        )
         joystickScrollDownMultiKeyRow = makeRow(label: "Down Keys:", control: joystickScrollDownMultiKeyPopup)
         [
             joystickScrollUpActionRow,
             joystickScrollUpKeyRow,
             joystickScrollUpModeRow,
+            joystickScrollUpTurboRateRow,
             joystickScrollUpMultiKeyRow,
             joystickScrollDownActionRow,
             joystickScrollDownKeyRow,
             joystickScrollDownModeRow,
+            joystickScrollDownTurboRateRow,
             joystickScrollDownMultiKeyRow,
         ].compactMap { $0 }.forEach(contentStack.addArrangedSubview)
         let colorRow = makeRow(label: "Color:", control: colorWell)
@@ -545,6 +605,12 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         let interactionModeRow = makeRow(label: "Mode:", control: interactionModePopup)
         self.interactionModeRow = interactionModeRow
         contentStack.addArrangedSubview(interactionModeRow)
+        let turboRateRow = makeRow(
+            label: "Turbo:",
+            control: makeTurboRateControl(field: turboRateField, stepper: turboRateStepper)
+        )
+        self.turboRateRow = turboRateRow
+        contentStack.addArrangedSubview(turboRateRow)
         let multiKeyRow = makeRow(label: "Keys:", control: multiKeyActivationModePopup)
         multiKeyActivationModeRow = multiKeyRow
         contentStack.addArrangedSubview(multiKeyRow)
@@ -559,6 +625,12 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         let rightClickModeRow = makeRow(label: "Mode:", control: rightClickModePopup)
         self.rightClickModeRow = rightClickModeRow
         contentStack.addArrangedSubview(rightClickModeRow)
+        let rightClickTurboRateRow = makeRow(
+            label: "Turbo:",
+            control: makeTurboRateControl(field: rightClickTurboRateField, stepper: rightClickTurboRateStepper)
+        )
+        self.rightClickTurboRateRow = rightClickTurboRateRow
+        contentStack.addArrangedSubview(rightClickTurboRateRow)
         contentStack.addArrangedSubview(makeSizeRow())
         contentStack.addArrangedSubview(deleteButton)
 
@@ -625,6 +697,45 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         stack.alignment = .centerY
         stack.spacing = 6
         return stack
+    }
+
+    private func makeTurboRateControl(field: NSTextField, stepper: NSStepper) -> NSStackView {
+        let unitLabel = NSTextField(labelWithString: "clicks/sec")
+        unitLabel.font = .systemFont(ofSize: 12)
+        unitLabel.textColor = .secondaryLabelColor
+
+        let stack = NSStackView(views: [field, stepper, unitLabel])
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 6
+        return stack
+    }
+
+    private func configureTurboRateControls(_ field: NSTextField, stepper: NSStepper) {
+        field.bezelStyle = .roundedBezel
+        field.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        field.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        configureApplyingTextField(field)
+
+        stepper.minValue = Double(TurboConfiguration.minimumClicksPerSecond)
+        stepper.maxValue = Double(TurboConfiguration.maximumClicksPerSecond)
+        stepper.increment = 1
+        stepper.valueWraps = false
+        stepper.target = self
+        stepper.action = #selector(turboRateStepperChanged(_:))
+    }
+
+    private func syncTurboRateControls(_ field: NSTextField, stepper: NSStepper, value: Int) {
+        let normalizedValue = TurboConfiguration.normalizedClicksPerSecond(value)
+        field.integerValue = normalizedValue
+        stepper.integerValue = normalizedValue
+    }
+
+    private func turboRateValue(from field: NSTextField, fallback: Int) -> Int {
+        guard let value = Int(field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            return TurboConfiguration.normalizedClicksPerSecond(fallback)
+        }
+        return TurboConfiguration.normalizedClicksPerSecond(value)
     }
 
     private func makeFieldLabel(_ text: String) -> NSTextField {
@@ -735,6 +846,28 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
     }
 
     @objc private func applyPressed() {
+        emitChange()
+    }
+
+    @objc private func turboRateStepperChanged(_ sender: NSStepper) {
+        let field: NSTextField?
+        if sender === turboRateStepper {
+            field = turboRateField
+        } else if sender === rightClickTurboRateStepper {
+            field = rightClickTurboRateField
+        } else if sender === joystickLeftClickTurboRateStepper {
+            field = joystickLeftClickTurboRateField
+        } else if sender === joystickRightClickTurboRateStepper {
+            field = joystickRightClickTurboRateField
+        } else if sender === joystickScrollUpTurboRateStepper {
+            field = joystickScrollUpTurboRateField
+        } else if sender === joystickScrollDownTurboRateStepper {
+            field = joystickScrollDownTurboRateField
+        } else {
+            field = nil
+        }
+
+        field?.integerValue = sender.integerValue
         emitChange()
     }
 
@@ -1092,6 +1225,11 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         config.editorWidth = sizeValue(from: widthField.stringValue, fallback: config.editorWidth > 0 ? config.editorWidth : config.width)
         config.editorHeight = sizeValue(from: heightField.stringValue, fallback: config.editorHeight > 0 ? config.editorHeight : config.height)
         config.shape = ButtonShape(tag: shapePopup.selectedTag()) ?? .roundedRectangle
+        config.turboClicksPerSecond = turboRateValue(from: turboRateField, fallback: config.turboClicksPerSecond)
+        config.rightClickTurboClicksPerSecond = turboRateValue(
+            from: rightClickTurboRateField,
+            fallback: config.rightClickTurboClicksPerSecond
+        )
         if config.action.isProtectedSwitch {
             config.type = .keyboard
             config.enabled = true
@@ -1202,14 +1340,16 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
                     actionPopup: joystickLeftClickActionPopup,
                     recorder: joystickLeftClickRecorder,
                     modePopup: joystickLeftClickModePopup,
-                    multiKeyPopup: joystickLeftClickMultiKeyPopup
+                    multiKeyPopup: joystickLeftClickMultiKeyPopup,
+                    turboRateField: joystickLeftClickTurboRateField
                 )
                 config.joystick.rightClickAction = operationMode == .clickDrag
                     ? joystickTriggerAction(
                         actionPopup: joystickRightClickActionPopup,
                         recorder: joystickRightClickRecorder,
                         modePopup: joystickRightClickModePopup,
-                        multiKeyPopup: joystickRightClickMultiKeyPopup
+                        multiKeyPopup: joystickRightClickMultiKeyPopup,
+                        turboRateField: joystickRightClickTurboRateField
                     )
                     : .off
                 config.joystick.scrollUpAction = joystickScrollAction(direction: .up)
@@ -1224,7 +1364,8 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
                     actionPopup: joystickLeftClickActionPopup,
                     recorder: joystickLeftClickRecorder,
                     modePopup: joystickLeftClickModePopup,
-                    multiKeyPopup: joystickLeftClickMultiKeyPopup
+                    multiKeyPopup: joystickLeftClickMultiKeyPopup,
+                    turboRateField: joystickLeftClickTurboRateField
                 )
                 layer.scrollUpAction = joystickScrollAction(direction: .up)
                 layer.scrollDownAction = joystickScrollAction(direction: .down)
@@ -1255,6 +1396,15 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         heightField.stringValue = geometryValueString(config.editorHeight)
 
         self.config = config
+        syncTurboRateControls(turboRateField, stepper: turboRateStepper, value: config.turboClicksPerSecond)
+        syncTurboRateControls(
+            rightClickTurboRateField,
+            stepper: rightClickTurboRateStepper,
+            value: config.rightClickTurboClicksPerSecond
+        )
+        if config.type == .joystick {
+            syncJoystickLayerControls(from: config.joystick)
+        }
         updateMultiKeyActivationModeVisibility()
         updateControlVisibility()
         onChanged?(button, config)
@@ -1454,7 +1604,8 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
     private func joystickInput(
         recorder: KeyRecorderButton,
         modePopup: NSPopUpButton,
-        multiKeyPopup: NSPopUpButton
+        multiKeyPopup: NSPopUpButton,
+        turboRateField: NSTextField
     ) -> JoystickInputConfig {
         let interactionMode = ButtonInteractionMode(tag: modePopup.selectedTag()) ?? .momentary
         let multiKeyActivationMode = MultiKeyActivationMode(tag: multiKeyPopup.selectedTag()) ?? .sequential
@@ -1462,7 +1613,11 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         return JoystickInputConfig(
             keyBindings: recorder.recordedBindings,
             interactionMode: interactionMode,
-            multiKeyActivationMode: multiKeyActivationMode
+            multiKeyActivationMode: multiKeyActivationMode,
+            turboClicksPerSecond: turboRateValue(
+                from: turboRateField,
+                fallback: TurboConfiguration.defaultClicksPerSecond
+            )
         )
     }
 
@@ -1470,7 +1625,8 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         actionPopup: NSPopUpButton,
         recorder: KeyRecorderButton,
         modePopup: NSPopUpButton,
-        multiKeyPopup: NSPopUpButton
+        multiKeyPopup: NSPopUpButton,
+        turboRateField: NSTextField
     ) -> JoystickTriggerAction {
         let kind = JoystickTriggerActionKind(tag: actionPopup.selectedTag()) ?? .off
         switch kind {
@@ -1479,7 +1635,12 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         case .keyCombo:
             return JoystickTriggerAction(
                 kind: .keyCombo,
-                input: joystickInput(recorder: recorder, modePopup: modePopup, multiKeyPopup: multiKeyPopup)
+                input: joystickInput(
+                    recorder: recorder,
+                    modePopup: modePopup,
+                    multiKeyPopup: multiKeyPopup,
+                    turboRateField: turboRateField
+                )
             )
         case .nestedJoystick:
             return .nestedJoystick
@@ -1491,6 +1652,7 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         let recorder: KeyRecorderButton
         let modePopup: NSPopUpButton
         let multiKeyPopup: NSPopUpButton
+        let turboRateField: NSTextField
 
         switch direction {
         case .up:
@@ -1498,11 +1660,13 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
             recorder = joystickScrollUpRecorder
             modePopup = joystickScrollUpModePopup
             multiKeyPopup = joystickScrollUpMultiKeyPopup
+            turboRateField = joystickScrollUpTurboRateField
         case .down:
             actionPopup = joystickScrollDownActionPopup
             recorder = joystickScrollDownRecorder
             modePopup = joystickScrollDownModePopup
             multiKeyPopup = joystickScrollDownMultiKeyPopup
+            turboRateField = joystickScrollDownTurboRateField
         }
 
         let kind = JoystickScrollActionKind(tag: actionPopup.selectedTag()) ?? .off
@@ -1514,7 +1678,12 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         case .keyCombo:
             return JoystickScrollAction(
                 kind: .keyCombo,
-                input: joystickInput(recorder: recorder, modePopup: modePopup, multiKeyPopup: multiKeyPopup)
+                input: joystickInput(
+                    recorder: recorder,
+                    modePopup: modePopup,
+                    multiKeyPopup: multiKeyPopup,
+                    turboRateField: turboRateField
+                )
             )
         case .nestedJoystick:
             return .nestedJoystick
@@ -1525,11 +1694,14 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         input: JoystickInputConfig,
         recorder: KeyRecorderButton,
         modePopup: NSPopUpButton,
-        multiKeyPopup: NSPopUpButton
+        multiKeyPopup: NSPopUpButton,
+        turboRateField: NSTextField,
+        turboRateStepper: NSStepper
     ) {
         recorder.setOptionalKeyBindings(input.keyBindings)
         modePopup.selectItem(withTag: input.interactionMode.tag)
         multiKeyPopup.selectItem(withTag: input.multiKeyActivationMode.tag)
+        syncTurboRateControls(turboRateField, stepper: turboRateStepper, value: input.turboClicksPerSecond)
     }
 
     private func syncJoystickScrollControls(action: JoystickScrollAction, direction: JoystickScrollDirection) {
@@ -1540,7 +1712,9 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
                 input: action.input,
                 recorder: joystickScrollUpRecorder,
                 modePopup: joystickScrollUpModePopup,
-                multiKeyPopup: joystickScrollUpMultiKeyPopup
+                multiKeyPopup: joystickScrollUpMultiKeyPopup,
+                turboRateField: joystickScrollUpTurboRateField,
+                turboRateStepper: joystickScrollUpTurboRateStepper
             )
         case .down:
             joystickScrollDownActionPopup.selectItem(withTag: action.kind.tag)
@@ -1548,7 +1722,9 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
                 input: action.input,
                 recorder: joystickScrollDownRecorder,
                 modePopup: joystickScrollDownModePopup,
-                multiKeyPopup: joystickScrollDownMultiKeyPopup
+                multiKeyPopup: joystickScrollDownMultiKeyPopup,
+                turboRateField: joystickScrollDownTurboRateField,
+                turboRateStepper: joystickScrollDownTurboRateStepper
             )
         }
     }
@@ -1558,14 +1734,18 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         actionPopup: NSPopUpButton,
         recorder: KeyRecorderButton,
         modePopup: NSPopUpButton,
-        multiKeyPopup: NSPopUpButton
+        multiKeyPopup: NSPopUpButton,
+        turboRateField: NSTextField,
+        turboRateStepper: NSStepper
     ) {
         actionPopup.selectItem(withTag: action.kind.tag)
         syncJoystickInputControls(
             input: action.input,
             recorder: recorder,
             modePopup: modePopup,
-            multiKeyPopup: multiKeyPopup
+            multiKeyPopup: multiKeyPopup,
+            turboRateField: turboRateField,
+            turboRateStepper: turboRateStepper
         )
     }
 
@@ -1580,14 +1760,18 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
             actionPopup: joystickLeftClickActionPopup,
             recorder: joystickLeftClickRecorder,
             modePopup: joystickLeftClickModePopup,
-            multiKeyPopup: joystickLeftClickMultiKeyPopup
+            multiKeyPopup: joystickLeftClickMultiKeyPopup,
+            turboRateField: joystickLeftClickTurboRateField,
+            turboRateStepper: joystickLeftClickTurboRateStepper
         )
         syncJoystickTriggerControls(
             action: selectedJoystickLayerIndex == 0 ? joystick.rightClickAction : .off,
             actionPopup: joystickRightClickActionPopup,
             recorder: joystickRightClickRecorder,
             modePopup: joystickRightClickModePopup,
-            multiKeyPopup: joystickRightClickMultiKeyPopup
+            multiKeyPopup: joystickRightClickMultiKeyPopup,
+            turboRateField: joystickRightClickTurboRateField,
+            turboRateStepper: joystickRightClickTurboRateStepper
         )
         syncJoystickScrollControls(action: layer.scrollUpAction, direction: .up)
         syncJoystickScrollControls(action: layer.scrollDownAction, direction: .down)
@@ -1684,15 +1868,21 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         let showsLeftClickKeyCombo = isJoystick && leftClickKind == .keyCombo
         let showsRightClickAction = isJoystick && isBaseLayer && operationMode == .clickDrag
         let showsRightClickKeyCombo = showsRightClickAction && rightClickKind == .keyCombo
+        let showsLeftClickTurboRate = showsLeftClickKeyCombo
+            && ButtonInteractionMode(tag: joystickLeftClickModePopup.selectedTag()) == .turbo
+        let showsRightClickTurboRate = showsRightClickKeyCombo
+            && ButtonInteractionMode(tag: joystickRightClickModePopup.selectedTag()) == .turbo
 
         joystickLeftClickActionRow?.isHidden = !isJoystick
         joystickLeftClickKeyRow?.isHidden = !showsLeftClickKeyCombo
         joystickLeftClickModeRow?.isHidden = !showsLeftClickKeyCombo
+        joystickLeftClickTurboRateRow?.isHidden = !showsLeftClickTurboRate
         joystickLeftClickMultiKeyRow?.isHidden = !showsLeftClickKeyCombo
             || joystickLeftClickRecorder.recordedBindings.count <= 1
         joystickRightClickActionRow?.isHidden = !showsRightClickAction
         joystickRightClickKeyRow?.isHidden = !showsRightClickKeyCombo
         joystickRightClickModeRow?.isHidden = !showsRightClickKeyCombo
+        joystickRightClickTurboRateRow?.isHidden = !showsRightClickTurboRate
         joystickRightClickMultiKeyRow?.isHidden = !showsRightClickKeyCombo
             || joystickRightClickRecorder.recordedBindings.count <= 1
 
@@ -1702,6 +1892,7 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
             modePopup: joystickScrollUpModePopup,
             keyRow: joystickScrollUpKeyRow,
             modeRow: joystickScrollUpModeRow,
+            turboRateRow: joystickScrollUpTurboRateRow,
             multiKeyRow: joystickScrollUpMultiKeyRow
         )
         updateJoystickScrollInputVisibility(
@@ -1710,6 +1901,7 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
             modePopup: joystickScrollDownModePopup,
             keyRow: joystickScrollDownKeyRow,
             modeRow: joystickScrollDownModeRow,
+            turboRateRow: joystickScrollDownTurboRateRow,
             multiKeyRow: joystickScrollDownMultiKeyRow
         )
     }
@@ -1720,12 +1912,16 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         modePopup: NSPopUpButton,
         keyRow: NSStackView?,
         modeRow: NSStackView?,
+        turboRateRow: NSStackView?,
         multiKeyRow: NSStackView?
     ) {
         let isJoystick = config?.type == .joystick && config?.action.isProtectedSwitch != true
         let isKeyCombo = JoystickScrollActionKind(tag: actionPopup.selectedTag()) == .keyCombo
         keyRow?.isHidden = !isJoystick || !isKeyCombo
         modeRow?.isHidden = !isJoystick || !isKeyCombo
+        turboRateRow?.isHidden = !isJoystick
+            || !isKeyCombo
+            || ButtonInteractionMode(tag: modePopup.selectedTag()) != .turbo
         multiKeyRow?.isHidden = !isJoystick
             || !isKeyCombo
             || recorder.recordedBindings.count <= 1
@@ -1769,10 +1965,14 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         dwellToleranceRow?.isHidden = !isDwellAction || isProtectedSwitch
         keyRow?.isHidden = hidesKeyboardControls
         interactionModeRow?.isHidden = hidesKeyboardControls
+        turboRateRow?.isHidden = hidesKeyboardControls
+            || ButtonInteractionMode(tag: interactionModePopup.selectedTag()) != .turbo
         rightClickSectionLabel?.isHidden = hidesKeyboardControls
         rightClickKeyRow?.isHidden = hidesKeyboardControls
         rightClickFallbackRow?.isHidden = hidesKeyboardControls
         rightClickModeRow?.isHidden = hidesKeyboardControls
+        rightClickTurboRateRow?.isHidden = hidesKeyboardControls
+            || ButtonInteractionMode(tag: rightClickModePopup.selectedTag()) != .turbo
         joystickSectionLabel?.isHidden = !isJoystick || isProtectedSwitch
         joystickOperationModeRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickLayerRow?.isHidden = !isJoystick || isProtectedSwitch

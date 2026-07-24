@@ -130,6 +130,9 @@ final class GamepadButtonView: NSView {
         var pressedStartedAt: TimeInterval?
         var autoReleaseWorkItem: DispatchWorkItem?
         var sequenceRepeatWorkItem: DispatchWorkItem?
+        var turboStepWorkItem: DispatchWorkItem?
+        var turboPressedBindings: [(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)] = []
+        var turboGeneration: UInt = 0
     }
 
     // Resolved input normalizes button config plus sub-profile context into the bindings used by press handlers.
@@ -137,6 +140,7 @@ final class GamepadButtonView: NSView {
         let bindings: [ButtonKeyBinding]
         let mode: ButtonInteractionMode
         let multiKeyActivationMode: MultiKeyActivationMode
+        let turboClicksPerSecond: Int
     }
 
     private enum JoystickDirection: CaseIterable, Hashable {
@@ -172,7 +176,7 @@ final class GamepadButtonView: NSView {
     }
 
     // Timing and movement constants tune joystick feel without changing the key-injection contract.
-    private static let compatibilityTapDuration: TimeInterval = 0.033
+    private static let compatibilityTapDuration = TurboConfiguration.tapDuration
     private static let joystickDeadzoneRadius: CGFloat = 18
     private static let joystickIdleReturnDelay: TimeInterval = 0.075
     private static let joystickCardinalDominanceRatio: CGFloat = 1.75
@@ -2286,14 +2290,20 @@ final class GamepadButtonView: NSView {
             return ResolvedInput(
                 bindings: primaryBindings,
                 mode: config.interactionMode,
-                multiKeyActivationMode: config.multiKeyActivationMode
+                multiKeyActivationMode: config.multiKeyActivationMode,
+                turboClicksPerSecond: config.turboClicksPerSecond
             )
         case .secondary:
+            let usesPrimaryMode = config.rightClickInteractionMode == nil
+            let turboClicksPerSecond = usesPrimaryMode
+                ? config.turboClicksPerSecond
+                : config.rightClickTurboClicksPerSecond
             if let rightClickBindings = config.rightClickKeyBindings, !rightClickBindings.isEmpty {
                 return ResolvedInput(
                     bindings: rightClickBindings,
                     mode: config.rightClickInteractionMode ?? config.interactionMode,
-                    multiKeyActivationMode: config.multiKeyActivationMode
+                    multiKeyActivationMode: config.multiKeyActivationMode,
+                    turboClicksPerSecond: turboClicksPerSecond
                 )
             }
 
@@ -2304,7 +2314,8 @@ final class GamepadButtonView: NSView {
             return ResolvedInput(
                 bindings: primaryBindings,
                 mode: config.rightClickInteractionMode ?? config.interactionMode,
-                multiKeyActivationMode: config.multiKeyActivationMode
+                multiKeyActivationMode: config.multiKeyActivationMode,
+                turboClicksPerSecond: turboClicksPerSecond
             )
         case .joystickLeftClick:
             return resolvedInput(for: joystickLeftClickAction())
@@ -2347,7 +2358,8 @@ final class GamepadButtonView: NSView {
         return ResolvedInput(
             bindings: input.keyBindings,
             mode: input.interactionMode,
-            multiKeyActivationMode: input.multiKeyActivationMode
+            multiKeyActivationMode: input.multiKeyActivationMode,
+            turboClicksPerSecond: input.turboClicksPerSecond
         )
     }
 
@@ -2447,15 +2459,16 @@ final class GamepadButtonView: NSView {
 
     private func toggleTurboRepeat(source: PressSource, input: ResolvedInput) {
         let state = state(for: source)
-        if state.sequenceRepeatWorkItem != nil {
+        if state.isPressed {
             stopTurboRepeat(source: source)
             return
         }
 
+        state.turboGeneration &+= 1
         state.isPressed = true
         updateAppearance(animated: true)
-        debugLog("[Button \(button.rawValue)] startTurboRepeat source=\(source) keyBindings=\(input.bindings.map(\.keyCode)) activationMode=\(input.multiKeyActivationMode.rawValue)")
-        repeatTurboActivation(source: source, input: input)
+        debugLog("[Button \(button.rawValue)] startTurboRepeat source=\(source) keyBindings=\(input.bindings.map(\.keyCode)) activationMode=\(input.multiKeyActivationMode.rawValue) clicksPerSecond=\(input.turboClicksPerSecond)")
+        beginTurboCycle(source: source, input: input)
     }
 
     private func repeatSequentialBindings(source: PressSource, input: ResolvedInput) {
@@ -2484,27 +2497,121 @@ final class GamepadButtonView: NSView {
         debugLog("[Button \(button.rawValue)] stopSequentialRepeat source=\(source)")
     }
 
-    private func repeatTurboActivation(source: PressSource, input: ResolvedInput) {
-        postTurboActivation(input)
+    private func beginTurboCycle(source: PressSource, input: ResolvedInput) {
+        let state = state(for: source)
+        guard state.isPressed else { return }
 
-        var workItem: DispatchWorkItem?
-        workItem = DispatchWorkItem { [weak self] in
-            guard workItem?.isCancelled == false else {
-                return
+        let cycleStartedAt = ProcessInfo.processInfo.systemUptime
+        if usesSequentialMultiKey(input) {
+            runTurboSequentialStep(source: source, input: input, index: 0, cycleStartedAt: cycleStartedAt)
+            return
+        }
+
+        let bindings = usesSimultaneousMultiKey(input)
+            ? uniqueInputBindings(input.bindings)
+            : uniqueInputBindings(Array(input.bindings.prefix(1)))
+        pressTurboBindings(bindings, state: state)
+        scheduleTurboStep(source: source, after: TurboConfiguration.tapDuration) { [weak self] in
+            guard let self else { return }
+            let state = self.state(for: source)
+            self.releaseTurboBindings(state)
+            self.scheduleNextTurboCycle(source: source, input: input, cycleStartedAt: cycleStartedAt)
+        }
+    }
+
+    private func runTurboSequentialStep(
+        source: PressSource,
+        input: ResolvedInput,
+        index: Int,
+        cycleStartedAt: TimeInterval
+    ) {
+        let state = state(for: source)
+        guard state.isPressed, input.bindings.indices.contains(index) else { return }
+
+        let binding = input.bindings[index]
+        pressTurboBindings(
+            [(keyCode: CGKeyCode(binding.keyCode), modifiers: NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers)))],
+            state: state
+        )
+        scheduleTurboStep(source: source, after: TurboConfiguration.tapDuration) { [weak self] in
+            guard let self else { return }
+            let state = self.state(for: source)
+            self.releaseTurboBindings(state)
+            guard state.isPressed else { return }
+
+            let nextIndex = index + 1
+            if input.bindings.indices.contains(nextIndex) {
+                self.runTurboSequentialStep(
+                    source: source,
+                    input: input,
+                    index: nextIndex,
+                    cycleStartedAt: cycleStartedAt
+                )
+            } else {
+                self.scheduleNextTurboCycle(source: source, input: input, cycleStartedAt: cycleStartedAt)
             }
+        }
+    }
 
-            self?.repeatTurboActivation(source: source, input: input)
+    private func scheduleTurboStep(source: PressSource, after delay: TimeInterval, action: @escaping () -> Void) {
+        let state = state(for: source)
+        state.turboStepWorkItem?.cancel()
+        let generation = state.turboGeneration
+
+        let workItem = DispatchWorkItem { [weak state] in
+            guard state?.isPressed == true, state?.turboGeneration == generation else { return }
+            state?.turboStepWorkItem = nil
+            action()
         }
-        if let workItem {
-            state(for: source).sequenceRepeatWorkItem = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration, execute: workItem)
+        state.turboStepWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
+    private func scheduleNextTurboCycle(source: PressSource, input: ResolvedInput, cycleStartedAt: TimeInterval) {
+        let state = state(for: source)
+        guard state.isPressed else { return }
+
+        let clicksPerSecond = TurboConfiguration.normalizedClicksPerSecond(input.turboClicksPerSecond)
+        let cycleInterval = 1.0 / Double(clicksPerSecond)
+        let elapsed = ProcessInfo.processInfo.systemUptime - cycleStartedAt
+        let delay = max(0, cycleInterval - elapsed)
+        let generation = state.turboGeneration
+
+        let workItem = DispatchWorkItem { [weak self, weak state] in
+            guard state?.isPressed == true, state?.turboGeneration == generation else { return }
+            state?.sequenceRepeatWorkItem = nil
+            self?.beginTurboCycle(source: source, input: input)
         }
+        state.sequenceRepeatWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
+    private func pressTurboBindings(
+        _ bindings: [(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)],
+        state: PressState
+    ) {
+        guard state.turboPressedBindings.isEmpty else { return }
+        state.turboPressedBindings = bindings
+        for binding in bindings {
+            KeyInjector.shared.pressRaw(binding.keyCode, modifiers: binding.modifiers)
+        }
+    }
+
+    private func releaseTurboBindings(_ state: PressState) {
+        for binding in state.turboPressedBindings.reversed() {
+            KeyInjector.shared.releaseRaw(binding.keyCode, modifiers: binding.modifiers)
+        }
+        state.turboPressedBindings = []
     }
 
     private func stopTurboRepeat(source: PressSource) {
         let state = state(for: source)
         state.sequenceRepeatWorkItem?.cancel()
         state.sequenceRepeatWorkItem = nil
+        state.turboStepWorkItem?.cancel()
+        state.turboStepWorkItem = nil
+        state.turboGeneration &+= 1
+        releaseTurboBindings(state)
         state.isPressed = false
         updateAppearance(animated: true)
         debugLog("[Button \(button.rawValue)] stopTurboRepeat source=\(source)")
@@ -2516,39 +2623,6 @@ final class GamepadButtonView: NSView {
             let modifiers = NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
             KeyInjector.shared.pressRaw(keyCode, modifiers: modifiers)
             KeyInjector.shared.releaseRaw(keyCode, modifiers: modifiers)
-        }
-    }
-
-    private func postTurboActivation(_ input: ResolvedInput) {
-        if usesSimultaneousMultiKey(input) {
-            postSimultaneousTap(input)
-            return
-        }
-
-        if usesSequentialMultiKey(input) {
-            postSequentialBindings(input)
-            return
-        }
-
-        guard let binding = input.bindings.first else {
-            return
-        }
-
-        let keyCode = CGKeyCode(binding.keyCode)
-        let modifiers = NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
-        KeyInjector.shared.pressRaw(keyCode, modifiers: modifiers)
-        KeyInjector.shared.releaseRaw(keyCode, modifiers: modifiers)
-    }
-
-    private func postSimultaneousTap(_ input: ResolvedInput) {
-        let bindings = uniqueInputBindings(input.bindings)
-
-        for binding in bindings {
-            KeyInjector.shared.pressRaw(binding.keyCode, modifiers: binding.modifiers)
-        }
-
-        for binding in bindings.reversed() {
-            KeyInjector.shared.releaseRaw(binding.keyCode, modifiers: binding.modifiers)
         }
     }
 
@@ -2617,6 +2691,10 @@ final class GamepadButtonView: NSView {
         state.autoReleaseWorkItem = nil
         state.sequenceRepeatWorkItem?.cancel()
         state.sequenceRepeatWorkItem = nil
+        state.turboStepWorkItem?.cancel()
+        state.turboStepWorkItem = nil
+        state.turboGeneration &+= 1
+        releaseTurboBindings(state)
         state.pressedStartedAt = nil
 
         if let pressedBinding = state.pressedBinding {

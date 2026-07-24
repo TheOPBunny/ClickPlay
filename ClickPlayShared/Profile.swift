@@ -8,6 +8,17 @@ enum ButtonInteractionMode: String, Codable, Equatable {
     case turbo
 }
 
+enum TurboConfiguration {
+    static let defaultClicksPerSecond = 15
+    static let minimumClicksPerSecond = 1
+    static let maximumClicksPerSecond = 30
+    static let tapDuration: TimeInterval = 0.033
+
+    static func normalizedClicksPerSecond(_ value: Int) -> Int {
+        min(max(value, minimumClicksPerSecond), maximumClicksPerSecond)
+    }
+}
+
 enum ButtonShape: String, Codable {
     case roundedRectangle
     case square
@@ -205,6 +216,37 @@ struct JoystickInputConfig: Codable, Equatable {
     var keyBindings: [ButtonKeyBinding]
     var interactionMode: ButtonInteractionMode
     var multiKeyActivationMode: MultiKeyActivationMode
+    var turboClicksPerSecond: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case keyBindings
+        case interactionMode
+        case multiKeyActivationMode
+        case turboClicksPerSecond
+    }
+
+    init(
+        keyBindings: [ButtonKeyBinding],
+        interactionMode: ButtonInteractionMode,
+        multiKeyActivationMode: MultiKeyActivationMode,
+        turboClicksPerSecond: Int = TurboConfiguration.defaultClicksPerSecond
+    ) {
+        self.keyBindings = keyBindings
+        self.interactionMode = interactionMode
+        self.multiKeyActivationMode = multiKeyActivationMode
+        self.turboClicksPerSecond = TurboConfiguration.normalizedClicksPerSecond(turboClicksPerSecond)
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        keyBindings = try container.decodeIfPresent([ButtonKeyBinding].self, forKey: .keyBindings) ?? []
+        interactionMode = try container.decodeIfPresent(ButtonInteractionMode.self, forKey: .interactionMode) ?? .momentary
+        multiKeyActivationMode = try container.decodeIfPresent(MultiKeyActivationMode.self, forKey: .multiKeyActivationMode) ?? .sequential
+        turboClicksPerSecond = TurboConfiguration.normalizedClicksPerSecond(
+            try container.decodeIfPresent(Int.self, forKey: .turboClicksPerSecond)
+                ?? TurboConfiguration.defaultClicksPerSecond
+        )
+    }
 
     static let empty = JoystickInputConfig(
         keyBindings: [],
@@ -497,9 +539,11 @@ struct ButtonConfig: Codable {
     var shape: ButtonShape
     var enabled: Bool
     var interactionMode: ButtonInteractionMode
+    var turboClicksPerSecond: Int
     var rightClickKeyBindings: [ButtonKeyBinding]?
     var rightClickFallsBackToPrimary: Bool
     var rightClickInteractionMode: ButtonInteractionMode?
+    var rightClickTurboClicksPerSecond: Int
     var action: ButtonAction
     var joystick: JoystickConfig
     var systemEventIconSize: SystemEventIconSize
@@ -526,9 +570,11 @@ struct ButtonConfig: Codable {
         case shape
         case enabled
         case interactionMode
+        case turboClicksPerSecond
         case rightClickKeyBindings
         case rightClickFallsBackToPrimary
         case rightClickInteractionMode
+        case rightClickTurboClicksPerSecond
         case action
         case joystick
         case systemEventIconSize
@@ -556,9 +602,11 @@ struct ButtonConfig: Codable {
         shape: ButtonShape = .roundedRectangle,
         enabled: Bool,
         interactionMode: ButtonInteractionMode = .momentary,
+        turboClicksPerSecond: Int = TurboConfiguration.defaultClicksPerSecond,
         rightClickKeyBindings: [ButtonKeyBinding]? = nil,
         rightClickFallsBackToPrimary: Bool = true,
         rightClickInteractionMode: ButtonInteractionMode? = nil,
+        rightClickTurboClicksPerSecond: Int = TurboConfiguration.defaultClicksPerSecond,
         action: ButtonAction = .keyboard,
         joystick: JoystickConfig = .defaultBindings,
         systemEventIconSize: SystemEventIconSize = .large,
@@ -590,9 +638,11 @@ struct ButtonConfig: Codable {
         self.shape = shape
         self.enabled = enabled
         self.interactionMode = interactionMode
+        self.turboClicksPerSecond = TurboConfiguration.normalizedClicksPerSecond(turboClicksPerSecond)
         self.rightClickKeyBindings = rightClickKeyBindings?.isEmpty == true ? nil : rightClickKeyBindings
         self.rightClickFallsBackToPrimary = rightClickFallsBackToPrimary
         self.rightClickInteractionMode = rightClickInteractionMode
+        self.rightClickTurboClicksPerSecond = TurboConfiguration.normalizedClicksPerSecond(rightClickTurboClicksPerSecond)
         self.action = action
         self.joystick = joystick
         self.systemEventIconSize = systemEventIconSize
@@ -627,10 +677,18 @@ struct ButtonConfig: Codable {
         shape = try container.decodeIfPresent(ButtonShape.self, forKey: .shape) ?? .roundedRectangle
         enabled = try container.decode(Bool.self, forKey: .enabled)
         interactionMode = try container.decodeIfPresent(ButtonInteractionMode.self, forKey: .interactionMode) ?? .momentary
+        turboClicksPerSecond = TurboConfiguration.normalizedClicksPerSecond(
+            try container.decodeIfPresent(Int.self, forKey: .turboClicksPerSecond)
+                ?? TurboConfiguration.defaultClicksPerSecond
+        )
         let decodedRightClickBindings = try container.decodeIfPresent([ButtonKeyBinding].self, forKey: .rightClickKeyBindings)
         rightClickKeyBindings = decodedRightClickBindings?.isEmpty == true ? nil : decodedRightClickBindings
         rightClickFallsBackToPrimary = try container.decodeIfPresent(Bool.self, forKey: .rightClickFallsBackToPrimary) ?? true
         rightClickInteractionMode = try container.decodeIfPresent(ButtonInteractionMode.self, forKey: .rightClickInteractionMode)
+        rightClickTurboClicksPerSecond = TurboConfiguration.normalizedClicksPerSecond(
+            try container.decodeIfPresent(Int.self, forKey: .rightClickTurboClicksPerSecond)
+                ?? TurboConfiguration.defaultClicksPerSecond
+        )
         action = try container.decodeIfPresent(ButtonAction.self, forKey: .action) ?? .keyboard
         if type == .systemEvent, action.systemEvent == nil {
             action = .systemEvent(.brightnessDown)
@@ -669,9 +727,11 @@ struct ButtonConfig: Codable {
         try container.encode(shape, forKey: .shape)
         try container.encode(enabled, forKey: .enabled)
         try container.encode(interactionMode, forKey: .interactionMode)
+        try container.encode(TurboConfiguration.normalizedClicksPerSecond(turboClicksPerSecond), forKey: .turboClicksPerSecond)
         try container.encodeIfPresent(rightClickKeyBindings?.isEmpty == true ? nil : rightClickKeyBindings, forKey: .rightClickKeyBindings)
         try container.encode(rightClickFallsBackToPrimary, forKey: .rightClickFallsBackToPrimary)
         try container.encodeIfPresent(rightClickInteractionMode, forKey: .rightClickInteractionMode)
+        try container.encode(TurboConfiguration.normalizedClicksPerSecond(rightClickTurboClicksPerSecond), forKey: .rightClickTurboClicksPerSecond)
         try container.encode(action, forKey: .action)
         try container.encode(joystick, forKey: .joystick)
         try container.encode(systemEventIconSize, forKey: .systemEventIconSize)
