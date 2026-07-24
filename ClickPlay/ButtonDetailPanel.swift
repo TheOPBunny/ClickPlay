@@ -26,6 +26,15 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         case down
     }
 
+    private enum TurboRateTarget {
+        case primary
+        case rightClick
+        case joystickLeftClick
+        case joystickRightClick
+        case joystickScrollUp
+        case joystickScrollDown
+    }
+
     // Fixed control sizing lives here so rows stay aligned as the inspector is resized.
     private enum Metrics {
         static let keyRecorderWidth: CGFloat = 132
@@ -715,7 +724,8 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         field.bezelStyle = .roundedBezel
         field.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         field.widthAnchor.constraint(equalToConstant: 44).isActive = true
-        configureApplyingTextField(field)
+        field.target = self
+        field.action = #selector(applyTurboRateTextField(_:))
 
         stepper.minValue = Double(TurboConfiguration.minimumClicksPerSecond)
         stepper.maxValue = Double(TurboConfiguration.maximumClicksPerSecond)
@@ -736,6 +746,100 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
             return TurboConfiguration.normalizedClicksPerSecond(fallback)
         }
         return TurboConfiguration.normalizedClicksPerSecond(value)
+    }
+
+    private func turboRateControls(
+        for control: NSControl
+    ) -> (target: TurboRateTarget, field: NSTextField, stepper: NSStepper)? {
+        if control === turboRateField || control === turboRateStepper {
+            return (.primary, turboRateField, turboRateStepper)
+        }
+        if control === rightClickTurboRateField || control === rightClickTurboRateStepper {
+            return (.rightClick, rightClickTurboRateField, rightClickTurboRateStepper)
+        }
+        if control === joystickLeftClickTurboRateField || control === joystickLeftClickTurboRateStepper {
+            return (.joystickLeftClick, joystickLeftClickTurboRateField, joystickLeftClickTurboRateStepper)
+        }
+        if control === joystickRightClickTurboRateField || control === joystickRightClickTurboRateStepper {
+            return (.joystickRightClick, joystickRightClickTurboRateField, joystickRightClickTurboRateStepper)
+        }
+        if control === joystickScrollUpTurboRateField || control === joystickScrollUpTurboRateStepper {
+            return (.joystickScrollUp, joystickScrollUpTurboRateField, joystickScrollUpTurboRateStepper)
+        }
+        if control === joystickScrollDownTurboRateField || control === joystickScrollDownTurboRateStepper {
+            return (.joystickScrollDown, joystickScrollDownTurboRateField, joystickScrollDownTurboRateStepper)
+        }
+        return nil
+    }
+
+    private func applyTurboRateChange(
+        target: TurboRateTarget,
+        field: NSTextField,
+        stepper: NSStepper
+    ) {
+        guard var config, let button else { return }
+
+        let fallback: Int
+        switch target {
+        case .primary:
+            fallback = config.turboClicksPerSecond
+        case .rightClick:
+            fallback = config.rightClickTurboClicksPerSecond
+        case .joystickLeftClick:
+            fallback = selectedJoystickLayer(in: config.joystick).leftClickAction.input.turboClicksPerSecond
+        case .joystickRightClick:
+            fallback = config.joystick.rightClickAction.input.turboClicksPerSecond
+        case .joystickScrollUp:
+            fallback = selectedJoystickLayer(in: config.joystick).scrollUpAction.input.turboClicksPerSecond
+        case .joystickScrollDown:
+            fallback = selectedJoystickLayer(in: config.joystick).scrollDownAction.input.turboClicksPerSecond
+        }
+
+        let value = turboRateValue(from: field, fallback: fallback)
+        syncTurboRateControls(field, stepper: stepper, value: value)
+
+        switch target {
+        case .primary:
+            config.turboClicksPerSecond = value
+        case .rightClick:
+            config.rightClickTurboClicksPerSecond = value
+        case .joystickRightClick:
+            config.joystick.rightClickAction.input.turboClicksPerSecond = value
+        case .joystickLeftClick, .joystickScrollUp, .joystickScrollDown:
+            updateTurboRate(value, target: target, in: &config.joystick)
+        }
+
+        self.config = config
+        onChanged?(button, config)
+    }
+
+    private func updateTurboRate(_ value: Int, target: TurboRateTarget, in joystick: inout JoystickConfig) {
+        if selectedJoystickLayerIndex == 0 {
+            switch target {
+            case .joystickLeftClick:
+                joystick.leftClickAction.input.turboClicksPerSecond = value
+            case .joystickScrollUp:
+                joystick.scrollUpAction.input.turboClicksPerSecond = value
+            case .joystickScrollDown:
+                joystick.scrollDownAction.input.turboClicksPerSecond = value
+            case .primary, .rightClick, .joystickRightClick:
+                break
+            }
+            return
+        }
+
+        ensureNestedJoystickLayers(in: &joystick, through: selectedJoystickLayerIndex)
+        let layerIndex = selectedJoystickLayerIndex - 1
+        switch target {
+        case .joystickLeftClick:
+            joystick.nestedLayers[layerIndex].leftClickAction.input.turboClicksPerSecond = value
+        case .joystickScrollUp:
+            joystick.nestedLayers[layerIndex].scrollUpAction.input.turboClicksPerSecond = value
+        case .joystickScrollDown:
+            joystick.nestedLayers[layerIndex].scrollDownAction.input.turboClicksPerSecond = value
+        case .primary, .rightClick, .joystickRightClick:
+            break
+        }
     }
 
     private func makeFieldLabel(_ text: String) -> NSTextField {
@@ -850,25 +954,15 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
     }
 
     @objc private func turboRateStepperChanged(_ sender: NSStepper) {
-        let field: NSTextField?
-        if sender === turboRateStepper {
-            field = turboRateField
-        } else if sender === rightClickTurboRateStepper {
-            field = rightClickTurboRateField
-        } else if sender === joystickLeftClickTurboRateStepper {
-            field = joystickLeftClickTurboRateField
-        } else if sender === joystickRightClickTurboRateStepper {
-            field = joystickRightClickTurboRateField
-        } else if sender === joystickScrollUpTurboRateStepper {
-            field = joystickScrollUpTurboRateField
-        } else if sender === joystickScrollDownTurboRateStepper {
-            field = joystickScrollDownTurboRateField
-        } else {
-            field = nil
-        }
+        guard let controls = turboRateControls(for: sender) else { return }
+        controls.field.integerValue = sender.integerValue
+        applyTurboRateChange(target: controls.target, field: controls.field, stepper: controls.stepper)
+    }
 
-        field?.integerValue = sender.integerValue
-        emitChange()
+    @objc private func applyTurboRateTextField(_ sender: NSTextField) {
+        guard let controls = turboRateControls(for: sender) else { return }
+        applyTurboRateChange(target: controls.target, field: controls.field, stepper: controls.stepper)
+        endEditing(sender)
     }
 
     @objc private func applyTextFieldAndEndEditing(_ sender: NSTextField) {
