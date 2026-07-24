@@ -181,6 +181,7 @@ final class GamepadButtonView: NSView {
     private static let joystickParkingSuppressionWindow: TimeInterval = 0.012
     private static let joystickParkingMatchTolerance: CGFloat = 3
     private static let joystickScrollActivationInterval: TimeInterval = 0.18
+    private static let joystickNestedLayerScrollSuppressionDuration: TimeInterval = 0.1
     private static let joystickAxisLockEdgeThreshold: CGFloat = 0.88
     private static let joystickAxisUnlockMovementThreshold: CGFloat = 1.5
     private static let joystickAxisUnlockMovementPause: TimeInterval = 0.25
@@ -232,6 +233,7 @@ final class GamepadButtonView: NSView {
     private var isJoystickCaptureReleasePending = false
     private var pendingJoystickCaptureReleaseShouldWarp = false
     private var lastJoystickScrollActivation: (direction: JoystickScrollDirection, time: TimeInterval)?
+    private var nestedLayerScrollSuppression: (direction: JoystickScrollDirection, time: TimeInterval)?
     private var joystickAxisLockWorkItem: DispatchWorkItem?
     private var pendingJoystickAxisLockDirection: JoystickDirection?
     private var pendingJoystickAxisLockStartedAt: TimeInterval?
@@ -958,6 +960,7 @@ final class GamepadButtonView: NSView {
         requiresJoystickAxisLockNeutralBeforeLock = false
         lastJoystickAxisLockMovementTime = nil
         lastJoystickScrollActivation = nil
+        nestedLayerScrollSuppression = nil
         isJoystickCaptureReleasePending = false
         pendingJoystickCaptureReleaseShouldWarp = false
         cancelJoystickAxisLockTimer()
@@ -997,6 +1000,7 @@ final class GamepadButtonView: NSView {
         requiresJoystickAxisLockNeutralBeforeLock = false
         lastJoystickAxisLockMovementTime = nil
         lastJoystickScrollActivation = nil
+        nestedLayerScrollSuppression = nil
         joystickIdleReturnWorkItem?.cancel()
         joystickIdleReturnWorkItem = nil
         joystickIdleReturnGeneration &+= 1
@@ -1077,6 +1081,7 @@ final class GamepadButtonView: NSView {
         requiresJoystickAxisLockNeutralBeforeLock = false
         lastJoystickAxisLockMovementTime = nil
         lastJoystickScrollActivation = nil
+        nestedLayerScrollSuppression = nil
         joystickIdleReturnWorkItem?.cancel()
         joystickIdleReturnWorkItem = nil
         joystickIdleReturnGeneration &+= 1
@@ -1091,6 +1096,7 @@ final class GamepadButtonView: NSView {
         releaseState(joystickScrollUpState)
         releaseState(joystickScrollDownState)
         lastJoystickScrollActivation = nil
+        nestedLayerScrollSuppression = nil
     }
 
     @discardableResult
@@ -1131,6 +1137,7 @@ final class GamepadButtonView: NSView {
         requiresJoystickAxisLockNeutralBeforeLock = false
         lastJoystickAxisLockMovementTime = nil
         lastJoystickScrollActivation = nil
+        nestedLayerScrollSuppression = nil
         joystickIdleReturnWorkItem?.cancel()
         joystickIdleReturnWorkItem = nil
         joystickIdleReturnGeneration &+= 1
@@ -1948,6 +1955,10 @@ final class GamepadButtonView: NSView {
         }
 
         let direction: JoystickScrollDirection = delta > 0 ? .up : .down
+        guard !shouldSuppressNestedLayerScroll(direction) else {
+            return true
+        }
+
         let action = joystickScrollAction(for: direction)
 
         switch action.kind {
@@ -1979,7 +1990,9 @@ final class GamepadButtonView: NSView {
         case .keyCombo:
             triggerJoystickScrollInput(for: direction)
         case .nestedJoystick:
-            _ = enterNestedJoystickLayer()
+            if enterNestedJoystickLayer() {
+                suppressTrailingNestedLayerScroll(direction)
+            }
         }
 
         return true
@@ -1995,6 +2008,26 @@ final class GamepadButtonView: NSView {
 
         lastJoystickScrollActivation = (direction: direction, time: now)
         return true
+    }
+
+    /// A trackpad or high-resolution wheel can emit trailing events after one scroll gesture.
+    /// Keep those events from invoking the newly active layer's scroll action immediately.
+    private func shouldSuppressNestedLayerScroll(_ direction: JoystickScrollDirection) -> Bool {
+        guard let nestedLayerScrollSuppression else {
+            return false
+        }
+
+        let elapsed = ProcessInfo.processInfo.systemUptime - nestedLayerScrollSuppression.time
+        guard elapsed < Self.joystickNestedLayerScrollSuppressionDuration else {
+            self.nestedLayerScrollSuppression = nil
+            return false
+        }
+
+        return nestedLayerScrollSuppression.direction == direction
+    }
+
+    private func suppressTrailingNestedLayerScroll(_ direction: JoystickScrollDirection) {
+        nestedLayerScrollSuppression = (direction: direction, time: ProcessInfo.processInfo.systemUptime)
     }
 
     private func joystickScrollAction(for direction: JoystickScrollDirection) -> JoystickScrollAction {
