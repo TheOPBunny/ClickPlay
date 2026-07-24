@@ -68,14 +68,16 @@ final class EditorViewController: NSViewController, NSSplitViewDelegate {
                 ProfileStore.shared.upsert(profile)
             }
         }
-        editorViewController.onProfileMouseCaptureTimingSaved = { [weak self] profileID, armDelaySeconds, temporaryReleaseSeconds in
+        editorViewController.onProfileMouseCaptureSettingsSaved = { [weak self] profileID, enabled, armDelaySeconds, temporaryReleaseSeconds in
             guard var profile = ProfileStore.shared.profiles.first(where: { $0.id == profileID }),
-                  profile.mouseCaptureArmDelaySeconds != armDelaySeconds
+                  profile.mouseCaptureEnabled != enabled
+                    || profile.mouseCaptureArmDelaySeconds != armDelaySeconds
                     || profile.mouseCaptureTemporaryReleaseSeconds != temporaryReleaseSeconds else {
                 return
             }
 
             self?.shouldSkipNextEditorRefresh = true
+            profile.mouseCaptureEnabled = enabled
             profile.mouseCaptureArmDelaySeconds = armDelaySeconds
             profile.mouseCaptureTemporaryReleaseSeconds = temporaryReleaseSeconds
             ProfileStore.shared.upsert(profile)

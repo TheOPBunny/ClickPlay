@@ -26,6 +26,7 @@ final class MouseDiagnosticController {
     private(set) var captureCountdownSeconds = 0
     private(set) var isCaptureTemporarilyReleased = false
     private(set) var temporaryReleaseCountdownSeconds = 0
+    private(set) var isCaptureAvailable = false
     private(set) var captureArmDelaySeconds = Profile.defaultMouseCaptureArmDelaySeconds
     private(set) var temporaryReleaseDurationSeconds = Profile.defaultMouseCaptureTemporaryReleaseSeconds
 
@@ -51,9 +52,18 @@ final class MouseDiagnosticController {
         isCapturePending || isCaptureActive || isCaptureTemporarilyReleased
     }
 
-    func configureCaptureTiming(armDelaySeconds: Int, temporaryReleaseSeconds: Int) {
+    func configureCapture(
+        isAvailable: Bool,
+        armDelaySeconds: Int,
+        temporaryReleaseSeconds: Int
+    ) {
+        isCaptureAvailable = isAvailable
         captureArmDelaySeconds = max(1, armDelaySeconds)
         temporaryReleaseDurationSeconds = max(1, temporaryReleaseSeconds)
+
+        if !isAvailable {
+            cancelCapture(reason: "profileDisabled")
+        }
     }
 
     @discardableResult
@@ -119,6 +129,10 @@ final class MouseDiagnosticController {
 
     @discardableResult
     private func armCapture() -> Bool {
+        guard isCaptureAvailable else {
+            return false
+        }
+
         guard !isCaptureActive else {
             return true
         }

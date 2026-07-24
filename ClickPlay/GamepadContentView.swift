@@ -305,19 +305,22 @@ final class GamepadContentView: NSView {
         }
 
         func updateCaptureState(
+            isAvailable: Bool,
             isPending: Bool,
             isActive: Bool,
             isTemporarilyReleased: Bool,
             countdown: Int,
             temporaryReleaseCountdown: Int
         ) {
+            let isMinimized = closeButton.isHidden
             captureButton.title = (isPending || isActive || isTemporarilyReleased) ? "􀎥" : "􀎡"
+            captureButton.isHidden = isMinimized || !isAvailable
             captureCountdownLabel.stringValue = isPending ? "\(max(0, countdown))" : ""
-            captureCountdownLabel.isHidden = closeButton.isHidden || !isPending
-            temporaryReleaseButton.isHidden = closeButton.isHidden || (!isActive && !isTemporarilyReleased)
+            captureCountdownLabel.isHidden = isMinimized || !isAvailable || !isPending
+            temporaryReleaseButton.isHidden = isMinimized || !isAvailable || (!isActive && !isTemporarilyReleased)
             temporaryReleaseButton.isEnabled = isActive || isTemporarilyReleased
             temporaryReleaseCountdownLabel.stringValue = isTemporarilyReleased ? "\(max(0, temporaryReleaseCountdown))" : ""
-            temporaryReleaseCountdownLabel.isHidden = closeButton.isHidden || !isTemporarilyReleased
+            temporaryReleaseCountdownLabel.isHidden = isMinimized || !isAvailable || !isTemporarilyReleased
             applyTitleColor(to: captureButton)
             applyTitleColor(to: temporaryReleaseButton)
             needsLayout = true
@@ -458,7 +461,9 @@ final class GamepadContentView: NSView {
                 closeButton.frame = NSRect(x: 10, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
                 minimizeButton.frame = NSRect(x: closeButton.frame.maxX + 8, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
                 menuButton.frame = NSRect(x: bounds.width - 34, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
-                captureButton.frame = NSRect(x: menuButton.frame.minX - 30, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
+                captureButton.frame = captureButton.isHidden
+                    ? .zero
+                    : NSRect(x: menuButton.frame.minX - 30, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
                 temporaryReleaseButton.frame = temporaryReleaseButton.isHidden
                     ? .zero
                     : NSRect(x: captureButton.frame.minX - 30, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
@@ -475,11 +480,11 @@ final class GamepadContentView: NSView {
 
                 let rightControlMinX = [
                     menuButton.frame.minX,
-                    captureButton.frame.minX,
+                    captureButton.isHidden ? .greatestFiniteMagnitude : captureButton.frame.minX,
                     captureCountdownLabel.isHidden ? .greatestFiniteMagnitude : captureCountdownLabel.frame.minX,
                     temporaryReleaseButton.isHidden ? .greatestFiniteMagnitude : temporaryReleaseButton.frame.minX,
                     temporaryReleaseCountdownLabel.isHidden ? .greatestFiniteMagnitude : temporaryReleaseCountdownLabel.frame.minX
-                ].min() ?? captureButton.frame.minX
+                ].min() ?? menuButton.frame.minX
                 let titleInset = max(minimizeButton.frame.maxX + 18, bounds.maxX - rightControlMinX + 18)
                 titleLabel.frame = NSRect(x: titleInset, y: bounds.midY - 10, width: max(50, bounds.width - (titleInset * 2)), height: 20)
                 separatorView.frame = NSRect(x: 12, y: 0, width: bounds.width - 24, height: 1)
@@ -777,6 +782,7 @@ final class GamepadContentView: NSView {
         headerBar.updateForegroundColor(headerForegroundColor())
         headerBar.setMinimized(isMinimized)
         headerBar.updateCaptureState(
+            isAvailable: currentProfile.mouseCaptureEnabled,
             isPending: MouseDiagnosticController.shared.isCapturePending,
             isActive: MouseDiagnosticController.shared.isCaptureActive,
             isTemporarilyReleased: MouseDiagnosticController.shared.isCaptureTemporarilyReleased,

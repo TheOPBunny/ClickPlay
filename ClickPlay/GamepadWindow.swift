@@ -56,7 +56,8 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         let screen = NSScreen.main ?? NSScreen.screens[0]
         var profile = ProfileStore.shared.activeResolvedProfile
         profile.name = ProfileStore.shared.activeProfile.name
-        MouseDiagnosticController.shared.configureCaptureTiming(
+        MouseDiagnosticController.shared.configureCapture(
+            isAvailable: profile.mouseCaptureEnabled,
             armDelaySeconds: profile.mouseCaptureArmDelaySeconds,
             temporaryReleaseSeconds: profile.mouseCaptureTemporaryReleaseSeconds
         )
@@ -204,11 +205,13 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     func reloadProfile() {
         let store = ProfileStore.shared
         let activeProfileID = store.activeProfileID
-        let preservesCapture = MouseDiagnosticController.shared.hasCaptureState
-            && loadedActiveProfileID == activeProfileID
         var profile = store.activeResolvedProfile
         profile.name = store.activeProfile.name
-        MouseDiagnosticController.shared.configureCaptureTiming(
+        let preservesCapture = profile.mouseCaptureEnabled
+            && MouseDiagnosticController.shared.hasCaptureState
+            && loadedActiveProfileID == activeProfileID
+        MouseDiagnosticController.shared.configureCapture(
+            isAvailable: profile.mouseCaptureEnabled,
             armDelaySeconds: profile.mouseCaptureArmDelaySeconds,
             temporaryReleaseSeconds: profile.mouseCaptureTemporaryReleaseSeconds
         )

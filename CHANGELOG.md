@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Added a per-profile option to enable mouse capture, disabled by default.
+
 ### Fixed
 
 - Fixed false editor save prompts during runtime profile and layer switching.

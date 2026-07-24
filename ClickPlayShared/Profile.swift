@@ -739,6 +739,7 @@ struct Profile: Codable, Identifiable {
     var showPointerLocation: Bool
     var backgroundColorHex: String                   // "#RRGGBB"
     var backgroundFrostedGlassIntensity: Int         // 0–100
+    var mouseCaptureEnabled: Bool
     var mouseCaptureArmDelaySeconds: Int
     var mouseCaptureTemporaryReleaseSeconds: Int
     var compatibilityMode: Bool
@@ -759,6 +760,7 @@ struct Profile: Codable, Identifiable {
         case showPointerLocation
         case backgroundColorHex
         case backgroundFrostedGlassIntensity
+        case mouseCaptureEnabled
         case mouseCaptureArmDelaySeconds
         case mouseCaptureTemporaryReleaseSeconds
         case compatibilityMode
@@ -780,6 +782,7 @@ struct Profile: Codable, Identifiable {
         showPointerLocation: Bool = false,
         backgroundColorHex: String = Profile.defaultBackgroundColorHex,
         backgroundFrostedGlassIntensity: Int = Profile.defaultBackgroundFrostedGlassIntensity,
+        mouseCaptureEnabled: Bool = false,
         mouseCaptureArmDelaySeconds: Int = Profile.defaultMouseCaptureArmDelaySeconds,
         mouseCaptureTemporaryReleaseSeconds: Int = Profile.defaultMouseCaptureTemporaryReleaseSeconds,
         compatibilityMode: Bool = false,
@@ -799,6 +802,7 @@ struct Profile: Codable, Identifiable {
         self.showPointerLocation = showPointerLocation
         self.backgroundColorHex = backgroundColorHex
         self.backgroundFrostedGlassIntensity = backgroundFrostedGlassIntensity
+        self.mouseCaptureEnabled = mouseCaptureEnabled
         self.mouseCaptureArmDelaySeconds = max(1, mouseCaptureArmDelaySeconds)
         self.mouseCaptureTemporaryReleaseSeconds = max(1, mouseCaptureTemporaryReleaseSeconds)
         self.compatibilityMode = compatibilityMode
@@ -824,6 +828,7 @@ struct Profile: Codable, Identifiable {
         let legacyFrostedGlassKey = DynamicCodingKey("background" + "S" + "moke" + "Intensity")
         backgroundFrostedGlassIntensity = try container.decodeIfPresent(Int.self, forKey: .backgroundFrostedGlassIntensity)
             ?? (try legacyContainer.decodeIfPresent(Int.self, forKey: legacyFrostedGlassKey) ?? Self.defaultBackgroundFrostedGlassIntensity)
+        mouseCaptureEnabled = try container.decodeIfPresent(Bool.self, forKey: .mouseCaptureEnabled) ?? false
         mouseCaptureArmDelaySeconds = max(
             1,
             try container.decodeIfPresent(Int.self, forKey: .mouseCaptureArmDelaySeconds)
