@@ -407,7 +407,7 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         }
         joystickLeftClickActionPopup.target = self
         joystickLeftClickActionPopup.action = #selector(applyPressed)
-        populateJoystickTriggerActions(joystickLeftClickActionPopup, includeNested: false)
+        populateJoystickTriggerActions(joystickLeftClickActionPopup, includeNested: true)
         joystickRightClickActionPopup.target = self
         joystickRightClickActionPopup.action = #selector(applyPressed)
         populateJoystickTriggerActions(joystickRightClickActionPopup, includeNested: true)
@@ -1024,13 +1024,15 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         let selectedLeftClickKind = JoystickTriggerActionKind(tag: joystickLeftClickActionPopup.selectedTag()) ?? .off
         let selectedRightClickKind = JoystickTriggerActionKind(tag: joystickRightClickActionPopup.selectedTag()) ?? .off
         let operationMode = JoystickOperationMode(tag: joystickOperationModePopup.selectedTag()) ?? .capture
+        let canAddNestedLayer = selectedJoystickLayerIndex + 1 < JoystickConfig.maxLayerCount
+        let includeLeftClickNested = operationMode == .capture && canAddNestedLayer
         let includeRightClickNested = selectedJoystickLayerIndex == 0
             && operationMode == .clickDrag
-            && selectedJoystickLayerIndex + 1 < JoystickConfig.maxLayerCount
+            && canAddNestedLayer
 
-        populateJoystickTriggerActions(joystickLeftClickActionPopup, includeNested: false)
+        populateJoystickTriggerActions(joystickLeftClickActionPopup, includeNested: includeLeftClickNested)
         joystickLeftClickActionPopup.selectItem(
-            withTag: selectedLeftClickKind == .nestedJoystick
+            withTag: !includeLeftClickNested && selectedLeftClickKind == .nestedJoystick
                 ? JoystickTriggerActionKind.off.tag
                 : selectedLeftClickKind.tag
         )
@@ -1202,9 +1204,6 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
                     modePopup: joystickLeftClickModePopup,
                     multiKeyPopup: joystickLeftClickMultiKeyPopup
                 )
-                if config.joystick.leftClickAction.kind == .nestedJoystick {
-                    config.joystick.leftClickAction = .off
-                }
                 config.joystick.rightClickAction = operationMode == .clickDrag
                     ? joystickTriggerAction(
                         actionPopup: joystickRightClickActionPopup,
@@ -1227,9 +1226,6 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
                     modePopup: joystickLeftClickModePopup,
                     multiKeyPopup: joystickLeftClickMultiKeyPopup
                 )
-                if layer.leftClickAction.kind == .nestedJoystick {
-                    layer.leftClickAction = .off
-                }
                 layer.scrollUpAction = joystickScrollAction(direction: .up)
                 layer.scrollDownAction = joystickScrollAction(direction: .down)
                 config.joystick.nestedLayers[selectedJoystickLayerIndex - 1] = layer
@@ -1575,13 +1571,12 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
 
     private func syncJoystickLayerControls(from joystick: JoystickConfig) {
         let layer = selectedJoystickLayer(in: joystick)
-        let leftClickAction = layer.leftClickAction.kind == .nestedJoystick ? .off : layer.leftClickAction
         joystickUpRecorder.setKeyBindings([layer.up])
         joystickDownRecorder.setKeyBindings([layer.down])
         joystickLeftRecorder.setKeyBindings([layer.left])
         joystickRightRecorder.setKeyBindings([layer.right])
         syncJoystickTriggerControls(
-            action: leftClickAction,
+            action: layer.leftClickAction,
             actionPopup: joystickLeftClickActionPopup,
             recorder: joystickLeftClickRecorder,
             modePopup: joystickLeftClickModePopup,
@@ -1660,7 +1655,7 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
             config.joystick.down = layer.down
             config.joystick.left = layer.left
             config.joystick.right = layer.right
-            config.joystick.leftClickAction = layer.leftClickAction.kind == .nestedJoystick ? .off : layer.leftClickAction
+            config.joystick.leftClickAction = layer.leftClickAction
             config.joystick.scrollUpAction = layer.scrollUpAction
             config.joystick.scrollDownAction = layer.scrollDownAction
         } else {

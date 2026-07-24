@@ -2157,7 +2157,12 @@ final class GamepadButtonView: NSView {
     private func performJoystickTriggerActionIfNeeded(source: PressSource) -> Bool {
         switch source {
         case .joystickLeftClick:
-            return false
+            guard isJoystickCaptureMode,
+                  joystickLeftClickAction().kind == .nestedJoystick else {
+                return false
+            }
+
+            return enterNestedJoystickLayer()
         case .joystickRightClick:
             guard isJoystickClickDragMode,
                   activeJoystickLayerIndex == 0,
