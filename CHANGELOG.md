@@ -9,16 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Added a per-profile option to enable Virtual Cursor Mode, disabled by default.
+- Added Virtual Cursor Mode, a per-profile option for controlling the overlay while the system pointer stays hidden and captured.
+- Added up to five nested joystick layers that can be switched with joystick click and scroll actions.
+- Added an on-screen HUD that shows joystick bindings and active actions during capture.
+- Added configurable turbo rates from 1 to 30 clicks per second for buttons, right-click actions, and joystick inputs.
 
-### Removed
+### Changed
 
-- Removed the mouse diagnostics menu and passive mouse event logging.
-
-### Fixed
-
-- Fixed false editor save prompts during runtime profile and layer switching.
-- Fixed editor sidebar navigation changing the live gamepad profile or layer.
+- Profile settings are now grouped in a toolbar popover in the editor.
 
 ## [1.4.0] - 2026-05-25
 
