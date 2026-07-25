@@ -56,10 +56,10 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         let screen = NSScreen.main ?? NSScreen.screens[0]
         var profile = ProfileStore.shared.activeResolvedProfile
         profile.name = ProfileStore.shared.activeProfile.name
-        MouseDiagnosticController.shared.configureCapture(
-            isAvailable: profile.mouseCaptureEnabled,
-            armDelaySeconds: profile.mouseCaptureArmDelaySeconds,
-            temporaryReleaseSeconds: profile.mouseCaptureTemporaryReleaseSeconds
+        VirtualCursorModeController.shared.configureMode(
+            isAvailable: profile.virtualCursorModeEnabled,
+            armDelaySeconds: profile.virtualCursorModeArmDelaySeconds,
+            temporaryReleaseSeconds: profile.virtualCursorModeTemporaryReleaseSeconds
         )
         let size = GamepadContentView.windowSize(for: profile, minimized: false)
         let origin = NSPoint(
@@ -207,13 +207,13 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         let activeProfileID = store.activeProfileID
         var profile = store.activeResolvedProfile
         profile.name = store.activeProfile.name
-        let preservesCapture = profile.mouseCaptureEnabled
-            && MouseDiagnosticController.shared.hasCaptureState
+        let preservesVirtualCursorMode = profile.virtualCursorModeEnabled
+            && VirtualCursorModeController.shared.hasModeState
             && loadedActiveProfileID == activeProfileID
-        MouseDiagnosticController.shared.configureCapture(
-            isAvailable: profile.mouseCaptureEnabled,
-            armDelaySeconds: profile.mouseCaptureArmDelaySeconds,
-            temporaryReleaseSeconds: profile.mouseCaptureTemporaryReleaseSeconds
+        VirtualCursorModeController.shared.configureMode(
+            isAvailable: profile.virtualCursorModeEnabled,
+            armDelaySeconds: profile.virtualCursorModeArmDelaySeconds,
+            temporaryReleaseSeconds: profile.virtualCursorModeTemporaryReleaseSeconds
         )
         reconcileActiveDwellAction(with: profile)
         updateResizeConstraints()
@@ -221,7 +221,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
         (contentView as? GamepadContentView)?.reload(
             profile: profile,
             minimized: isMinimized,
-            preservesCapture: preservesCapture
+            preservesVirtualCursorMode: preservesVirtualCursorMode
         )
         (contentView as? GamepadContentView)?.setActiveDwellButton(dwellActionController.activeButton)
         applyCurrentAlpha(animated: false)

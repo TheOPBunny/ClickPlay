@@ -790,8 +790,8 @@ private struct DynamicCodingKey: CodingKey {
 struct Profile: Codable, Identifiable {
     static let defaultBackgroundColorHex = "#000000"
     static let defaultBackgroundFrostedGlassIntensity = 0
-    static let defaultMouseCaptureArmDelaySeconds = 10
-    static let defaultMouseCaptureTemporaryReleaseSeconds = 15
+    static let defaultVirtualCursorModeArmDelaySeconds = 10
+    static let defaultVirtualCursorModeTemporaryReleaseSeconds = 15
 
     var id: UUID
     var name: String
@@ -799,9 +799,9 @@ struct Profile: Codable, Identifiable {
     var showPointerLocation: Bool
     var backgroundColorHex: String                   // "#RRGGBB"
     var backgroundFrostedGlassIntensity: Int         // 0–100
-    var mouseCaptureEnabled: Bool
-    var mouseCaptureArmDelaySeconds: Int
-    var mouseCaptureTemporaryReleaseSeconds: Int
+    var virtualCursorModeEnabled: Bool
+    var virtualCursorModeArmDelaySeconds: Int
+    var virtualCursorModeTemporaryReleaseSeconds: Int
     var compatibilityMode: Bool
     var editorCoordinateMode: EditorCoordinateMode
     var padWidth: Double                             // absolute pts
@@ -820,9 +820,10 @@ struct Profile: Codable, Identifiable {
         case showPointerLocation
         case backgroundColorHex
         case backgroundFrostedGlassIntensity
-        case mouseCaptureEnabled
-        case mouseCaptureArmDelaySeconds
-        case mouseCaptureTemporaryReleaseSeconds
+        // Preserve the original serialized keys so existing profiles remain compatible.
+        case virtualCursorModeEnabled = "mouseCaptureEnabled"
+        case virtualCursorModeArmDelaySeconds = "mouseCaptureArmDelaySeconds"
+        case virtualCursorModeTemporaryReleaseSeconds = "mouseCaptureTemporaryReleaseSeconds"
         case compatibilityMode
         case editorCoordinateMode
         case padWidth
@@ -842,9 +843,9 @@ struct Profile: Codable, Identifiable {
         showPointerLocation: Bool = false,
         backgroundColorHex: String = Profile.defaultBackgroundColorHex,
         backgroundFrostedGlassIntensity: Int = Profile.defaultBackgroundFrostedGlassIntensity,
-        mouseCaptureEnabled: Bool = false,
-        mouseCaptureArmDelaySeconds: Int = Profile.defaultMouseCaptureArmDelaySeconds,
-        mouseCaptureTemporaryReleaseSeconds: Int = Profile.defaultMouseCaptureTemporaryReleaseSeconds,
+        virtualCursorModeEnabled: Bool = false,
+        virtualCursorModeArmDelaySeconds: Int = Profile.defaultVirtualCursorModeArmDelaySeconds,
+        virtualCursorModeTemporaryReleaseSeconds: Int = Profile.defaultVirtualCursorModeTemporaryReleaseSeconds,
         compatibilityMode: Bool = false,
         editorCoordinateMode: EditorCoordinateMode = .legacyTopLeft,
         padWidth: Double,
@@ -862,9 +863,9 @@ struct Profile: Codable, Identifiable {
         self.showPointerLocation = showPointerLocation
         self.backgroundColorHex = backgroundColorHex
         self.backgroundFrostedGlassIntensity = backgroundFrostedGlassIntensity
-        self.mouseCaptureEnabled = mouseCaptureEnabled
-        self.mouseCaptureArmDelaySeconds = max(1, mouseCaptureArmDelaySeconds)
-        self.mouseCaptureTemporaryReleaseSeconds = max(1, mouseCaptureTemporaryReleaseSeconds)
+        self.virtualCursorModeEnabled = virtualCursorModeEnabled
+        self.virtualCursorModeArmDelaySeconds = max(1, virtualCursorModeArmDelaySeconds)
+        self.virtualCursorModeTemporaryReleaseSeconds = max(1, virtualCursorModeTemporaryReleaseSeconds)
         self.compatibilityMode = compatibilityMode
         self.editorCoordinateMode = editorCoordinateMode
         self.padWidth = padWidth
@@ -888,16 +889,16 @@ struct Profile: Codable, Identifiable {
         let legacyFrostedGlassKey = DynamicCodingKey("background" + "S" + "moke" + "Intensity")
         backgroundFrostedGlassIntensity = try container.decodeIfPresent(Int.self, forKey: .backgroundFrostedGlassIntensity)
             ?? (try legacyContainer.decodeIfPresent(Int.self, forKey: legacyFrostedGlassKey) ?? Self.defaultBackgroundFrostedGlassIntensity)
-        mouseCaptureEnabled = try container.decodeIfPresent(Bool.self, forKey: .mouseCaptureEnabled) ?? false
-        mouseCaptureArmDelaySeconds = max(
+        virtualCursorModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .virtualCursorModeEnabled) ?? false
+        virtualCursorModeArmDelaySeconds = max(
             1,
-            try container.decodeIfPresent(Int.self, forKey: .mouseCaptureArmDelaySeconds)
-                ?? Self.defaultMouseCaptureArmDelaySeconds
+            try container.decodeIfPresent(Int.self, forKey: .virtualCursorModeArmDelaySeconds)
+                ?? Self.defaultVirtualCursorModeArmDelaySeconds
         )
-        mouseCaptureTemporaryReleaseSeconds = max(
+        virtualCursorModeTemporaryReleaseSeconds = max(
             1,
-            try container.decodeIfPresent(Int.self, forKey: .mouseCaptureTemporaryReleaseSeconds)
-                ?? Self.defaultMouseCaptureTemporaryReleaseSeconds
+            try container.decodeIfPresent(Int.self, forKey: .virtualCursorModeTemporaryReleaseSeconds)
+                ?? Self.defaultVirtualCursorModeTemporaryReleaseSeconds
         )
         compatibilityMode = try container.decodeIfPresent(Bool.self, forKey: .compatibilityMode) ?? false
         editorCoordinateMode = try container.decodeIfPresent(EditorCoordinateMode.self, forKey: .editorCoordinateMode) ?? .legacyTopLeft

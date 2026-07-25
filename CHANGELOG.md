@@ -9,7 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Added a per-profile option to enable mouse capture, disabled by default.
+- Added a per-profile option to enable Virtual Cursor Mode, disabled by default.
+
+### Removed
+
+- Removed the mouse diagnostics menu and passive mouse event logging.
 
 ### Fixed
 

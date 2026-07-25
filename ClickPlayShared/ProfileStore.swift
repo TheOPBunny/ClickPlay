@@ -325,9 +325,9 @@ final class ProfileStore {
         resolvedProfile.displayPadWidth = profile.displayPadWidth
         resolvedProfile.displayPadHeight = profile.displayPadHeight
         resolvedProfile.showPointerLocation = profile.showPointerLocation
-        resolvedProfile.mouseCaptureEnabled = profile.mouseCaptureEnabled
-        resolvedProfile.mouseCaptureArmDelaySeconds = profile.mouseCaptureArmDelaySeconds
-        resolvedProfile.mouseCaptureTemporaryReleaseSeconds = profile.mouseCaptureTemporaryReleaseSeconds
+        resolvedProfile.virtualCursorModeEnabled = profile.virtualCursorModeEnabled
+        resolvedProfile.virtualCursorModeArmDelaySeconds = profile.virtualCursorModeArmDelaySeconds
+        resolvedProfile.virtualCursorModeTemporaryReleaseSeconds = profile.virtualCursorModeTemporaryReleaseSeconds
         return resolvedProfile
     }
 

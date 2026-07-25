@@ -1,15 +1,15 @@
 import Cocoa
 
-/// Coordinates passive mouse diagnostics and the experimental virtual-cursor capture mode.
-final class MouseDiagnosticController {
+/// Coordinates Virtual Cursor Mode event routing, activation, and emergency release.
+final class VirtualCursorModeController {
     enum VirtualMouseButton {
         case left
         case right
     }
 
-    static let shared = MouseDiagnosticController()
+    static let shared = VirtualCursorModeController()
 
-    static let stateDidChange = Notification.Name("MouseDiagnosticControllerStateDidChange")
+    static let stateDidChange = Notification.Name("VirtualCursorModeControllerStateDidChange")
     private static let escapeUnlockCount = 5
     private static let escapeSequenceMaximumGap: TimeInterval = 2
     private static let escapeKeyCode: Int64 = 53
@@ -17,24 +17,22 @@ final class MouseDiagnosticController {
     var onVirtualMouseDelta: ((CGPoint) -> Void)?
     var onVirtualMouseButton: ((VirtualMouseButton, Bool) -> Void)?
     var onVirtualScroll: ((CGFloat) -> Void)?
-    var onCaptureDeactivated: (() -> Void)?
+    var onModeDeactivated: (() -> Void)?
 
-    /// Passive logging requested by the status-menu diagnostic toggle.
-    private(set) var isEnabled = false
-    private(set) var isCapturePending = false
-    private(set) var isCaptureActive = false
-    private(set) var captureCountdownSeconds = 0
-    private(set) var isCaptureTemporarilyReleased = false
+    private(set) var isModePending = false
+    private(set) var isModeActive = false
+    private(set) var modeCountdownSeconds = 0
+    private(set) var isModeTemporarilyReleased = false
     private(set) var temporaryReleaseCountdownSeconds = 0
-    private(set) var isCaptureAvailable = false
-    private(set) var captureArmDelaySeconds = Profile.defaultMouseCaptureArmDelaySeconds
-    private(set) var temporaryReleaseDurationSeconds = Profile.defaultMouseCaptureTemporaryReleaseSeconds
+    private(set) var isModeAvailable = false
+    private(set) var modeArmDelaySeconds = Profile.defaultVirtualCursorModeArmDelaySeconds
+    private(set) var temporaryReleaseDurationSeconds = Profile.defaultVirtualCursorModeTemporaryReleaseSeconds
 
     private var mouseEventTap: CFMachPort?
     private var mouseEventTapRunLoopSource: CFRunLoopSource?
     private var keyboardEventTap: CFMachPort?
     private var keyboardEventTapRunLoopSource: CFRunLoopSource?
-    private var captureStartTimer: Timer?
+    private var modeActivationTimer: Timer?
     private var temporaryReleaseTimer: Timer?
     private var escapePressCount = 0
     private var lastEscapePressTime: TimeInterval?
@@ -43,105 +41,75 @@ final class MouseDiagnosticController {
 
     deinit {
         cancelTemporaryRelease(reason: "deinit")
-        deactivateCapture(reason: "deinit")
-        cancelPendingCapture(reason: "deinit")
-        setEnabled(false)
+        deactivateMode(reason: "deinit")
+        cancelPendingMode(reason: "deinit")
     }
 
-    var hasCaptureState: Bool {
-        isCapturePending || isCaptureActive || isCaptureTemporarilyReleased
+    var hasModeState: Bool {
+        isModePending || isModeActive || isModeTemporarilyReleased
     }
 
-    func configureCapture(
+    func configureMode(
         isAvailable: Bool,
         armDelaySeconds: Int,
         temporaryReleaseSeconds: Int
     ) {
-        isCaptureAvailable = isAvailable
-        captureArmDelaySeconds = max(1, armDelaySeconds)
+        isModeAvailable = isAvailable
+        modeArmDelaySeconds = max(1, armDelaySeconds)
         temporaryReleaseDurationSeconds = max(1, temporaryReleaseSeconds)
 
         if !isAvailable {
-            cancelCapture(reason: "profileDisabled")
+            cancelMode(reason: "profileDisabled")
         }
     }
 
     @discardableResult
-    func setEnabled(_ enabled: Bool) -> Bool {
+    func setModeEnabled(_ enabled: Bool) -> Bool {
         if enabled {
-            guard installMouseEventTapIfNeeded() else {
-                return false
-            }
-
-            isEnabled = true
-            debugLog("[MouseDiagnostic] enabled")
-            NotificationCenter.default.post(name: Self.stateDidChange, object: self)
-            return true
+            return armMode()
         }
 
-        guard isEnabled else {
-            return true
-        }
-
-        isEnabled = false
-        debugLog("[MouseDiagnostic] disabled")
-        uninstallMouseEventTapIfIdle()
-        NotificationCenter.default.post(name: Self.stateDidChange, object: self)
-        return true
-    }
-
-    @discardableResult
-    func toggle() -> Bool {
-        setEnabled(!isEnabled)
-    }
-
-    @discardableResult
-    func setCaptureEnabled(_ enabled: Bool) -> Bool {
-        if enabled {
-            return armCapture()
-        }
-
-        cancelPendingCapture(reason: "manual")
+        cancelPendingMode(reason: "manual")
         cancelTemporaryRelease(reason: "manual")
-        deactivateCapture(reason: "manual")
+        deactivateMode(reason: "manual")
         return true
     }
 
     @discardableResult
-    func toggleCapture() -> Bool {
-        setCaptureEnabled(!hasCaptureState)
+    func toggleMode() -> Bool {
+        setModeEnabled(!hasModeState)
     }
 
-    func cancelCapture(reason: String) {
-        cancelPendingCapture(reason: reason)
+    func cancelMode(reason: String) {
+        cancelPendingMode(reason: reason)
         cancelTemporaryRelease(reason: reason)
-        deactivateCapture(reason: reason)
+        deactivateMode(reason: reason)
     }
 
     @discardableResult
     func toggleTemporaryRelease() -> Bool {
-        if isCaptureTemporarilyReleased {
-            return resumeCaptureAfterTemporaryRelease(reason: "manual")
+        if isModeTemporarilyReleased {
+            return resumeModeAfterTemporaryRelease(reason: "manual")
         }
 
-        return temporarilyReleaseCapture()
+        return temporarilyReleaseMode()
     }
 
     @discardableResult
-    private func armCapture() -> Bool {
-        guard isCaptureAvailable else {
+    private func armMode() -> Bool {
+        guard isModeAvailable else {
             return false
         }
 
-        guard !isCaptureActive else {
+        guard !isModeActive else {
             return true
         }
 
-        guard !isCaptureTemporarilyReleased else {
+        guard !isModeTemporarilyReleased else {
             return true
         }
 
-        guard !isCapturePending else {
+        guard !isModePending else {
             return true
         }
 
@@ -149,59 +117,59 @@ final class MouseDiagnosticController {
             return false
         }
 
-        isCapturePending = true
-        captureCountdownSeconds = captureArmDelaySeconds
+        isModePending = true
+        modeCountdownSeconds = modeArmDelaySeconds
         resetEscapeSequence()
-        scheduleCaptureStartTimer()
-        debugLog("[MouseDiagnostic] captureArmed delaySeconds=\(captureArmDelaySeconds)")
+        scheduleModeActivationTimer()
+        debugLog("[VirtualCursorMode] armed delaySeconds=\(modeArmDelaySeconds)")
         NotificationCenter.default.post(name: Self.stateDidChange, object: self)
         return true
     }
 
-    private func cancelPendingCapture(reason: String) {
-        guard isCapturePending else {
-            captureStartTimer?.invalidate()
-            captureStartTimer = nil
+    private func cancelPendingMode(reason: String) {
+        guard isModePending else {
+            modeActivationTimer?.invalidate()
+            modeActivationTimer = nil
             return
         }
 
-        captureStartTimer?.invalidate()
-        captureStartTimer = nil
-        isCapturePending = false
-        captureCountdownSeconds = 0
+        modeActivationTimer?.invalidate()
+        modeActivationTimer = nil
+        isModePending = false
+        modeCountdownSeconds = 0
         resetEscapeSequence()
         uninstallKeyboardEventTapIfIdle()
-        debugLog("[MouseDiagnostic] captureDisarmed reason=\(reason)")
+        debugLog("[VirtualCursorMode] disarmed reason=\(reason)")
         NotificationCenter.default.post(name: Self.stateDidChange, object: self)
     }
 
-    private func scheduleCaptureStartTimer() {
-        captureStartTimer?.invalidate()
+    private func scheduleModeActivationTimer() {
+        modeActivationTimer?.invalidate()
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] timer in
-            guard let self, self.isCapturePending else {
+            guard let self, self.isModePending else {
                 timer.invalidate()
                 return
             }
 
-            self.captureCountdownSeconds = max(0, self.captureCountdownSeconds - 1)
+            self.modeCountdownSeconds = max(0, self.modeCountdownSeconds - 1)
             NotificationCenter.default.post(name: Self.stateDidChange, object: self)
 
-            guard self.captureCountdownSeconds <= 0 else {
+            guard self.modeCountdownSeconds <= 0 else {
                 return
             }
 
             timer.invalidate()
-            self.captureStartTimer = nil
-            self.isCapturePending = false
-            _ = self.activateCapture()
+            self.modeActivationTimer = nil
+            self.isModePending = false
+            _ = self.activateMode()
         }
         RunLoop.main.add(timer, forMode: .common)
-        captureStartTimer = timer
+        modeActivationTimer = timer
     }
 
     @discardableResult
-    private func activateCapture() -> Bool {
-        guard !isCaptureActive else {
+    private func activateMode() -> Bool {
+        guard !isModeActive else {
             return true
         }
 
@@ -217,38 +185,38 @@ final class MouseDiagnosticController {
             return false
         }
 
-        isCaptureActive = true
-        captureCountdownSeconds = 0
+        isModeActive = true
+        modeCountdownSeconds = 0
         resetEscapeSequence()
-        debugLog("[MouseDiagnostic] captureEnabled")
+        debugLog("[VirtualCursorMode] activated")
         NotificationCenter.default.post(name: Self.stateDidChange, object: self)
         return true
     }
 
-    private func deactivateCapture(reason: String) {
-        guard isCaptureActive else { return }
+    private func deactivateMode(reason: String) {
+        guard isModeActive else { return }
 
-        isCaptureActive = false
+        isModeActive = false
         resetEscapeSequence()
-        debugLog("[MouseDiagnostic] captureDisabled reason=\(reason)")
-        onCaptureDeactivated?()
+        debugLog("[VirtualCursorMode] deactivated reason=\(reason)")
+        onModeDeactivated?()
         uninstallMouseEventTapIfIdle()
         uninstallKeyboardEventTapIfIdle()
         NotificationCenter.default.post(name: Self.stateDidChange, object: self)
     }
 
     @discardableResult
-    private func temporarilyReleaseCapture() -> Bool {
-        guard isCaptureActive else {
+    private func temporarilyReleaseMode() -> Bool {
+        guard isModeActive else {
             return false
         }
 
-        isCaptureActive = false
-        isCaptureTemporarilyReleased = true
+        isModeActive = false
+        isModeTemporarilyReleased = true
         temporaryReleaseCountdownSeconds = temporaryReleaseDurationSeconds
         resetEscapeSequence()
-        debugLog("[MouseDiagnostic] captureTemporarilyReleased durationSeconds=\(temporaryReleaseDurationSeconds)")
-        onCaptureDeactivated?()
+        debugLog("[VirtualCursorMode] temporarilyReleased durationSeconds=\(temporaryReleaseDurationSeconds)")
+        onModeDeactivated?()
         uninstallMouseEventTapIfIdle()
         scheduleTemporaryReleaseTimer()
         NotificationCenter.default.post(name: Self.stateDidChange, object: self)
@@ -256,19 +224,19 @@ final class MouseDiagnosticController {
     }
 
     @discardableResult
-    private func resumeCaptureAfterTemporaryRelease(reason: String) -> Bool {
-        guard isCaptureTemporarilyReleased else {
+    private func resumeModeAfterTemporaryRelease(reason: String) -> Bool {
+        guard isModeTemporarilyReleased else {
             return true
         }
 
         temporaryReleaseTimer?.invalidate()
         temporaryReleaseTimer = nil
-        isCaptureTemporarilyReleased = false
+        isModeTemporarilyReleased = false
         temporaryReleaseCountdownSeconds = 0
         resetEscapeSequence()
-        debugLog("[MouseDiagnostic] captureTemporaryReleaseEnded reason=\(reason)")
+        debugLog("[VirtualCursorMode] temporaryReleaseEnded reason=\(reason)")
 
-        let activated = activateCapture()
+        let activated = activateMode()
         if !activated {
             uninstallKeyboardEventTapIfIdle()
             NotificationCenter.default.post(name: Self.stateDidChange, object: self)
@@ -277,7 +245,7 @@ final class MouseDiagnosticController {
     }
 
     private func cancelTemporaryRelease(reason: String) {
-        guard isCaptureTemporarilyReleased else {
+        guard isModeTemporarilyReleased else {
             temporaryReleaseTimer?.invalidate()
             temporaryReleaseTimer = nil
             temporaryReleaseCountdownSeconds = 0
@@ -286,10 +254,10 @@ final class MouseDiagnosticController {
 
         temporaryReleaseTimer?.invalidate()
         temporaryReleaseTimer = nil
-        isCaptureTemporarilyReleased = false
+        isModeTemporarilyReleased = false
         temporaryReleaseCountdownSeconds = 0
         resetEscapeSequence()
-        debugLog("[MouseDiagnostic] captureTemporaryReleaseCancelled reason=\(reason)")
+        debugLog("[VirtualCursorMode] temporaryReleaseCancelled reason=\(reason)")
         uninstallKeyboardEventTapIfIdle()
         NotificationCenter.default.post(name: Self.stateDidChange, object: self)
     }
@@ -297,7 +265,7 @@ final class MouseDiagnosticController {
     private func scheduleTemporaryReleaseTimer() {
         temporaryReleaseTimer?.invalidate()
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] timer in
-            guard let self, self.isCaptureTemporarilyReleased else {
+            guard let self, self.isModeTemporarilyReleased else {
                 timer.invalidate()
                 return
             }
@@ -311,7 +279,7 @@ final class MouseDiagnosticController {
 
             timer.invalidate()
             self.temporaryReleaseTimer = nil
-            _ = self.resumeCaptureAfterTemporaryRelease(reason: "timer")
+            _ = self.resumeModeAfterTemporaryRelease(reason: "timer")
         }
         RunLoop.main.add(timer, forMode: .common)
         temporaryReleaseTimer = timer
@@ -331,7 +299,7 @@ final class MouseDiagnosticController {
             callback: Self.mouseEventTapCallback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
-            errorLog("[MouseDiagnostic] ERROR: mouseEventTapCreationFailed")
+            errorLog("[VirtualCursorMode] ERROR: mouseEventTapCreationFailed")
             return false
         }
 
@@ -341,12 +309,12 @@ final class MouseDiagnosticController {
 
         mouseEventTap = tap
         mouseEventTapRunLoopSource = source
-        debugLog("[MouseDiagnostic] mouseEventTapInstalled")
+        debugLog("[VirtualCursorMode] mouseEventTapInstalled")
         return true
     }
 
     private func uninstallMouseEventTapIfIdle() {
-        guard !isEnabled, !isCaptureActive else {
+        guard !isModeActive else {
             return
         }
 
@@ -368,7 +336,7 @@ final class MouseDiagnosticController {
             self.mouseEventTap = nil
         }
 
-        debugLog("[MouseDiagnostic] mouseEventTapUninstalled")
+        debugLog("[VirtualCursorMode] mouseEventTapUninstalled")
     }
 
     @discardableResult
@@ -385,7 +353,7 @@ final class MouseDiagnosticController {
             callback: Self.keyboardEventTapCallback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
-            errorLog("[MouseDiagnostic] ERROR: keyboardEventTapCreationFailed")
+            errorLog("[VirtualCursorMode] ERROR: keyboardEventTapCreationFailed")
             return false
         }
 
@@ -395,12 +363,12 @@ final class MouseDiagnosticController {
 
         keyboardEventTap = tap
         keyboardEventTapRunLoopSource = source
-        debugLog("[MouseDiagnostic] keyboardEventTapInstalled")
+        debugLog("[VirtualCursorMode] keyboardEventTapInstalled")
         return true
     }
 
     private func uninstallKeyboardEventTapIfIdle() {
-        guard !isCapturePending, !isCaptureActive, !isCaptureTemporarilyReleased else {
+        guard !isModePending, !isModeActive, !isModeTemporarilyReleased else {
             return
         }
 
@@ -422,7 +390,7 @@ final class MouseDiagnosticController {
             self.keyboardEventTap = nil
         }
 
-        debugLog("[MouseDiagnostic] keyboardEventTapUninstalled")
+        debugLog("[VirtualCursorMode] keyboardEventTapUninstalled")
     }
 
     private static var mouseEventMask: CGEventMask {
@@ -448,7 +416,7 @@ final class MouseDiagnosticController {
             return Unmanaged.passUnretained(event)
         }
 
-        let controller = Unmanaged<MouseDiagnosticController>.fromOpaque(userInfo).takeUnretainedValue()
+        let controller = Unmanaged<VirtualCursorModeController>.fromOpaque(userInfo).takeUnretainedValue()
         return controller.handleMouseEventTap(type: type, event: event)
     }
 
@@ -457,7 +425,7 @@ final class MouseDiagnosticController {
             return Unmanaged.passUnretained(event)
         }
 
-        let controller = Unmanaged<MouseDiagnosticController>.fromOpaque(userInfo).takeUnretainedValue()
+        let controller = Unmanaged<VirtualCursorModeController>.fromOpaque(userInfo).takeUnretainedValue()
         return controller.handleKeyboardEventTap(type: type, event: event)
     }
 
@@ -468,7 +436,7 @@ final class MouseDiagnosticController {
     private func handleMouseEventTap(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
-            errorLog("[MouseDiagnostic] mouseEventTapDisabled type=\(name(for: type)); reenable=true")
+            errorLog("[VirtualCursorMode] mouseEventTapDisabled type=\(type.rawValue); reenable=true")
             if let mouseEventTap {
                 CGEvent.tapEnable(tap: mouseEventTap, enable: true)
             }
@@ -476,13 +444,12 @@ final class MouseDiagnosticController {
 
         default:
             routeMouseEvent(type: type, event: event)
-            log(event: event, type: type, swallowed: isCaptureActive)
-            return isCaptureActive ? nil : Unmanaged.passUnretained(event)
+            return isModeActive ? nil : Unmanaged.passUnretained(event)
         }
     }
 
     private func routeMouseEvent(type: CGEventType, event: CGEvent) {
-        guard isCaptureActive else {
+        guard isModeActive else {
             return
         }
 
@@ -515,7 +482,7 @@ final class MouseDiagnosticController {
     private func handleKeyboardEventTap(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
-            errorLog("[MouseDiagnostic] keyboardEventTapDisabled type=\(name(for: type)); reenable=true")
+            errorLog("[VirtualCursorMode] keyboardEventTapDisabled type=\(type.rawValue); reenable=true")
             if let keyboardEventTap {
                 CGEvent.tapEnable(tap: keyboardEventTap, enable: true)
             }
@@ -531,7 +498,7 @@ final class MouseDiagnosticController {
     }
 
     private func handleKeyDown(_ event: CGEvent) {
-        guard hasCaptureState else {
+        guard hasModeState else {
             resetEscapeSequence()
             return
         }
@@ -550,15 +517,15 @@ final class MouseDiagnosticController {
 
         escapePressCount += 1
         lastEscapePressTime = now
-        debugLog("[MouseDiagnostic] escapeUnlockProgress count=\(escapePressCount)")
+        debugLog("[VirtualCursorMode] escapeUnlockProgress count=\(escapePressCount)")
 
         guard escapePressCount >= Self.escapeUnlockCount else {
             return
         }
 
-        cancelPendingCapture(reason: "escape")
+        cancelPendingMode(reason: "escape")
         cancelTemporaryRelease(reason: "escape")
-        deactivateCapture(reason: "escape")
+        deactivateMode(reason: "escape")
     }
 
     private func resetEscapeSequence() {
@@ -566,67 +533,4 @@ final class MouseDiagnosticController {
         lastEscapePressTime = nil
     }
 
-    private func log(event: CGEvent, type: CGEventType, swallowed: Bool) {
-        let location = event.location
-        let deltaX = event.getIntegerValueField(.mouseEventDeltaX)
-        let deltaY = event.getIntegerValueField(.mouseEventDeltaY)
-        let button = event.getIntegerValueField(.mouseEventButtonNumber)
-        let scrollX = event.getIntegerValueField(.scrollWheelEventDeltaAxis2)
-        let scrollY = event.getIntegerValueField(.scrollWheelEventDeltaAxis1)
-        let timestampSeconds = Double(event.timestamp) / 1_000_000_000
-        let eventAgeMilliseconds = max(0, (ProcessInfo.processInfo.systemUptime - timestampSeconds) * 1000)
-
-        debugLog(
-            String(
-                format: "[MouseDiagnostic] type=%@ swallowed=%@ capture=%@ dx=%lld dy=%lld button=%lld scrollX=%lld scrollY=%lld loc=(%.1f,%.1f) flags=%llu eventAge=%.3fms",
-                name(for: type),
-                swallowed ? "true" : "false",
-                isCaptureActive ? "true" : "false",
-                deltaX,
-                deltaY,
-                button,
-                scrollX,
-                scrollY,
-                location.x,
-                location.y,
-                event.flags.rawValue,
-                eventAgeMilliseconds
-            )
-        )
-    }
-
-    private func name(for type: CGEventType) -> String {
-        switch type {
-        case .mouseMoved:
-            return "mouseMoved"
-        case .leftMouseDown:
-            return "leftMouseDown"
-        case .leftMouseUp:
-            return "leftMouseUp"
-        case .leftMouseDragged:
-            return "leftMouseDragged"
-        case .rightMouseDown:
-            return "rightMouseDown"
-        case .rightMouseUp:
-            return "rightMouseUp"
-        case .rightMouseDragged:
-            return "rightMouseDragged"
-        case .otherMouseDown:
-            return "otherMouseDown"
-        case .otherMouseUp:
-            return "otherMouseUp"
-        case .otherMouseDragged:
-            return "otherMouseDragged"
-        case .scrollWheel:
-            return "scrollWheel"
-        case .keyDown:
-            return "keyDown"
-        case .tapDisabledByTimeout:
-            return "tapDisabledByTimeout"
-        case .tapDisabledByUserInput:
-            return "tapDisabledByUserInput"
-        default:
-            return "type\(type.rawValue)"
-        }
-    }
 }

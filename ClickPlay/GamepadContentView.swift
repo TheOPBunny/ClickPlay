@@ -242,7 +242,7 @@ final class GamepadContentView: NSView {
     private final class HeaderBarView: NSView {
         var onToggleMinimize: (() -> Void)?
         var onHideOverlay: (() -> Void)?
-        var onToggleCapture: (() -> Void)?
+        var onToggleVirtualCursorMode: (() -> Void)?
         var onToggleTemporaryRelease: (() -> Void)?
         var menuProvider: (() -> NSMenu?)?
         var onDragBegan: ((NSEvent) -> Void)?
@@ -252,8 +252,8 @@ final class GamepadContentView: NSView {
         private var foregroundColor: NSColor = .white
         private let closeButton = NSButton(frame: .zero)
         private let minimizeButton = NSButton(frame: .zero)
-        private let captureButton = NSButton(frame: .zero)
-        private let captureCountdownLabel = NSTextField(labelWithString: "")
+        private let virtualCursorModeButton = NSButton(frame: .zero)
+        private let virtualCursorModeCountdownLabel = NSTextField(labelWithString: "")
         private let temporaryReleaseButton = NSButton(frame: .zero)
         private let temporaryReleaseCountdownLabel = NSTextField(labelWithString: "")
         private let menuButton = NSButton(frame: .zero)
@@ -293,8 +293,8 @@ final class GamepadContentView: NSView {
         func setMinimized(_ minimized: Bool) {
             minimizeButton.title = minimized ? "+" : "−"
             closeButton.isHidden = minimized
-            captureButton.isHidden = minimized
-            captureCountdownLabel.isHidden = minimized
+            virtualCursorModeButton.isHidden = minimized
+            virtualCursorModeCountdownLabel.isHidden = minimized
             temporaryReleaseButton.isHidden = minimized
             temporaryReleaseCountdownLabel.isHidden = minimized
             titleLabel.isHidden = minimized
@@ -304,7 +304,7 @@ final class GamepadContentView: NSView {
             needsLayout = true
         }
 
-        func updateCaptureState(
+        func updateVirtualCursorModeState(
             isAvailable: Bool,
             isPending: Bool,
             isActive: Bool,
@@ -313,15 +313,18 @@ final class GamepadContentView: NSView {
             temporaryReleaseCountdown: Int
         ) {
             let isMinimized = closeButton.isHidden
-            captureButton.title = (isPending || isActive || isTemporarilyReleased) ? "􀎥" : "􀎡"
-            captureButton.isHidden = isMinimized || !isAvailable
-            captureCountdownLabel.stringValue = isPending ? "\(max(0, countdown))" : ""
-            captureCountdownLabel.isHidden = isMinimized || !isAvailable || !isPending
+            virtualCursorModeButton.title = (isPending || isActive || isTemporarilyReleased) ? "􀎥" : "􀎡"
+            virtualCursorModeButton.toolTip = (isPending || isActive || isTemporarilyReleased)
+                ? "Disable Virtual Cursor Mode"
+                : "Enable Virtual Cursor Mode"
+            virtualCursorModeButton.isHidden = isMinimized || !isAvailable
+            virtualCursorModeCountdownLabel.stringValue = isPending ? "\(max(0, countdown))" : ""
+            virtualCursorModeCountdownLabel.isHidden = isMinimized || !isAvailable || !isPending
             temporaryReleaseButton.isHidden = isMinimized || !isAvailable || (!isActive && !isTemporarilyReleased)
             temporaryReleaseButton.isEnabled = isActive || isTemporarilyReleased
             temporaryReleaseCountdownLabel.stringValue = isTemporarilyReleased ? "\(max(0, temporaryReleaseCountdown))" : ""
             temporaryReleaseCountdownLabel.isHidden = isMinimized || !isAvailable || !isTemporarilyReleased
-            applyTitleColor(to: captureButton)
+            applyTitleColor(to: virtualCursorModeButton)
             applyTitleColor(to: temporaryReleaseButton)
             needsLayout = true
         }
@@ -332,11 +335,11 @@ final class GamepadContentView: NSView {
                 return true
             }
 
-            guard !captureButton.isHidden, captureButton.frame.contains(point) else {
+            guard !virtualCursorModeButton.isHidden, virtualCursorModeButton.frame.contains(point) else {
                 return false
             }
 
-            onToggleCapture?()
+            onToggleVirtualCursorMode?()
             return true
         }
 
@@ -358,20 +361,21 @@ final class GamepadContentView: NSView {
             minimizeButton.setButtonType(.momentaryChange)
             addSubview(minimizeButton)
 
-            captureButton.title = "􀎡"
-            captureButton.font = NSFont.systemFont(ofSize: 16, weight: .regular)
-            captureButton.isBordered = false
-            captureButton.contentTintColor = .white
-            captureButton.target = self
-            captureButton.action = #selector(handleToggleCapture)
-            captureButton.setButtonType(.momentaryChange)
-            addSubview(captureButton)
+            virtualCursorModeButton.title = "􀎡"
+            virtualCursorModeButton.font = NSFont.systemFont(ofSize: 16, weight: .regular)
+            virtualCursorModeButton.isBordered = false
+            virtualCursorModeButton.contentTintColor = .white
+            virtualCursorModeButton.target = self
+            virtualCursorModeButton.action = #selector(handleToggleVirtualCursorMode)
+            virtualCursorModeButton.setButtonType(.momentaryChange)
+            virtualCursorModeButton.toolTip = "Enable Virtual Cursor Mode"
+            addSubview(virtualCursorModeButton)
 
-            captureCountdownLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
-            captureCountdownLabel.textColor = .white
-            captureCountdownLabel.alignment = .center
-            captureCountdownLabel.isHidden = true
-            addSubview(captureCountdownLabel)
+            virtualCursorModeCountdownLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
+            virtualCursorModeCountdownLabel.textColor = .white
+            virtualCursorModeCountdownLabel.alignment = .center
+            virtualCursorModeCountdownLabel.isHidden = true
+            addSubview(virtualCursorModeCountdownLabel)
 
             temporaryReleaseButton.title = "􂆊"
             temporaryReleaseButton.font = NSFont.systemFont(ofSize: 16, weight: .regular)
@@ -419,8 +423,8 @@ final class GamepadContentView: NSView {
         private func applyForegroundColor() {
             closeButton.contentTintColor = foregroundColor
             minimizeButton.contentTintColor = foregroundColor
-            captureButton.contentTintColor = foregroundColor
-            captureCountdownLabel.textColor = foregroundColor
+            virtualCursorModeButton.contentTintColor = foregroundColor
+            virtualCursorModeCountdownLabel.textColor = foregroundColor
             temporaryReleaseButton.contentTintColor = foregroundColor
             temporaryReleaseCountdownLabel.textColor = foregroundColor
             menuButton.contentTintColor = foregroundColor
@@ -429,7 +433,7 @@ final class GamepadContentView: NSView {
 
             applyTitleColor(to: closeButton)
             applyTitleColor(to: minimizeButton)
-            applyTitleColor(to: captureButton)
+            applyTitleColor(to: virtualCursorModeButton)
             applyTitleColor(to: temporaryReleaseButton)
             if menuButton.image == nil {
                 applyTitleColor(to: menuButton)
@@ -461,16 +465,16 @@ final class GamepadContentView: NSView {
                 closeButton.frame = NSRect(x: 10, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
                 minimizeButton.frame = NSRect(x: closeButton.frame.maxX + 8, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
                 menuButton.frame = NSRect(x: bounds.width - 34, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
-                captureButton.frame = captureButton.isHidden
+                virtualCursorModeButton.frame = virtualCursorModeButton.isHidden
                     ? .zero
                     : NSRect(x: menuButton.frame.minX - 30, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
                 temporaryReleaseButton.frame = temporaryReleaseButton.isHidden
                     ? .zero
-                    : NSRect(x: captureButton.frame.minX - 30, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
-                if captureCountdownLabel.isHidden {
-                    captureCountdownLabel.frame = .zero
+                    : NSRect(x: virtualCursorModeButton.frame.minX - 30, y: bounds.midY - buttonSize.height / 2, width: buttonSize.width, height: buttonSize.height)
+                if virtualCursorModeCountdownLabel.isHidden {
+                    virtualCursorModeCountdownLabel.frame = .zero
                 } else {
-                    captureCountdownLabel.frame = NSRect(x: captureButton.frame.minX - 28, y: bounds.midY - 9, width: 24, height: 18)
+                    virtualCursorModeCountdownLabel.frame = NSRect(x: virtualCursorModeButton.frame.minX - 28, y: bounds.midY - 9, width: 24, height: 18)
                 }
                 if temporaryReleaseCountdownLabel.isHidden {
                     temporaryReleaseCountdownLabel.frame = .zero
@@ -480,8 +484,8 @@ final class GamepadContentView: NSView {
 
                 let rightControlMinX = [
                     menuButton.frame.minX,
-                    captureButton.isHidden ? .greatestFiniteMagnitude : captureButton.frame.minX,
-                    captureCountdownLabel.isHidden ? .greatestFiniteMagnitude : captureCountdownLabel.frame.minX,
+                    virtualCursorModeButton.isHidden ? .greatestFiniteMagnitude : virtualCursorModeButton.frame.minX,
+                    virtualCursorModeCountdownLabel.isHidden ? .greatestFiniteMagnitude : virtualCursorModeCountdownLabel.frame.minX,
                     temporaryReleaseButton.isHidden ? .greatestFiniteMagnitude : temporaryReleaseButton.frame.minX,
                     temporaryReleaseCountdownLabel.isHidden ? .greatestFiniteMagnitude : temporaryReleaseCountdownLabel.frame.minX
                 ].min() ?? menuButton.frame.minX
@@ -500,8 +504,8 @@ final class GamepadContentView: NSView {
             onHideOverlay?()
         }
 
-        @objc private func handleToggleCapture() {
-            onToggleCapture?()
+        @objc private func handleToggleVirtualCursorMode() {
+            onToggleVirtualCursorMode?()
         }
 
         @objc private func handleToggleTemporaryRelease() {
@@ -595,7 +599,7 @@ final class GamepadContentView: NSView {
     private weak var virtualPrimaryButtonView: GamepadButtonView?
     private weak var virtualSecondaryButtonView: GamepadButtonView?
     private weak var virtualJoystickCaptureView: GamepadButtonView?
-    private var captureStateObserver: NSObjectProtocol?
+    private var virtualCursorModeStateObserver: NSObjectProtocol?
 
     // Drag state is stored in screen coordinates so moving the overlay works across Spaces and displays.
     private var dragStartWindowOrigin: NSPoint = .zero
@@ -615,16 +619,16 @@ final class GamepadContentView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     deinit {
-        if let captureStateObserver {
-            NotificationCenter.default.removeObserver(captureStateObserver)
+        if let virtualCursorModeStateObserver {
+            NotificationCenter.default.removeObserver(virtualCursorModeStateObserver)
         }
     }
 
     // MARK: - Profile Reloading
 
-    func reload(profile: Profile, minimized: Bool, preservesCapture: Bool = false) {
-        if !preservesCapture {
-            MouseDiagnosticController.shared.cancelCapture(reason: "profileReload")
+    func reload(profile: Profile, minimized: Bool, preservesVirtualCursorMode: Bool = false) {
+        if !preservesVirtualCursorMode {
+            VirtualCursorModeController.shared.cancelMode(reason: "profileReload")
         }
 
         releaseAllVirtualInputs()
@@ -636,7 +640,7 @@ final class GamepadContentView: NSView {
         updateLayout()
         buildButtons(profile: profile)
 
-        if MouseDiagnosticController.shared.isCaptureActive {
+        if VirtualCursorModeController.shared.isModeActive {
             ensureVirtualCursorPoint()
             if let virtualCursorPoint {
                 syncButtonHover(atContentPoint: virtualCursorPoint)
@@ -646,7 +650,7 @@ final class GamepadContentView: NSView {
 
     func setMinimized(_ minimized: Bool) {
         if minimized {
-            MouseDiagnosticController.shared.cancelCapture(reason: "minimize")
+            VirtualCursorModeController.shared.cancelMode(reason: "minimize")
             releaseAllVirtualInputs()
         }
         isMinimized = minimized
@@ -657,7 +661,7 @@ final class GamepadContentView: NSView {
     }
 
     func releaseAllInputs() {
-        MouseDiagnosticController.shared.cancelCapture(reason: "releaseAllInputs")
+        VirtualCursorModeController.shared.cancelMode(reason: "releaseAllInputs")
         releaseAllVirtualInputs()
         releaseAllButtonsForRebuild()
     }
@@ -741,11 +745,11 @@ final class GamepadContentView: NSView {
         headerBar.onHideOverlay = { [weak self] in
             self?.onHideOverlay?()
         }
-        headerBar.onToggleCapture = {
-            MouseDiagnosticController.shared.toggleCapture()
+        headerBar.onToggleVirtualCursorMode = {
+            VirtualCursorModeController.shared.toggleMode()
         }
         headerBar.onToggleTemporaryRelease = {
-            MouseDiagnosticController.shared.toggleTemporaryRelease()
+            VirtualCursorModeController.shared.toggleTemporaryRelease()
         }
         headerBar.menuProvider = { [weak self] in
             self?.menuProvider?()
@@ -774,20 +778,20 @@ final class GamepadContentView: NSView {
         padSurface.addSubview(joystickCaptureHUDView)
 
         addSubview(pointerLocationView)
-        configureVirtualCursorCapture()
+        configureVirtualCursorMode()
     }
 
     private func updateHeader() {
         headerBar.updateTitle(currentProfile.name)
         headerBar.updateForegroundColor(headerForegroundColor())
         headerBar.setMinimized(isMinimized)
-        headerBar.updateCaptureState(
-            isAvailable: currentProfile.mouseCaptureEnabled,
-            isPending: MouseDiagnosticController.shared.isCapturePending,
-            isActive: MouseDiagnosticController.shared.isCaptureActive,
-            isTemporarilyReleased: MouseDiagnosticController.shared.isCaptureTemporarilyReleased,
-            countdown: MouseDiagnosticController.shared.captureCountdownSeconds,
-            temporaryReleaseCountdown: MouseDiagnosticController.shared.temporaryReleaseCountdownSeconds
+        headerBar.updateVirtualCursorModeState(
+            isAvailable: currentProfile.virtualCursorModeEnabled,
+            isPending: VirtualCursorModeController.shared.isModePending,
+            isActive: VirtualCursorModeController.shared.isModeActive,
+            isTemporarilyReleased: VirtualCursorModeController.shared.isModeTemporarilyReleased,
+            countdown: VirtualCursorModeController.shared.modeCountdownSeconds,
+            temporaryReleaseCountdown: VirtualCursorModeController.shared.temporaryReleaseCountdownSeconds
         )
     }
 
@@ -838,7 +842,7 @@ final class GamepadContentView: NSView {
     }
 
     private func updatePointerLocationVisibility(atScreenPoint screenPoint: NSPoint) {
-        if MouseDiagnosticController.shared.isCaptureActive, !isMinimized {
+        if VirtualCursorModeController.shared.isModeActive, !isMinimized {
             guard capturedJoystickButton == nil else {
                 pointerLocationView.hide()
                 return
@@ -866,10 +870,10 @@ final class GamepadContentView: NSView {
         pointerLocationView.show(centeredAt: contentPoint)
     }
 
-    // MARK: - Virtual Cursor Capture
+    // MARK: - Virtual Cursor Mode
 
-    private func configureVirtualCursorCapture() {
-        let controller = MouseDiagnosticController.shared
+    private func configureVirtualCursorMode() {
+        let controller = VirtualCursorModeController.shared
         controller.onVirtualMouseDelta = { [weak self] delta in
             DispatchQueue.main.async {
                 self?.moveVirtualCursor(by: delta)
@@ -885,7 +889,7 @@ final class GamepadContentView: NSView {
                 self?.routeVirtualScroll(delta)
             }
         }
-        controller.onCaptureDeactivated = { [weak self] in
+        controller.onModeDeactivated = { [weak self] in
             DispatchQueue.main.async {
                 self?.releaseAllVirtualInputs()
                 self?.virtualCursorPoint = nil
@@ -894,16 +898,16 @@ final class GamepadContentView: NSView {
             }
         }
 
-        captureStateObserver = NotificationCenter.default.addObserver(
-            forName: MouseDiagnosticController.stateDidChange,
+        virtualCursorModeStateObserver = NotificationCenter.default.addObserver(
+            forName: VirtualCursorModeController.stateDidChange,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             guard let self else { return }
 
-            if MouseDiagnosticController.shared.isCaptureActive {
+            if VirtualCursorModeController.shared.isModeActive {
                 self.ensureVirtualCursorPoint()
-            } else if !MouseDiagnosticController.shared.isCapturePending {
+            } else if !VirtualCursorModeController.shared.isModePending {
                 self.releaseAllVirtualInputs()
             }
 
@@ -931,7 +935,7 @@ final class GamepadContentView: NSView {
     }
 
     private func moveVirtualCursor(by delta: CGPoint) {
-        guard MouseDiagnosticController.shared.isCaptureActive, !isMinimized else {
+        guard VirtualCursorModeController.shared.isModeActive, !isMinimized else {
             return
         }
 
@@ -966,8 +970,8 @@ final class GamepadContentView: NSView {
         }
     }
 
-    private func routeVirtualMouseButton(_ button: MouseDiagnosticController.VirtualMouseButton, isDown: Bool) {
-        guard MouseDiagnosticController.shared.isCaptureActive, !isMinimized else {
+    private func routeVirtualMouseButton(_ button: VirtualCursorModeController.VirtualMouseButton, isDown: Bool) {
+        guard VirtualCursorModeController.shared.isModeActive, !isMinimized else {
             return
         }
 
@@ -1048,7 +1052,7 @@ final class GamepadContentView: NSView {
     }
 
     private func routeVirtualScroll(_ delta: CGFloat) {
-        guard MouseDiagnosticController.shared.isCaptureActive else {
+        guard VirtualCursorModeController.shared.isModeActive else {
             return
         }
 

@@ -18,7 +18,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
     private var availableUpdate: UpdateCheckResult?
     private var lastActiveNonSelfApplication: NSRunningApplication?
     private var workspaceActivationObserver: NSObjectProtocol?
-    private var mouseDiagnosticStateObserver: NSObjectProtocol?
     private var addProfileFromTemplateItem: NSMenuItem?
     private var addLayerFromTemplateItem: NSMenuItem?
     private var isPollingForPermission = false
@@ -28,9 +27,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         if let workspaceActivationObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(workspaceActivationObserver)
         }
-        if let mouseDiagnosticStateObserver {
-            NotificationCenter.default.removeObserver(mouseDiagnosticStateObserver)
-        }
     }
 
     // MARK: - Application Lifecycle
@@ -39,7 +35,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         NSApp.setActivationPolicy(.regular)
         setupMainMenu()
         setupStatusBar()
-        observeMouseDiagnosticState()
         startTrackingActiveApplications()
         scheduleAutomaticUpdateCheck()
 
@@ -65,8 +60,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
 
     func applicationWillTerminate(_ notification: Notification) {
         editorWindowController?.flushPanelLayoutDefaults()
-        MouseDiagnosticController.shared.cancelCapture(reason: "terminate")
-        MouseDiagnosticController.shared.setEnabled(false)
+        VirtualCursorModeController.shared.cancelMode(reason: "terminate")
         gamepadWindow?.releaseAllInputs()
         KeyInjector.shared.releaseAllHeldKeys()
     }
@@ -249,11 +243,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         let accessibilityItem = NSMenuItem(title: "Grant Accessibility Permission", action: #selector(openAccessibility), keyEquivalent: "")
         accessibilityItem.target = self
         menu.addItem(accessibilityItem)
-
-        let mouseDiagnosticsItem = NSMenuItem(title: "Mouse Diagnostics", action: #selector(toggleMouseDiagnostics(_:)), keyEquivalent: "")
-        mouseDiagnosticsItem.target = self
-        mouseDiagnosticsItem.state = MouseDiagnosticController.shared.isEnabled ? .on : .off
-        menu.addItem(mouseDiagnosticsItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -518,12 +507,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         ProfileStore.shared.updateActiveProfileShowPointerLocation(!ProfileStore.shared.activeProfile.showPointerLocation)
     }
 
-    @objc func toggleMouseDiagnostics(_ sender: NSMenuItem) {
-        let enabled = MouseDiagnosticController.shared.toggle()
-        sender.state = enabled ? .on : .off
-        rebuildMenu()
-    }
-
     // MARK: - Window and Editor Actions
 
     @objc func showGamepad() {
@@ -663,16 +646,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         ) { [weak self] notification in
             let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
             self?.updateLastActiveApplicationIfNeeded(application)
-        }
-    }
-
-    private func observeMouseDiagnosticState() {
-        mouseDiagnosticStateObserver = NotificationCenter.default.addObserver(
-            forName: MouseDiagnosticController.stateDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.rebuildMenu()
         }
     }
 

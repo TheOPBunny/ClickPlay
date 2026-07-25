@@ -168,7 +168,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     var onProfileSaved: ((Profile) -> Void)?
-    var onProfileMouseCaptureSettingsSaved: ((UUID, Bool, Int, Int) -> Void)?
+    var onProfileVirtualCursorModeSettingsSaved: ((UUID, Bool, Int, Int) -> Void)?
     var onToggleSidebar: (() -> Void)?
     var onSavePanelLayout: (() -> Void)?
 
@@ -181,10 +181,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     private var maximumWorkspaceSize = ButtonEditorViewController.workspaceSize(for: NSScreen.main)
     private var profile = ProfileStore.shared.activeResolvedProfile
-    private var profileMouseCaptureTimingProfileID = ProfileStore.shared.activeProfileID
-    private var topProfileMouseCaptureEnabled = false
-    private var topProfileMouseCaptureArmDelaySeconds = Profile.defaultMouseCaptureArmDelaySeconds
-    private var topProfileMouseCaptureTemporaryReleaseSeconds = Profile.defaultMouseCaptureTemporaryReleaseSeconds
+    private var profileVirtualCursorModeTimingProfileID = ProfileStore.shared.activeProfileID
+    private var topProfileVirtualCursorModeEnabled = false
+    private var topProfileVirtualCursorModeArmDelaySeconds = Profile.defaultVirtualCursorModeArmDelaySeconds
+    private var topProfileVirtualCursorModeTemporaryReleaseSeconds = Profile.defaultVirtualCursorModeTemporaryReleaseSeconds
     private var canvasObjects: [CanvasButtonObject] = []
     private var selectedIDs = Set<GamepadButton>()
     private var selectedGroupID: UUID?
@@ -213,10 +213,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private let profileBackgroundColorWell = NSColorWell()
     private let profileBackgroundResetButton = NSButton(title: "Reset", target: nil, action: nil)
     private let profileBackgroundFrostedGlassPopup = NSPopUpButton()
-    private let profileMouseCaptureEnabledCheckbox = NSButton(checkboxWithTitle: "Enable Mouse Capture", target: nil, action: nil)
-    private let profileMouseCaptureArmDelayField = NSTextField()
-    private let profileMouseCaptureTemporaryReleaseField = NSTextField()
-    private var profileMouseCaptureTimingRows: [NSStackView] = []
+    private let profileVirtualCursorModeEnabledCheckbox = NSButton(checkboxWithTitle: "Enable Virtual Cursor Mode", target: nil, action: nil)
+    private let profileVirtualCursorModeArmDelayField = NSTextField()
+    private let profileVirtualCursorModeTemporaryReleaseField = NSTextField()
+    private var profileVirtualCursorModeTimingRows: [NSStackView] = []
     private let showGridCheckbox = NSButton(checkboxWithTitle: "Show Grid", target: nil, action: nil)
     private let snappingCheckbox = NSButton(checkboxWithTitle: "Snapping", target: nil, action: nil)
     private let groupButton = NSButton(title: "Group", target: nil, action: nil)
@@ -449,15 +449,15 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         editorUndoManager.removeAllActions()
         selectedIDs = []
         selectedGroupID = nil
-        let timingProfile = mouseCaptureTimingProfile(
+        let timingProfile = virtualCursorModeTimingProfile(
             for: profile,
             topProfileID: topProfileID,
             isTopProfileSelection: isTopProfileSelection
         )
-        profileMouseCaptureTimingProfileID = timingProfile.id
-        topProfileMouseCaptureEnabled = timingProfile.mouseCaptureEnabled
-        topProfileMouseCaptureArmDelaySeconds = timingProfile.mouseCaptureArmDelaySeconds
-        topProfileMouseCaptureTemporaryReleaseSeconds = timingProfile.mouseCaptureTemporaryReleaseSeconds
+        profileVirtualCursorModeTimingProfileID = timingProfile.id
+        topProfileVirtualCursorModeEnabled = timingProfile.virtualCursorModeEnabled
+        topProfileVirtualCursorModeArmDelaySeconds = timingProfile.virtualCursorModeArmDelaySeconds
+        topProfileVirtualCursorModeTemporaryReleaseSeconds = timingProfile.virtualCursorModeTemporaryReleaseSeconds
         self.profile = makeEditableProfile(from: profile)
         hasLoadedEditableProfile = true
         previewView.usesCenteredOrigin = profile.editorCoordinateMode == .centered
@@ -475,7 +475,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         scrollToProfileContentIfNeeded()
     }
 
-    private func mouseCaptureTimingProfile(
+    private func virtualCursorModeTimingProfile(
         for profile: Profile,
         topProfileID: UUID?,
         isTopProfileSelection: Bool
@@ -547,8 +547,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     @discardableResult
     func saveChanges() -> Bool {
-        topProfileMouseCaptureEnabled = profileMouseCaptureEnabledCheckbox.state == .on
-        applyProfileMouseCaptureTimingFields()
+        topProfileVirtualCursorModeEnabled = profileVirtualCursorModeEnabledCheckbox.state == .on
+        applyProfileVirtualCursorModeTimingFields()
         profile.compatibilityMode = profileCompatibilityModeCheckbox.state == .on
         clampEditableProfileToWorkspace()
         profile.buttonGroups = sanitizedEditorGroups(profile.buttonGroups)
@@ -559,11 +559,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         reloadPreview(keepSelection: true)
 
         onProfileSaved?(savedProfile)
-        onProfileMouseCaptureSettingsSaved?(
-            profileMouseCaptureTimingProfileID,
-            topProfileMouseCaptureEnabled,
-            topProfileMouseCaptureArmDelaySeconds,
-            topProfileMouseCaptureTemporaryReleaseSeconds
+        onProfileVirtualCursorModeSettingsSaved?(
+            profileVirtualCursorModeTimingProfileID,
+            topProfileVirtualCursorModeEnabled,
+            topProfileVirtualCursorModeArmDelaySeconds,
+            topProfileVirtualCursorModeTemporaryReleaseSeconds
         )
         savedProfileFingerprint = currentSavedProfileFingerprint()
         showSavedIndicator()
@@ -1193,8 +1193,8 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         profileCompatibilityModeCheckbox.target = self
         profileCompatibilityModeCheckbox.action = #selector(profileCompatibilityModeChanged)
 
-        profileMouseCaptureEnabledCheckbox.target = self
-        profileMouseCaptureEnabledCheckbox.action = #selector(profileMouseCaptureEnabledChanged)
+        profileVirtualCursorModeEnabledCheckbox.target = self
+        profileVirtualCursorModeEnabledCheckbox.action = #selector(profileVirtualCursorModeEnabledChanged)
 
         profileBackgroundColorWell.widthAnchor.constraint(equalToConstant: 44).isActive = true
         profileBackgroundColorWell.heightAnchor.constraint(equalToConstant: 22).isActive = true
@@ -1211,12 +1211,12 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         profileBackgroundFrostedGlassPopup.action = #selector(profileBackgroundFrostedGlassChanged)
         populateProfileBackgroundFrostedGlassIntensities()
 
-        [profileMouseCaptureArmDelayField, profileMouseCaptureTemporaryReleaseField].forEach { field in
+        [profileVirtualCursorModeArmDelayField, profileVirtualCursorModeTemporaryReleaseField].forEach { field in
             field.bezelStyle = .roundedBezel
             field.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
             field.widthAnchor.constraint(equalToConstant: 58).isActive = true
             field.target = self
-            field.action = #selector(profileMouseCaptureTimingChanged(_:))
+            field.action = #selector(profileVirtualCursorModeTimingChanged(_:))
             field.delegate = self
         }
 
@@ -1240,11 +1240,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         stack.addArrangedSubview(profileCompatibilityModeCheckbox)
         stack.addArrangedSubview(makeProfileSettingsRow(label: "Gamepad Color", control: colorControls))
         stack.addArrangedSubview(makeProfileSettingsRow(label: "Frosted Glass", control: profileBackgroundFrostedGlassPopup))
-        stack.addArrangedSubview(profileMouseCaptureEnabledCheckbox)
+        stack.addArrangedSubview(profileVirtualCursorModeEnabledCheckbox)
 
-        let armDelayRow = makeProfileSettingsRow(label: "Arm Capture Timer", control: makeProfileSettingsUnitField(field: profileMouseCaptureArmDelayField, unit: "seconds"))
-        let temporaryReleaseRow = makeProfileSettingsRow(label: "Temporary Release", control: makeProfileSettingsUnitField(field: profileMouseCaptureTemporaryReleaseField, unit: "seconds"))
-        profileMouseCaptureTimingRows = [armDelayRow, temporaryReleaseRow]
+        let armDelayRow = makeProfileSettingsRow(label: "Activation Delay", control: makeProfileSettingsUnitField(field: profileVirtualCursorModeArmDelayField, unit: "seconds"))
+        let temporaryReleaseRow = makeProfileSettingsRow(label: "Temporary Release", control: makeProfileSettingsUnitField(field: profileVirtualCursorModeTemporaryReleaseField, unit: "seconds"))
+        profileVirtualCursorModeTimingRows = [armDelayRow, temporaryReleaseRow]
         stack.addArrangedSubview(armDelayRow)
         stack.addArrangedSubview(temporaryReleaseRow)
 
@@ -1305,10 +1305,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         if profileBackgroundFrostedGlassPopup.selectedItem == nil {
             profileBackgroundFrostedGlassPopup.selectItem(withTag: Profile.defaultBackgroundFrostedGlassIntensity)
         }
-        profileMouseCaptureEnabledCheckbox.state = topProfileMouseCaptureEnabled ? .on : .off
-        profileMouseCaptureArmDelayField.stringValue = "\(max(1, topProfileMouseCaptureArmDelaySeconds))"
-        profileMouseCaptureTemporaryReleaseField.stringValue = "\(max(1, topProfileMouseCaptureTemporaryReleaseSeconds))"
-        updateProfileMouseCaptureTimingAvailability()
+        profileVirtualCursorModeEnabledCheckbox.state = topProfileVirtualCursorModeEnabled ? .on : .off
+        profileVirtualCursorModeArmDelayField.stringValue = "\(max(1, topProfileVirtualCursorModeArmDelaySeconds))"
+        profileVirtualCursorModeTemporaryReleaseField.stringValue = "\(max(1, topProfileVirtualCursorModeTemporaryReleaseSeconds))"
+        updateProfileVirtualCursorModeTimingAvailability()
     }
 
     @objc private func toggleProfileSettingsPopover() {
@@ -1343,58 +1343,58 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         profile.backgroundFrostedGlassIntensity = profileBackgroundFrostedGlassPopup.selectedTag()
     }
 
-    @objc private func profileMouseCaptureEnabledChanged() {
-        topProfileMouseCaptureEnabled = profileMouseCaptureEnabledCheckbox.state == .on
-        updateProfileMouseCaptureTimingAvailability()
+    @objc private func profileVirtualCursorModeEnabledChanged() {
+        topProfileVirtualCursorModeEnabled = profileVirtualCursorModeEnabledCheckbox.state == .on
+        updateProfileVirtualCursorModeTimingAvailability()
     }
 
-    private func updateProfileMouseCaptureTimingAvailability() {
-        let isEnabled = profileMouseCaptureEnabledCheckbox.state == .on
-        profileMouseCaptureArmDelayField.isEnabled = isEnabled
-        profileMouseCaptureTemporaryReleaseField.isEnabled = isEnabled
-        profileMouseCaptureTimingRows.forEach { $0.alphaValue = isEnabled ? 1 : 0.45 }
+    private func updateProfileVirtualCursorModeTimingAvailability() {
+        let isEnabled = profileVirtualCursorModeEnabledCheckbox.state == .on
+        profileVirtualCursorModeArmDelayField.isEnabled = isEnabled
+        profileVirtualCursorModeTemporaryReleaseField.isEnabled = isEnabled
+        profileVirtualCursorModeTimingRows.forEach { $0.alphaValue = isEnabled ? 1 : 0.45 }
     }
 
-    @objc private func profileMouseCaptureTimingChanged(_ sender: NSTextField) {
-        applyProfileMouseCaptureTimingField(sender)
+    @objc private func profileVirtualCursorModeTimingChanged(_ sender: NSTextField) {
+        applyProfileVirtualCursorModeTimingField(sender)
     }
 
     func controlTextDidEndEditing(_ obj: Notification) {
         guard let field = obj.object as? NSTextField,
-              field === profileMouseCaptureArmDelayField || field === profileMouseCaptureTemporaryReleaseField else {
+              field === profileVirtualCursorModeArmDelayField || field === profileVirtualCursorModeTemporaryReleaseField else {
             return
         }
 
-        applyProfileMouseCaptureTimingField(field)
+        applyProfileVirtualCursorModeTimingField(field)
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         guard commandSelector == #selector(NSResponder.insertNewline(_:)),
               let textField = control as? NSTextField,
-              textField === profileMouseCaptureArmDelayField || textField === profileMouseCaptureTemporaryReleaseField else {
+              textField === profileVirtualCursorModeArmDelayField || textField === profileVirtualCursorModeTemporaryReleaseField else {
             return false
         }
 
         textField.stringValue = textView.string
-        applyProfileMouseCaptureTimingField(textField)
+        applyProfileVirtualCursorModeTimingField(textField)
         textField.window?.endEditing(for: textField)
         textField.window?.makeFirstResponder(nil)
         return true
     }
 
-    private func applyProfileMouseCaptureTimingFields() {
-        applyProfileMouseCaptureTimingField(profileMouseCaptureArmDelayField)
-        applyProfileMouseCaptureTimingField(profileMouseCaptureTemporaryReleaseField)
+    private func applyProfileVirtualCursorModeTimingFields() {
+        applyProfileVirtualCursorModeTimingField(profileVirtualCursorModeArmDelayField)
+        applyProfileVirtualCursorModeTimingField(profileVirtualCursorModeTemporaryReleaseField)
     }
 
-    private func applyProfileMouseCaptureTimingField(_ field: NSTextField) {
+    private func applyProfileVirtualCursorModeTimingField(_ field: NSTextField) {
         let value = clampedWholeSeconds(from: field.stringValue)
         field.stringValue = "\(value)"
 
-        if field === profileMouseCaptureArmDelayField {
-            topProfileMouseCaptureArmDelaySeconds = value
-        } else if field === profileMouseCaptureTemporaryReleaseField {
-            topProfileMouseCaptureTemporaryReleaseSeconds = value
+        if field === profileVirtualCursorModeArmDelayField {
+            topProfileVirtualCursorModeArmDelaySeconds = value
+        } else if field === profileVirtualCursorModeTemporaryReleaseField {
+            topProfileVirtualCursorModeTemporaryReleaseSeconds = value
         }
     }
 
@@ -2898,7 +2898,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             return nil
         }
 
-        if let timingData = "|mouseCapture:\(profileMouseCaptureTimingProfileID.uuidString):\(topProfileMouseCaptureEnabled):\(topProfileMouseCaptureArmDelaySeconds):\(topProfileMouseCaptureTemporaryReleaseSeconds)"
+        if let timingData = "|virtualCursorMode:\(profileVirtualCursorModeTimingProfileID.uuidString):\(topProfileVirtualCursorModeEnabled):\(topProfileVirtualCursorModeArmDelaySeconds):\(topProfileVirtualCursorModeTemporaryReleaseSeconds)"
             .data(using: .utf8) {
             data.append(timingData)
         }
