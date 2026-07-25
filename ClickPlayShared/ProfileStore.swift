@@ -233,6 +233,12 @@ final class ProfileStore {
 
     static let shared = ProfileStore()
     static let profilesDidChange = Notification.Name("profilesDidChange")
+    static let changeKindUserInfoKey = "changeKind"
+
+    enum ChangeKind {
+        case content
+        case activeSelection
+    }
 
     private(set) var profiles: [Profile] = []
     private(set) var activeProfileID: UUID
@@ -285,7 +291,7 @@ final class ProfileStore {
         }
     }
 
-    func save() {
+    func save(changeKind: ChangeKind = .content) {
         profiles = profiles.map { reconciledSubProfileSwitchButtons(in: $0.normalizedActiveSubProfileSelection()).withSanitizedButtonGroups() }
         let saved = SavedData(profiles: profiles, activeProfileID: activeProfileID)
         do {
@@ -294,7 +300,11 @@ final class ProfileStore {
         } catch {
             NSLog("[ProfileStore] ERROR: Could not save profiles to \(fileURL.path): \(error)")
         }
-        NotificationCenter.default.post(name: ProfileStore.profilesDidChange, object: nil)
+        NotificationCenter.default.post(
+            name: ProfileStore.profilesDidChange,
+            object: nil,
+            userInfo: [Self.changeKindUserInfoKey: changeKind]
+        )
     }
 
     // MARK: - Profile Resolution
@@ -315,6 +325,9 @@ final class ProfileStore {
         resolvedProfile.displayPadWidth = profile.displayPadWidth
         resolvedProfile.displayPadHeight = profile.displayPadHeight
         resolvedProfile.showPointerLocation = profile.showPointerLocation
+        resolvedProfile.virtualCursorModeEnabled = profile.virtualCursorModeEnabled
+        resolvedProfile.virtualCursorModeArmDelaySeconds = profile.virtualCursorModeArmDelaySeconds
+        resolvedProfile.virtualCursorModeTemporaryReleaseSeconds = profile.virtualCursorModeTemporaryReleaseSeconds
         return resolvedProfile
     }
 
@@ -349,7 +362,7 @@ final class ProfileStore {
         }
 
         activeProfileID = id
-        save()
+        save(changeKind: .activeSelection)
     }
 
     func upsert(_ profile: Profile) {
@@ -451,7 +464,7 @@ final class ProfileStore {
 
         activeProfileID = parentProfileID
         profiles[parentIndex].activeSubProfileID = subProfileID
-        save()
+        save(changeKind: .activeSelection)
     }
 
     func setActiveSubProfile(_ subProfileID: UUID) {
@@ -504,7 +517,7 @@ final class ProfileStore {
     }
 
     @discardableResult
-    func addSubProfile(to parentProfileID: UUID, fromTemplate: Bool) -> Profile? {
+    func addSubProfile(to parentProfileID: UUID, fromTemplate: Bool, activate: Bool = true) -> Profile? {
         guard let parentIndex = profiles.firstIndex(where: { $0.id == parentProfileID }) else { return nil }
         let nextIndex = profiles[parentIndex].subProfiles.count + 1
         var subProfile = fromTemplate
@@ -516,29 +529,37 @@ final class ProfileStore {
         subProfile.subProfiles = []
         subProfile.activeSubProfileID = nil
         profiles[parentIndex].subProfiles.append(subProfile)
-        profiles[parentIndex].activeSubProfileID = subProfile.id
+        if activate || profiles[parentIndex].activeSubProfileID == nil {
+            profiles[parentIndex].activeSubProfileID = subProfile.id
+        }
         profiles[parentIndex] = reconciledSubProfileSwitchButtons(in: profiles[parentIndex])
-        activeProfileID = parentProfileID
+        if activate {
+            activeProfileID = parentProfileID
+        }
         save()
         return subProfile
     }
 
     @discardableResult
-    func addSubProfile(_ subProfile: Profile, to parentProfileID: UUID) -> Profile? {
+    func addSubProfile(_ subProfile: Profile, to parentProfileID: UUID, activate: Bool = true) -> Profile? {
         guard let parentIndex = profiles.firstIndex(where: { $0.id == parentProfileID }) else { return nil }
         var savedSubProfile = subProfile
         savedSubProfile.subProfiles = []
         savedSubProfile.activeSubProfileID = nil
         profiles[parentIndex].subProfiles.append(savedSubProfile)
-        profiles[parentIndex].activeSubProfileID = savedSubProfile.id
+        if activate || profiles[parentIndex].activeSubProfileID == nil {
+            profiles[parentIndex].activeSubProfileID = savedSubProfile.id
+        }
         profiles[parentIndex] = reconciledSubProfileSwitchButtons(in: profiles[parentIndex])
-        activeProfileID = parentProfileID
+        if activate {
+            activeProfileID = parentProfileID
+        }
         save()
         return savedSubProfile
     }
 
     @discardableResult
-    func duplicateSubProfile(_ subProfileID: UUID, in parentProfileID: UUID) -> Profile? {
+    func duplicateSubProfile(_ subProfileID: UUID, in parentProfileID: UUID, activate: Bool = true) -> Profile? {
         guard let parentIndex = profiles.firstIndex(where: { $0.id == parentProfileID }),
               let sourceSubProfile = profiles[parentIndex].subProfiles.first(where: { $0.id == subProfileID }) else {
             return nil
@@ -546,9 +567,13 @@ final class ProfileStore {
 
         let duplicatedSubProfile = sourceSubProfile.copyWithNewIDs()
         profiles[parentIndex].subProfiles.append(duplicatedSubProfile)
-        profiles[parentIndex].activeSubProfileID = duplicatedSubProfile.id
+        if activate || profiles[parentIndex].activeSubProfileID == nil {
+            profiles[parentIndex].activeSubProfileID = duplicatedSubProfile.id
+        }
         profiles[parentIndex] = reconciledSubProfileSwitchButtons(in: profiles[parentIndex])
-        activeProfileID = parentProfileID
+        if activate {
+            activeProfileID = parentProfileID
+        }
         save()
         return duplicatedSubProfile
     }
@@ -570,7 +595,6 @@ final class ProfileStore {
 
         profiles[parentIndex].subProfiles.insert(movingSubProfile, at: destinationIndex)
         profiles[parentIndex] = reconciledSubProfileSwitchButtons(in: profiles[parentIndex])
-        activeProfileID = parentProfileID
         save()
         return true
     }
@@ -586,7 +610,6 @@ final class ProfileStore {
             profiles[parentIndex].activeSubProfileID = profiles[parentIndex].subProfiles[0].id
         }
         profiles[parentIndex] = reconciledSubProfileSwitchButtons(in: profiles[parentIndex])
-        activeProfileID = parentProfileID
         save()
     }
 

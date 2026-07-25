@@ -59,9 +59,29 @@ The gamepad overlay can show a pointer ring where the mouse is located on the ov
 
 It can be toggled from the gamepad overlay's drop-down menu and is saved per profile.
 
+### Virtual Cursor Mode
+
+Virtual Cursor Mode lets you control the gamepad overlay with mouse movement, clicks, and scrolling while the physical pointer stays in place. This can be useful with games that capture the mouse or restrict mouse movements.
+
+To make it available for a profile, open **Profile Settings** in the editor, enable **Virtual Cursor Mode**, and save the profile. You can also set the activation delay and temporary release duration there.
+
+Use the lock button in the gamepad header to start Virtual Cursor Mode. A countdown gives you time to prepare before mouse input is captured. The virtual pointer starts at the physical pointer when it is over the overlay, or in the center of the gamepad otherwise.
+
+While Virtual Cursor Mode is active:
+
+- Mouse movement moves the virtual pointer around the overlay.
+- Left click, right click, and scrolling are sent to the control under the virtual pointer.
+- The temporary release button in the header (lock icon with clock) returns normal mouse control for the configured amount of time. Click it again to resume immediately.
+- Press the unlock button in the header to exit Virtual Cursor Mode.
+- As a failsafe, press **Escape** five times, with no more than two seconds between presses, to exit Virtual Cursor Mode.
+
 ### Click Play Editor
 
 The Click Play Editor is used to create, arrange, configure, duplicate, delete, and save profiles, layers, buttons, groups, and templates. It has a profile sidebar, live preview canvas, and inspector panel. You can open the editor from either the menu bar or the gamepad overlay's menu.
+
+### Profile Settings
+
+The **Profile Settings** button in the editor's top toolbar opens settings for the selected profile. This popover contains Compatibility Mode, gamepad color, frosted glass intensity, and Virtual Cursor Mode settings.
 
 ### Profiles
 
@@ -176,6 +196,8 @@ Toggle-hold controls let a click toggle an input between held and released state
 
 Turbo controls repeatedly activate an input while active. This is useful for games that benefit from repeated inputs. A button has a green outline when it is in this state.
 
+When an input uses Turbo mode, the inspector shows a rate setting from 1 to 30 clicks per second. Turbo rates can be configured separately for primary button inputs, right-click inputs, and joystick click or scroll inputs.
+
 ### Compatibility Mode
 
 Compatibility Mode makes the `keyDown` state last for a minimum of 33 ms. This helps games accept inputs by keeping `keyDown` inside the game's input polling range. It can be useful if your mouse sends very short clicks that cause games to ignore inputs. This usually should not be an issue with standard hardware mice, but it can help with specialty mice, such as the Permobil Bluetooth mouse feature in some wheelchairs.
@@ -188,6 +210,16 @@ Joystick-style controls map directional movement to directional key bindings. Ea
 - Click-drag: click and drag anywhere on the joystick surface for directional inputs. This is the default mode.
 
 You can add a joystick from the **Add...** drop-down in the top-right of the editor. Once a joystick is added, click it to edit its properties in the inspector panel.
+
+### Nested Joystick Layers
+
+Each joystick can contain up to five layers with separate direction, click, and scroll bindings. Use the **Layer** drop-down in the joystick inspector to configure the base layer and any nested layers.
+
+Set a supported click or scroll action to **Nested Joystick** to move to the next configured joystick layer. While using capture mode, right-click returns to the previous joystick layer. Right-click releases the mouse after you return to the base layer.
+
+### Joystick Capture HUD
+
+When a joystick enters capture mode, the overlay centers that joystick and shows a HUD with its current layer, direction bindings, and click and scroll actions. Active directions and actions are highlighted so you can see what the joystick is sending without leaving capture mode.
 
 ### Joystick Axis and Scroll Behavior
 
@@ -230,7 +262,8 @@ Click Play checks GitHub Releases for the latest version. Updates are checked au
 
 ### Caveats
 
-Games that capture the mouse may not work well with Click Play. The only workaround I have found so far is to play in a Parallels VM with the "Don't optimize for games" mouse setting, but that is very demanding on the system and performance takes a hit. A Parallels subscription is also required.
+~~Games that capture the mouse may not work well with Click Play. The only workaround I have found so far is to play in a Parallels VM with the "Don't optimize for games" mouse setting, but that is very demanding on the system and performance takes a hit. A Parallels subscription is also required.~~
+Virtual Cursor Mode fixed this for every game I tested.
 
 Input latency can vary by game and system. In my most recent test, I measured about the same amount of latency as a DualShock 4 over Bluetooth, so you may not notice any. Let me know what it feels like for you; I will keep trying to improve it as much as I can.
 
@@ -286,11 +319,15 @@ Defines the borderless non-activating `NSPanel` that hosts the gamepad. It owns 
 
 #### `ClickPlay/GamepadContentView.swift`
 
-Hosts the translucent HUD, header controls, menu button, minimize/hide controls, background tint/blur, empty-space dragging, profile-based button layout, and joystick capture visibility behavior.
+Hosts the translucent HUD, header controls, menu button, minimize/hide controls, background tint/blur, empty-space dragging, profile-based button layout, Virtual Cursor Mode routing, and joystick capture HUD and visibility behavior.
 
 #### `ClickPlay/GamepadButtonView.swift`
 
-Draws and handles one live overlay control. It manages mouse events, hover/pressed visuals, keyboard actions, system events, sub-profile switches, right-click input, joystick capture, axis lock, scroll actions, toggle-hold, turbo, sequential bindings, simultaneous bindings, and release cleanup.
+Draws and handles one live overlay control. It manages mouse events, hover/pressed visuals, keyboard actions, system events, sub-profile switches, right-click input, joystick capture and nested layers, axis lock, scroll actions, toggle-hold, configurable turbo input, sequential bindings, simultaneous bindings, and release cleanup.
+
+#### `ClickPlay/VirtualCursorModeController.swift`
+
+Coordinates Virtual Cursor Mode activation, countdowns, temporary release, emergency Escape handling, and global mouse event routing while the mode is active.
 
 #### `ClickPlay/KeyInjector.swift`
 
@@ -310,11 +347,11 @@ Controls the profile/layer sidebar. It supports selection, inline rename, drag/d
 
 #### `ClickPlay/ButtonEditorViewController.swift`
 
-Implements the main profile layout editor. It owns the preview canvas, inspector panel, editable profile copy, selected buttons/groups, clipboard, snapping, alignment/distribution/equalize commands, undo, dirty-state prompts, workspace sizing, and save behavior.
+Implements the main profile layout editor. It owns the preview canvas, profile settings popover, inspector panel, editable profile copy, selected buttons/groups, clipboard, snapping, alignment/distribution/equalize commands, undo, dirty-state prompts, workspace sizing, and save behavior.
 
 #### `ClickPlay/ButtonDetailPanel.swift`
 
-Implements the inspector UI for profile settings, selected buttons, selected groups, key bindings, right-click input, joystick settings, system events, label style, shape, color, size, and delete actions.
+Implements the inspector UI for selected buttons, selected groups, key bindings, right-click input, turbo rates, joystick layers and settings, system events, label style, shape, color, size, and delete actions.
 
 #### `ClickPlay/GamepadPreviewView.swift`
 
@@ -362,7 +399,7 @@ Defines `GamepadButton`, the stable button identity used as profile storage keys
 
 #### `ClickPlayShared/Profile.swift`
 
-Defines the persisted profile model and related types: button config, button actions, interaction modes, joystick config, system events, groups, sizing, coordinates, defaults, color helpers, profile normalization, and default templates.
+Defines the persisted profile model and related types: button config, button actions, interaction modes, turbo configuration, joystick layers and config, Virtual Cursor Mode settings, system events, groups, sizing, coordinates, defaults, color helpers, profile normalization, and default templates.
 
 #### `ClickPlayShared/ProfileStore.swift`
 

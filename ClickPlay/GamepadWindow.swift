@@ -49,12 +49,18 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     private var isJoystickCaptureActive = false
     private var globalMouseMonitor: Any?
     private var localMouseMonitor: Any?
+    private var loadedActiveProfileID: UUID?
     private let dwellActionController = DwellActionController()
 
     convenience init() {
         let screen = NSScreen.main ?? NSScreen.screens[0]
         var profile = ProfileStore.shared.activeResolvedProfile
         profile.name = ProfileStore.shared.activeProfile.name
+        VirtualCursorModeController.shared.configureMode(
+            isAvailable: profile.virtualCursorModeEnabled,
+            armDelaySeconds: profile.virtualCursorModeArmDelaySeconds,
+            temporaryReleaseSeconds: profile.virtualCursorModeTemporaryReleaseSeconds
+        )
         let size = GamepadContentView.windowSize(for: profile, minimized: false)
         let origin = NSPoint(
             x: screen.visibleFrame.minX + (screen.visibleFrame.width - size.width) / 2,
@@ -68,6 +74,7 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
+        loadedActiveProfileID = ProfileStore.shared.activeProfileID
 
         level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.screenSaverWindow)))
         isOpaque = false
@@ -103,6 +110,9 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
                 config: config,
                 currentMouseLocation: NSEvent.mouseLocation
             )
+        }
+        content.onVirtualCursorActivity = { [weak self] in
+            self?.noteUserActivity()
         }
         content.menuProvider = {
             (NSApp.delegate as? AppDelegate)?.makeGamepadMenu()
@@ -189,18 +199,34 @@ final class GamepadWindow: NSPanel, NSWindowDelegate {
     func releaseAllInputs() {
         dwellActionController.deactivate()
         (contentView as? GamepadContentView)?.releaseAllInputs()
+        KeyInjector.shared.releaseAllHeldKeys()
     }
 
     func reloadProfile() {
-        var profile = ProfileStore.shared.activeResolvedProfile
-        profile.name = ProfileStore.shared.activeProfile.name
+        let store = ProfileStore.shared
+        let activeProfileID = store.activeProfileID
+        var profile = store.activeResolvedProfile
+        profile.name = store.activeProfile.name
+        let preservesVirtualCursorMode = profile.virtualCursorModeEnabled
+            && VirtualCursorModeController.shared.hasModeState
+            && loadedActiveProfileID == activeProfileID
+        VirtualCursorModeController.shared.configureMode(
+            isAvailable: profile.virtualCursorModeEnabled,
+            armDelaySeconds: profile.virtualCursorModeArmDelaySeconds,
+            temporaryReleaseSeconds: profile.virtualCursorModeTemporaryReleaseSeconds
+        )
         reconcileActiveDwellAction(with: profile)
         updateResizeConstraints()
         resizeForCurrentState(using: profile)
-        (contentView as? GamepadContentView)?.reload(profile: profile, minimized: isMinimized)
+        (contentView as? GamepadContentView)?.reload(
+            profile: profile,
+            minimized: isMinimized,
+            preservesVirtualCursorMode: preservesVirtualCursorMode
+        )
         (contentView as? GamepadContentView)?.setActiveDwellButton(dwellActionController.activeButton)
         applyCurrentAlpha(animated: false)
         resetInactivityTimer()
+        loadedActiveProfileID = activeProfileID
     }
 
     @objc private func hideOverlay() {

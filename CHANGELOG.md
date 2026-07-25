@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+## [1.5.0] - 2026-07-25
+
+### Added
+
+- Added Virtual Cursor Mode, a per-profile option for controlling the overlay while the physical pointer stays in place. [See more...](docs/index.md#virtual-cursor-mode)
+- Added up to five nested joystick layers that can be switched with joystick click and scroll actions. [See more...](docs/index.md#nested-joystick-layers)
+- Added an on-screen HUD that shows joystick bindings and active actions during capture. [See more...](docs/index.md#joystick-capture-hud)
+- Added configurable turbo rates from 1 to 30 clicks per second for buttons, right-click actions, and joystick inputs. [See more...](docs/index.md#turbo-mode)
+
+### Changed
+
+- Profile settings are now grouped in a toolbar popover in the editor. [See more...](docs/index.md#profile-settings)
+
 ## [1.4.0] - 2026-05-25
 
 ### Added

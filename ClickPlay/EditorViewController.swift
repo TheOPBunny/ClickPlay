@@ -49,8 +49,12 @@ final class EditorViewController: NSViewController, NSSplitViewDelegate {
             self?.savePanelLayout()
         }
 
-        profileListViewController.onProfileSelected = { [weak self] profile in
-            self?.editorViewController.load(profile: profile)
+        profileListViewController.onProfileSelected = { [weak self] profile, isTopProfileSelection, topProfileID in
+            self?.editorViewController.load(
+                profile: profile,
+                isTopProfileSelection: isTopProfileSelection,
+                topProfileID: topProfileID
+            )
         }
         profileListViewController.onProfileSelectionRequested = { [weak self] in
             self?.confirmSaveIfNeeded() ?? true
@@ -63,6 +67,20 @@ final class EditorViewController: NSViewController, NSSplitViewDelegate {
             } else {
                 ProfileStore.shared.upsert(profile)
             }
+        }
+        editorViewController.onProfileVirtualCursorModeSettingsSaved = { [weak self] profileID, enabled, armDelaySeconds, temporaryReleaseSeconds in
+            guard var profile = ProfileStore.shared.profiles.first(where: { $0.id == profileID }),
+                  profile.virtualCursorModeEnabled != enabled
+                    || profile.virtualCursorModeArmDelaySeconds != armDelaySeconds
+                    || profile.virtualCursorModeTemporaryReleaseSeconds != temporaryReleaseSeconds else {
+                return
+            }
+
+            self?.shouldSkipNextEditorRefresh = true
+            profile.virtualCursorModeEnabled = enabled
+            profile.virtualCursorModeArmDelaySeconds = armDelaySeconds
+            profile.virtualCursorModeTemporaryReleaseSeconds = temporaryReleaseSeconds
+            ProfileStore.shared.upsert(profile)
         }
 
         addChild(profileListViewController)
@@ -84,12 +102,18 @@ final class EditorViewController: NSViewController, NSSplitViewDelegate {
             forName: ProfileStore.profilesDidChange,
             object: nil,
             queue: .main
-        ) { [weak self] _ in
+        ) { [weak self] notification in
             guard let self else {
                 return
             }
 
-            self.profileListViewController.reload()
+            let changeKind = notification.userInfo?[ProfileStore.changeKindUserInfoKey] as? ProfileStore.ChangeKind ?? .content
+            if changeKind == .activeSelection {
+                self.profileListViewController.reloadPreservingSelection()
+                return
+            }
+
+            self.profileListViewController.reloadPreservingSelection()
 
             if self.shouldSkipNextEditorRefresh {
                 self.shouldSkipNextEditorRefresh = false
@@ -99,7 +123,11 @@ final class EditorViewController: NSViewController, NSSplitViewDelegate {
             self.editorViewController.refreshFromStoreIfNeeded()
         }
 
-        editorViewController.load(profile: ProfileStore.shared.activeResolvedProfile)
+        editorViewController.load(
+            profile: ProfileStore.shared.activeResolvedProfile,
+            isTopProfileSelection: true,
+            topProfileID: ProfileStore.shared.activeProfileID
+        )
     }
 
     override func viewDidLayout() {

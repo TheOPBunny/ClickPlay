@@ -3,7 +3,7 @@ import Cocoa
 /// Sidebar controller for top-level profiles and nested layers, including rename, drag/drop, templates, and undo.
 final class ProfileListViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate, NSMenuItemValidation, NSTextFieldDelegate {
 
-    var onProfileSelected: ((Profile) -> Void)?
+    var onProfileSelected: ((Profile, Bool, UUID) -> Void)?
     var onProfileSelectionRequested: (() -> Bool)?
     private typealias SidebarClipboard = (profile: Profile, isLayer: Bool)
 
@@ -60,6 +60,8 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
     private var localClipboard: SidebarClipboard?
     private var templateManagerWindowController: NSWindowController?
     private var lastSelectionChangeTime = Date.distantPast
+    private var editorSelectionProfileID: UUID?
+    private var editorSelectionParentID: UUID?
     private let renameAfterSelectionDelay: TimeInterval = 0.65
     private let sidebarDragType = NSPasteboard.PasteboardType("com.clickplay.sidebar-profile-item")
 
@@ -134,11 +136,25 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
     }
 
     func reload() {
+        reload(selectingProfileID: nil, parentID: nil)
+    }
+
+    func reloadPreservingSelection() {
+        let selectedItem = selectedSidebarItem()
+        reload(selectingProfileID: selectedItem?.profileID, parentID: selectedItem?.parentID)
+    }
+
+    private func reload(selectingProfileID profileID: UUID?, parentID: UUID?) {
         isReloadingSelection = true
         defer { isReloadingSelection = false }
 
         outlineView.reloadData()
         expandAllProfiles()
+
+        if let profileID, selectSidebarItem(profileID: profileID, parentID: parentID) {
+            return
+        }
+
         selectActiveSubProfile()
     }
 
@@ -299,7 +315,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
                 return false
             }
 
-            onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+            loadSidebarItemForEditing(profileID: draggedItem.profileID, parentID: target.parentItem.profileID)
             return true
         }
 
@@ -312,7 +328,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
             return false
         }
 
-        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        loadSidebarItemForEditing(profileID: draggedItem.profileID, parentID: nil)
         return true
     }
 
@@ -337,19 +353,23 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         lastSelectionChangeTime = Date()
 
         guard onProfileSelectionRequested?() ?? true else {
-            restoreActiveSelection()
+            restoreEditorSelection()
             return
         }
 
         if let parentID = item.parentID,
            let subProfile = subProfile(with: item.profileID, parentID: parentID) {
-            ProfileStore.shared.setActiveSubProfile(subProfile.id, in: parentID)
-            onProfileSelected?(subProfile)
+            updateEditorSelection(profileID: subProfile.id, parentID: parentID)
+            onProfileSelected?(subProfile, false, parentID)
             return
         }
 
-        ProfileStore.shared.setActive(item.profileID)
-        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        guard let profile = profile(with: item.profileID) else {
+            return
+        }
+
+        updateEditorSelection(profileID: profile.id, parentID: nil)
+        onProfileSelected?(ProfileStore.shared.resolvedProfile(for: profile), true, profile.id)
     }
 
     @objc func addBlankProfile() {
@@ -389,11 +409,11 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
             .first { $0.id == templateID }?.name ?? "Layer"
         let name = uniqueName(baseName, existingNames: existingNames)
         guard let layer = ProfileTemplateStore.shared.makeLayer(fromTemplateID: templateID, name: name),
-              ProfileStore.shared.addSubProfile(layer, to: parentID) != nil else {
+              let savedLayer = ProfileStore.shared.addSubProfile(layer, to: parentID, activate: false) else {
             return
         }
 
-        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        loadSidebarItemForEditing(profileID: savedLayer.id, parentID: parentID)
     }
 
     @objc func saveCurrentAsTemplate() {
@@ -439,17 +459,16 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
 
     private func add(profile: Profile) {
         ProfileStore.shared.upsert(profile)
-        ProfileStore.shared.setActive(profile.id)
-        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        loadSidebarItemForEditing(profileID: profile.id, parentID: nil)
     }
 
     private func addSubProfile(fromTemplate: Bool) {
         guard let parentID = selectedParentID(),
-              ProfileStore.shared.addSubProfile(to: parentID, fromTemplate: fromTemplate) != nil else {
+              let subProfile = ProfileStore.shared.addSubProfile(to: parentID, fromTemplate: fromTemplate, activate: false) else {
             return
         }
 
-        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        loadSidebarItemForEditing(profileID: subProfile.id, parentID: parentID)
     }
 
     @objc func duplicateSelection() {
@@ -458,10 +477,10 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         }
 
         if let parentID = item.parentID {
-            guard ProfileStore.shared.duplicateSubProfile(item.profileID, in: parentID) != nil else {
+            guard let duplicatedSubProfile = ProfileStore.shared.duplicateSubProfile(item.profileID, in: parentID, activate: false) else {
                 return
             }
-            onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+            loadSidebarItemForEditing(profileID: duplicatedSubProfile.id, parentID: parentID)
             return
         }
 
@@ -469,8 +488,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
             return
         }
 
-        ProfileStore.shared.setActive(duplicatedProfile.id)
-        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        loadSidebarItemForEditing(profileID: duplicatedProfile.id, parentID: nil)
     }
 
     @objc func deleteSelection() {
@@ -495,7 +513,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
             )
             ProfileStore.shared.deleteSubProfile(item.profileID, in: parentID)
             registerLayerDeleteUndo(undoContext)
-            onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+            loadNearestSubProfileForEditing(parentID: parentID, preferredIndex: index)
             return
         }
 
@@ -509,7 +527,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         )
         ProfileStore.shared.delete(item.profileID)
         registerProfileDeleteUndo(undoContext)
-        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        loadNearestProfileForEditing(preferredIndex: index)
     }
 
     @objc func cut(_ sender: Any?) {
@@ -537,8 +555,10 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
             var layer = localClipboard.profile.copyWithNewIDs()
             layer.subProfiles = []
             layer.activeSubProfileID = nil
-            _ = ProfileStore.shared.addSubProfile(layer, to: parentID)
-            onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+            guard let savedLayer = ProfileStore.shared.addSubProfile(layer, to: parentID, activate: false) else {
+                return
+            }
+            loadSidebarItemForEditing(profileID: savedLayer.id, parentID: parentID)
             return
         }
 
@@ -627,24 +647,54 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
         let activeProfile = ProfileStore.shared.activeProfile
         let selectedID = activeProfile.activeSubProfileID ?? activeProfile.subProfiles.first?.id ?? activeProfile.id
 
+        _ = selectSidebarItem(profileID: selectedID, parentID: nil)
+    }
+
+    private func selectSidebarItem(profileID: UUID, parentID: UUID?) -> Bool {
         for row in 0..<outlineView.numberOfRows {
             guard let item = outlineView.item(atRow: row) as? SidebarItem else {
                 continue
             }
 
-            if item.profileID == selectedID {
+            if item.profileID == profileID && (parentID == nil || item.parentID == parentID) {
                 outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-                return
+                updateEditorSelection(profileID: item.profileID, parentID: item.parentID)
+                return true
+            }
+        }
+
+        if parentID == nil {
+            for row in 0..<outlineView.numberOfRows {
+                guard let item = outlineView.item(atRow: row) as? SidebarItem else {
+                    continue
+                }
+
+                if item.profileID == profileID {
+                    outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+                    updateEditorSelection(profileID: item.profileID, parentID: item.parentID)
+                    return true
+                }
             }
         }
 
         outlineView.deselectAll(nil)
+        updateEditorSelection(profileID: nil, parentID: nil)
+        return false
     }
 
-    private func restoreActiveSelection() {
+    private func restoreEditorSelection() {
         isReloadingSelection = true
-        selectActiveSubProfile()
+        if let editorSelectionProfileID {
+            _ = selectSidebarItem(profileID: editorSelectionProfileID, parentID: editorSelectionParentID)
+        } else {
+            selectActiveSubProfile()
+        }
         isReloadingSelection = false
+    }
+
+    private func updateEditorSelection(profileID: UUID?, parentID: UUID?) {
+        editorSelectionProfileID = profileID
+        editorSelectionParentID = parentID
     }
 
     private func selectedParentID() -> UUID? {
@@ -657,6 +707,41 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
 
     private func selectedSidebarItem() -> SidebarItem? {
         outlineView.item(atRow: outlineView.selectedRow) as? SidebarItem
+    }
+
+    private func loadSidebarItemForEditing(profileID: UUID, parentID: UUID?) {
+        reload(selectingProfileID: profileID, parentID: parentID)
+
+        if let parentID,
+           let subProfile = subProfile(with: profileID, parentID: parentID) {
+            onProfileSelected?(subProfile, false, parentID)
+            return
+        }
+
+        guard let profile = profile(with: profileID) else {
+            return
+        }
+
+        onProfileSelected?(ProfileStore.shared.resolvedProfile(for: profile), true, profile.id)
+    }
+
+    private func loadNearestProfileForEditing(preferredIndex: Int) {
+        guard !profiles.isEmpty else {
+            return
+        }
+
+        let index = min(max(preferredIndex, 0), profiles.count - 1)
+        loadSidebarItemForEditing(profileID: profiles[index].id, parentID: nil)
+    }
+
+    private func loadNearestSubProfileForEditing(parentID: UUID, preferredIndex: Int) {
+        guard let parentProfile = profile(with: parentID), !parentProfile.subProfiles.isEmpty else {
+            loadNearestProfileForEditing(preferredIndex: 0)
+            return
+        }
+
+        let index = min(max(preferredIndex, 0), parentProfile.subProfiles.count - 1)
+        loadSidebarItemForEditing(profileID: parentProfile.subProfiles[index].id, parentID: parentID)
     }
 
     private var canDeleteSelection: Bool {
@@ -1007,7 +1092,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
             at: context.index,
             activeProfileID: context.activeProfileID
         )
-        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        loadSidebarItemForEditing(profileID: context.profile.id, parentID: nil)
         sidebarUndoManager.registerUndo(withTarget: self) { target in
             target.redoProfileDelete(context)
         }
@@ -1016,7 +1101,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
 
     private func redoProfileDelete(_ context: ProfileDeleteUndoContext) {
         ProfileStore.shared.delete(context.profile.id)
-        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        loadNearestProfileForEditing(preferredIndex: context.index)
         registerProfileDeleteUndo(context)
     }
 
@@ -1035,7 +1120,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
             activeProfileID: context.activeProfileID,
             activeSubProfileID: context.activeSubProfileID
         )
-        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        loadSidebarItemForEditing(profileID: context.layer.id, parentID: context.parentID)
         sidebarUndoManager.registerUndo(withTarget: self) { target in
             target.redoLayerDelete(context)
         }
@@ -1044,7 +1129,7 @@ final class ProfileListViewController: NSViewController, NSOutlineViewDataSource
 
     private func redoLayerDelete(_ context: LayerDeleteUndoContext) {
         ProfileStore.shared.deleteSubProfile(context.layer.id, in: context.parentID)
-        onProfileSelected?(ProfileStore.shared.activeResolvedProfile)
+        loadNearestSubProfileForEditing(parentID: context.parentID, preferredIndex: context.index)
         registerLayerDeleteUndo(context)
     }
 

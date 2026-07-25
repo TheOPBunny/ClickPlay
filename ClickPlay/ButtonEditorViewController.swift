@@ -18,7 +18,7 @@ private extension NSView {
 }
 
 /// Full profile layout editor: preview canvas, inspector, selection, clipboard, grouping, snapping, and undo.
-final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, NSSplitViewDelegate {
+final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, NSSplitViewDelegate, NSTextFieldDelegate {
 
     // Editor-only helper types keep command logic readable without becoming persisted profile state.
     private struct ClipboardButton: Codable {
@@ -168,6 +168,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     var onProfileSaved: ((Profile) -> Void)?
+    var onProfileVirtualCursorModeSettingsSaved: ((UUID, Bool, Int, Int) -> Void)?
     var onToggleSidebar: (() -> Void)?
     var onSavePanelLayout: (() -> Void)?
 
@@ -180,6 +181,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     private var maximumWorkspaceSize = ButtonEditorViewController.workspaceSize(for: NSScreen.main)
     private var profile = ProfileStore.shared.activeResolvedProfile
+    private var profileVirtualCursorModeTimingProfileID = ProfileStore.shared.activeProfileID
+    private var topProfileVirtualCursorModeEnabled = false
+    private var topProfileVirtualCursorModeArmDelaySeconds = Profile.defaultVirtualCursorModeArmDelaySeconds
+    private var topProfileVirtualCursorModeTemporaryReleaseSeconds = Profile.defaultVirtualCursorModeTemporaryReleaseSeconds
     private var canvasObjects: [CanvasButtonObject] = []
     private var selectedIDs = Set<GamepadButton>()
     private var selectedGroupID: UUID?
@@ -202,7 +207,16 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private var screenParametersObserver: NSObjectProtocol?
     private var editorMouseDownMonitor: Any?
 
-    private let compatibilityModeCheckbox = NSButton(checkboxWithTitle: "Compatibility Mode", target: nil, action: nil)
+    private let profileSettingsButton = NSButton(title: "Profile Settings", target: nil, action: nil)
+    private let profileSettingsPopover = NSPopover()
+    private let profileCompatibilityModeCheckbox = NSButton(checkboxWithTitle: "Compatibility Mode", target: nil, action: nil)
+    private let profileBackgroundColorWell = NSColorWell()
+    private let profileBackgroundResetButton = NSButton(title: "Reset", target: nil, action: nil)
+    private let profileBackgroundFrostedGlassPopup = NSPopUpButton()
+    private let profileVirtualCursorModeEnabledCheckbox = NSButton(checkboxWithTitle: "Enable Virtual Cursor Mode", target: nil, action: nil)
+    private let profileVirtualCursorModeArmDelayField = NSTextField()
+    private let profileVirtualCursorModeTemporaryReleaseField = NSTextField()
+    private var profileVirtualCursorModeTimingRows: [NSStackView] = []
     private let showGridCheckbox = NSButton(checkboxWithTitle: "Show Grid", target: nil, action: nil)
     private let snappingCheckbox = NSButton(checkboxWithTitle: "Snapping", target: nil, action: nil)
     private let groupButton = NSButton(title: "Group", target: nil, action: nil)
@@ -252,7 +266,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         buildLayout()
         installEditorFocusMonitor()
         installScreenParametersObserver()
-        load(profile: ProfileStore.shared.activeResolvedProfile)
+        load(
+            profile: ProfileStore.shared.activeResolvedProfile,
+            isTopProfileSelection: true,
+            topProfileID: ProfileStore.shared.activeProfileID
+        )
     }
 
     override func viewDidAppear() {
@@ -426,26 +444,57 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         scrollToProfileContentIfNeeded()
     }
 
-    func load(profile: Profile) {
+    func load(profile: Profile, isTopProfileSelection: Bool = false, topProfileID: UUID? = nil) {
         hasLoadedEditableProfile = false
         editorUndoManager.removeAllActions()
         selectedIDs = []
         selectedGroupID = nil
+        let timingProfile = virtualCursorModeTimingProfile(
+            for: profile,
+            topProfileID: topProfileID,
+            isTopProfileSelection: isTopProfileSelection
+        )
+        profileVirtualCursorModeTimingProfileID = timingProfile.id
+        topProfileVirtualCursorModeEnabled = timingProfile.virtualCursorModeEnabled
+        topProfileVirtualCursorModeArmDelaySeconds = timingProfile.virtualCursorModeArmDelaySeconds
+        topProfileVirtualCursorModeTemporaryReleaseSeconds = timingProfile.virtualCursorModeTemporaryReleaseSeconds
         self.profile = makeEditableProfile(from: profile)
         hasLoadedEditableProfile = true
         previewView.usesCenteredOrigin = profile.editorCoordinateMode == .centered
         clampEditableProfileToWorkspace()
         self.profile.buttonGroups = sanitizedEditorGroups(self.profile.buttonGroups)
         canvasObjects = makeCanvasObjects(from: self.profile)
-        compatibilityModeCheckbox.state = self.profile.compatibilityMode ? .on : .off
+        syncProfileSettingsControls()
         refreshFittedPadSizeFields()
         updatePreviewCanvasLayout()
         previewView.reload(objects: canvasObjects, groups: makeCanvasGroups(from: self.profile), keepSelection: false)
-        showProfileSettings()
+        clearInspector()
         updateGroupToolbarState()
         savedProfileFingerprint = currentSavedProfileFingerprint()
         prepareProfileContentScroll()
         scrollToProfileContentIfNeeded()
+    }
+
+    private func virtualCursorModeTimingProfile(
+        for profile: Profile,
+        topProfileID: UUID?,
+        isTopProfileSelection: Bool
+    ) -> Profile {
+        let store = ProfileStore.shared
+        if let topProfileID,
+           let selectedTopProfile = store.profiles.first(where: { $0.id == topProfileID }) {
+            return selectedTopProfile
+        }
+
+        if let parentProfile = store.parentProfile(containingSubProfileID: profile.id) {
+            return parentProfile
+        }
+
+        if isTopProfileSelection {
+            return store.activeProfile
+        }
+
+        return store.profiles.first(where: { $0.id == profile.id }) ?? store.activeProfile
     }
 
     func centerCanvasOnProfileContentWhenReady() {
@@ -456,11 +505,15 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     func refreshFromStoreIfNeeded() {
         if let parentProfile = ProfileStore.shared.parentProfile(containingSubProfileID: profile.id),
            let updatedProfile = parentProfile.subProfiles.first(where: { $0.id == profile.id }) {
-            load(profile: updatedProfile)
+            load(profile: updatedProfile, topProfileID: parentProfile.id)
         } else if let updatedProfile = ProfileStore.shared.profiles.first(where: { $0.id == profile.id }) {
-            load(profile: updatedProfile)
+            load(profile: updatedProfile, isTopProfileSelection: true, topProfileID: updatedProfile.id)
         } else {
-            load(profile: ProfileStore.shared.activeResolvedProfile)
+            load(
+                profile: ProfileStore.shared.activeResolvedProfile,
+                isTopProfileSelection: true,
+                topProfileID: ProfileStore.shared.activeProfileID
+            )
         }
     }
 
@@ -494,7 +547,9 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     @discardableResult
     func saveChanges() -> Bool {
-        profile.compatibilityMode = compatibilityModeCheckbox.state == .on
+        topProfileVirtualCursorModeEnabled = profileVirtualCursorModeEnabledCheckbox.state == .on
+        applyProfileVirtualCursorModeTimingFields()
+        profile.compatibilityMode = profileCompatibilityModeCheckbox.state == .on
         clampEditableProfileToWorkspace()
         profile.buttonGroups = sanitizedEditorGroups(profile.buttonGroups)
         let savedProfile = currentSavedProfile()
@@ -504,7 +559,13 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         reloadPreview(keepSelection: true)
 
         onProfileSaved?(savedProfile)
-        savedProfileFingerprint = fingerprint(for: savedProfile)
+        onProfileVirtualCursorModeSettingsSaved?(
+            profileVirtualCursorModeTimingProfileID,
+            topProfileVirtualCursorModeEnabled,
+            topProfileVirtualCursorModeArmDelaySeconds,
+            topProfileVirtualCursorModeTemporaryReleaseSeconds
+        )
+        savedProfileFingerprint = currentSavedProfileFingerprint()
         showSavedIndicator()
         return true
     }
@@ -513,8 +574,10 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         previewView.maximumWorkspaceSize = maximumWorkspaceSize
         previewView.zoomScale = canvasZoomScale
         previewCanvasView.zoomScale = canvasZoomScale
-        compatibilityModeCheckbox.target = self
-        compatibilityModeCheckbox.action = #selector(compatibilityModeChanged)
+        configureProfileSettingsPopover()
+        profileSettingsButton.bezelStyle = .rounded
+        profileSettingsButton.target = self
+        profileSettingsButton.action = #selector(toggleProfileSettingsPopover)
         showGridCheckbox.state = .on
         showGridCheckbox.target = self
         showGridCheckbox.action = #selector(showGridChanged)
@@ -553,7 +616,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
         let topBar = NSStackView(views: [
             leftSidebarToggleButton,
-            compatibilityModeCheckbox,
+            profileSettingsButton,
             showGridCheckbox,
             snappingCheckbox,
             groupButton,
@@ -592,7 +655,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             }
 
             guard selectedIDs.count == 1, let button = selectedIDs.first, let config = self.profile.buttons[button.rawValue] else {
-                self.showProfileSettings()
+                self.clearInspector()
                 return
             }
 
@@ -635,12 +698,6 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         }
         detailPanel.onGroupColorChanged = { [weak self] groupID, colorHex in
             self?.applyColor(colorHex, toGroup: groupID)
-        }
-        detailPanel.onProfileBackgroundColorChanged = { [weak self] colorHex in
-            self?.applyProfileBackgroundColor(colorHex)
-        }
-        detailPanel.onProfileBackgroundFrostedGlassIntensityChanged = { [weak self] intensity in
-            self?.applyProfileBackgroundFrostedGlassIntensity(intensity)
         }
 
         templatesDidChangeObserver = NotificationCenter.default.addObserver(
@@ -1132,9 +1189,221 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         equalizeSelectedButtons(.both)
     }
 
-    @objc private func compatibilityModeChanged() {
-        profile.compatibilityMode = compatibilityModeCheckbox.state == .on
+    private func configureProfileSettingsPopover() {
+        profileCompatibilityModeCheckbox.target = self
+        profileCompatibilityModeCheckbox.action = #selector(profileCompatibilityModeChanged)
+
+        profileVirtualCursorModeEnabledCheckbox.target = self
+        profileVirtualCursorModeEnabledCheckbox.action = #selector(profileVirtualCursorModeEnabledChanged)
+
+        profileBackgroundColorWell.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        profileBackgroundColorWell.heightAnchor.constraint(equalToConstant: 22).isActive = true
+        profileBackgroundColorWell.isContinuous = true
+        profileBackgroundColorWell.target = self
+        profileBackgroundColorWell.action = #selector(profileBackgroundColorChanged)
+        profileBackgroundColorWell.toolTip = "Gamepad background color"
+
+        profileBackgroundResetButton.bezelStyle = .rounded
+        profileBackgroundResetButton.target = self
+        profileBackgroundResetButton.action = #selector(resetProfileBackgroundColor)
+
+        profileBackgroundFrostedGlassPopup.target = self
+        profileBackgroundFrostedGlassPopup.action = #selector(profileBackgroundFrostedGlassChanged)
+        populateProfileBackgroundFrostedGlassIntensities()
+
+        [profileVirtualCursorModeArmDelayField, profileVirtualCursorModeTemporaryReleaseField].forEach { field in
+            field.bezelStyle = .roundedBezel
+            field.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+            field.widthAnchor.constraint(equalToConstant: 58).isActive = true
+            field.target = self
+            field.action = #selector(profileVirtualCursorModeTimingChanged(_:))
+            field.delegate = self
+        }
+
+        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 224))
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 12
+        stack.edgeInsets = NSEdgeInsets(top: 14, left: 14, bottom: 14, right: 14)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        let titleLabel = NSTextField(labelWithString: "Profile Settings")
+        titleLabel.font = .boldSystemFont(ofSize: 14)
+
+        let colorControls = NSStackView(views: [profileBackgroundColorWell, profileBackgroundResetButton])
+        colorControls.orientation = .horizontal
+        colorControls.alignment = .centerY
+        colorControls.spacing = 8
+
+        stack.addArrangedSubview(titleLabel)
+        stack.addArrangedSubview(profileCompatibilityModeCheckbox)
+        stack.addArrangedSubview(makeProfileSettingsRow(label: "Gamepad Color", control: colorControls))
+        stack.addArrangedSubview(makeProfileSettingsRow(label: "Frosted Glass", control: profileBackgroundFrostedGlassPopup))
+        stack.addArrangedSubview(profileVirtualCursorModeEnabledCheckbox)
+
+        let armDelayRow = makeProfileSettingsRow(label: "Activation Delay", control: makeProfileSettingsUnitField(field: profileVirtualCursorModeArmDelayField, unit: "seconds"))
+        let temporaryReleaseRow = makeProfileSettingsRow(label: "Temporary Release", control: makeProfileSettingsUnitField(field: profileVirtualCursorModeTemporaryReleaseField, unit: "seconds"))
+        profileVirtualCursorModeTimingRows = [armDelayRow, temporaryReleaseRow]
+        stack.addArrangedSubview(armDelayRow)
+        stack.addArrangedSubview(temporaryReleaseRow)
+
+        contentView.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: contentView.topAnchor),
+            stack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            stack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+        ])
+
+        let contentController = NSViewController()
+        contentController.view = contentView
+        profileSettingsPopover.contentViewController = contentController
+        profileSettingsPopover.behavior = .transient
+        profileSettingsPopover.animates = true
+    }
+
+    private func makeProfileSettingsRow(label: String, control: NSView) -> NSStackView {
+        let labelView = NSTextField(labelWithString: label)
+        labelView.font = .systemFont(ofSize: 12)
+        labelView.widthAnchor.constraint(equalToConstant: 132).isActive = true
+
+        let row = NSStackView(views: [labelView, control])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 8
+        return row
+    }
+
+    private func makeProfileSettingsUnitField(field: NSTextField, unit: String) -> NSStackView {
+        let unitLabel = NSTextField(labelWithString: unit)
+        unitLabel.font = .systemFont(ofSize: 12)
+        unitLabel.textColor = .secondaryLabelColor
+
+        let stack = NSStackView(views: [field, unitLabel])
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 6
+        return stack
+    }
+
+    private func populateProfileBackgroundFrostedGlassIntensities() {
+        profileBackgroundFrostedGlassPopup.removeAllItems()
+        profileBackgroundFrostedGlassPopup.addItem(withTitle: "Off")
+        profileBackgroundFrostedGlassPopup.lastItem?.tag = Profile.defaultBackgroundFrostedGlassIntensity
+
+        for intensity in stride(from: 10, through: 100, by: 10) {
+            profileBackgroundFrostedGlassPopup.addItem(withTitle: "\(intensity)%")
+            profileBackgroundFrostedGlassPopup.lastItem?.tag = intensity
+        }
+    }
+
+    private func syncProfileSettingsControls() {
+        profileCompatibilityModeCheckbox.state = profile.compatibilityMode ? .on : .off
+        profileBackgroundColorWell.color = NSColor(hex: profile.backgroundColorHex)
+        profileBackgroundFrostedGlassPopup.selectItem(withTag: profile.backgroundFrostedGlassIntensity)
+        if profileBackgroundFrostedGlassPopup.selectedItem == nil {
+            profileBackgroundFrostedGlassPopup.selectItem(withTag: Profile.defaultBackgroundFrostedGlassIntensity)
+        }
+        profileVirtualCursorModeEnabledCheckbox.state = topProfileVirtualCursorModeEnabled ? .on : .off
+        profileVirtualCursorModeArmDelayField.stringValue = "\(max(1, topProfileVirtualCursorModeArmDelaySeconds))"
+        profileVirtualCursorModeTemporaryReleaseField.stringValue = "\(max(1, topProfileVirtualCursorModeTemporaryReleaseSeconds))"
+        updateProfileVirtualCursorModeTimingAvailability()
+    }
+
+    @objc private func toggleProfileSettingsPopover() {
+        if profileSettingsPopover.isShown {
+            profileSettingsPopover.performClose(nil)
+            return
+        }
+
+        syncProfileSettingsControls()
+        profileSettingsPopover.show(
+            relativeTo: profileSettingsButton.bounds,
+            of: profileSettingsButton,
+            preferredEdge: .maxY
+        )
+    }
+
+    @objc private func profileCompatibilityModeChanged() {
+        profile.compatibilityMode = profileCompatibilityModeCheckbox.state == .on
         reloadPreview(keepSelection: true)
+    }
+
+    @objc private func profileBackgroundColorChanged() {
+        profile.backgroundColorHex = profileBackgroundColorWell.color.hexString
+    }
+
+    @objc private func resetProfileBackgroundColor() {
+        profileBackgroundColorWell.color = NSColor(hex: Profile.defaultBackgroundColorHex)
+        profile.backgroundColorHex = Profile.defaultBackgroundColorHex
+    }
+
+    @objc private func profileBackgroundFrostedGlassChanged() {
+        profile.backgroundFrostedGlassIntensity = profileBackgroundFrostedGlassPopup.selectedTag()
+    }
+
+    @objc private func profileVirtualCursorModeEnabledChanged() {
+        topProfileVirtualCursorModeEnabled = profileVirtualCursorModeEnabledCheckbox.state == .on
+        updateProfileVirtualCursorModeTimingAvailability()
+    }
+
+    private func updateProfileVirtualCursorModeTimingAvailability() {
+        let isEnabled = profileVirtualCursorModeEnabledCheckbox.state == .on
+        profileVirtualCursorModeArmDelayField.isEnabled = isEnabled
+        profileVirtualCursorModeTemporaryReleaseField.isEnabled = isEnabled
+        profileVirtualCursorModeTimingRows.forEach { $0.alphaValue = isEnabled ? 1 : 0.45 }
+    }
+
+    @objc private func profileVirtualCursorModeTimingChanged(_ sender: NSTextField) {
+        applyProfileVirtualCursorModeTimingField(sender)
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        guard let field = obj.object as? NSTextField,
+              field === profileVirtualCursorModeArmDelayField || field === profileVirtualCursorModeTemporaryReleaseField else {
+            return
+        }
+
+        applyProfileVirtualCursorModeTimingField(field)
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard commandSelector == #selector(NSResponder.insertNewline(_:)),
+              let textField = control as? NSTextField,
+              textField === profileVirtualCursorModeArmDelayField || textField === profileVirtualCursorModeTemporaryReleaseField else {
+            return false
+        }
+
+        textField.stringValue = textView.string
+        applyProfileVirtualCursorModeTimingField(textField)
+        textField.window?.endEditing(for: textField)
+        textField.window?.makeFirstResponder(nil)
+        return true
+    }
+
+    private func applyProfileVirtualCursorModeTimingFields() {
+        applyProfileVirtualCursorModeTimingField(profileVirtualCursorModeArmDelayField)
+        applyProfileVirtualCursorModeTimingField(profileVirtualCursorModeTemporaryReleaseField)
+    }
+
+    private func applyProfileVirtualCursorModeTimingField(_ field: NSTextField) {
+        let value = clampedWholeSeconds(from: field.stringValue)
+        field.stringValue = "\(value)"
+
+        if field === profileVirtualCursorModeArmDelayField {
+            topProfileVirtualCursorModeArmDelaySeconds = value
+        } else if field === profileVirtualCursorModeTemporaryReleaseField {
+            topProfileVirtualCursorModeTemporaryReleaseSeconds = value
+        }
+    }
+
+    private func clampedWholeSeconds(from stringValue: String) -> Int {
+        guard let parsedValue = Double(stringValue), parsedValue.isFinite else {
+            return 1
+        }
+
+        return max(1, Int(parsedValue.rounded()))
     }
 
     @objc private func showGridChanged() {
@@ -1335,7 +1604,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         self.selectedGroupID = nil
         reloadPreview(keepSelection: false)
         previewView.select(buttons: [])
-        showProfileSettings()
+        clearInspector()
         updateGroupToolbarState()
         registerGroupStateUndo(before: beforeGroups, after: profile.buttonGroups, actionName: "Ungroup Buttons")
     }
@@ -1477,7 +1746,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         updatePreviewCanvasLayout()
         canvasObjects = makeCanvasObjects(from: profile)
         reloadPreview(keepSelection: false)
-        showProfileSettings()
+        clearInspector()
     }
 
     private func deleteGroup(_ groupID: UUID) {
@@ -1604,7 +1873,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         if selection.count == 1, let button = selection.first, let config = profile.buttons[button.rawValue] {
             detailPanel.load(button: button, config: config)
         } else {
-            showProfileSettings()
+            clearInspector()
         }
     }
 
@@ -1656,22 +1925,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             return
         }
 
-        showProfileSettings()
+        clearInspector()
     }
 
-    private func showProfileSettings() {
-        detailPanel.loadProfileSettings(
-            backgroundColorHex: profile.backgroundColorHex,
-            frostedGlassIntensity: profile.backgroundFrostedGlassIntensity
-        )
-    }
-
-    private func applyProfileBackgroundColor(_ colorHex: String) {
-        profile.backgroundColorHex = colorHex
-    }
-
-    private func applyProfileBackgroundFrostedGlassIntensity(_ intensity: Int) {
-        profile.backgroundFrostedGlassIntensity = intensity
+    private func clearInspector() {
+        detailPanel.clear()
     }
 
     private func focusPreviewForEditorCommands() {
@@ -2286,7 +2544,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             previewView.select(button: button)
             detailPanel.load(button: button, config: config)
         } else {
-            showProfileSettings()
+            clearInspector()
         }
 
         editorUndoManager.registerUndo(withTarget: self) { target in
@@ -2530,7 +2788,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
                 height: config.editorHeight > 0 ? config.editorHeight : config.height
             )
         } else {
-            showProfileSettings()
+            clearInspector()
         }
     }
 
@@ -2635,7 +2893,17 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     private func currentSavedProfileFingerprint() -> Data? {
-        fingerprint(for: currentSavedProfile())
+        let profileForFingerprint = makeSavedProfile(from: profile).normalizedForEditorFingerprint()
+        guard var data = fingerprint(for: profileForFingerprint) else {
+            return nil
+        }
+
+        if let timingData = "|virtualCursorMode:\(profileVirtualCursorModeTimingProfileID.uuidString):\(topProfileVirtualCursorModeEnabled):\(topProfileVirtualCursorModeArmDelaySeconds):\(topProfileVirtualCursorModeTemporaryReleaseSeconds)"
+            .data(using: .utf8) {
+            data.append(timingData)
+        }
+
+        return data
     }
 
     private func fingerprint(for profile: Profile) -> Data? {
@@ -3201,5 +3469,75 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     private func clamp(_ value: CGFloat, min minimum: CGFloat, max maximum: CGFloat) -> CGFloat {
         Swift.min(Swift.max(value, minimum), maximum)
+    }
+}
+
+private extension Profile {
+    func normalizedForEditorFingerprint() -> Profile {
+        var normalizedProfile = self
+        var normalizedButtons: [String: ButtonConfig] = [:]
+        var remappedButtonIDs: [String: String] = [:]
+
+        for button in orderedButtonIDs {
+            guard let config = buttons[button.rawValue] else {
+                continue
+            }
+
+            let key = stableFingerprintKey(for: button)
+            normalizedButtons[key] = config
+            remappedButtonIDs[button.rawValue] = key
+        }
+
+        normalizedProfile.buttons = normalizedButtons
+        normalizedProfile.buttonGroups = Self.sanitizedFingerprintGroups(
+            buttonGroups.map { group in
+                ButtonGroup(
+                    id: group.id,
+                    name: group.name,
+                    memberButtonIDs: group.memberButtonIDs.compactMap { remappedButtonIDs[$0] }
+                )
+            },
+            validButtonIDs: Set(normalizedButtons.keys)
+        )
+        normalizedProfile.subProfiles = subProfiles.map { $0.normalizedForEditorFingerprint() }
+        return normalizedProfile
+    }
+
+    private func stableFingerprintKey(for button: GamepadButton) -> String {
+        if button.isGenerated || button.isSubProfileSwitch {
+            return button.rawValue
+        }
+
+        return "legacy:\(button.rawValue)"
+    }
+
+    private static func sanitizedFingerprintGroups(_ groups: [ButtonGroup], validButtonIDs: Set<String>) -> [ButtonGroup] {
+        var claimedButtonIDs = Set<String>()
+
+        return groups.compactMap { group in
+            var seen = Set<String>()
+            let members = group.memberButtonIDs.filter { buttonID in
+                guard validButtonIDs.contains(buttonID),
+                      !seen.contains(buttonID),
+                      !claimedButtonIDs.contains(buttonID) else {
+                    return false
+                }
+
+                seen.insert(buttonID)
+                claimedButtonIDs.insert(buttonID)
+                return true
+            }
+
+            guard members.count >= 2 else {
+                return nil
+            }
+
+            let trimmedName = group.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            return ButtonGroup(
+                id: group.id,
+                name: trimmedName.isEmpty ? "Group" : trimmedName,
+                memberButtonIDs: members
+            )
+        }
     }
 }

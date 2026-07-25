@@ -60,6 +60,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
 
     func applicationWillTerminate(_ notification: Notification) {
         editorWindowController?.flushPanelLayoutDefaults()
+        VirtualCursorModeController.shared.cancelMode(reason: "terminate")
         gamepadWindow?.releaseAllInputs()
         KeyInjector.shared.releaseAllHeldKeys()
     }
@@ -242,6 +243,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         let accessibilityItem = NSMenuItem(title: "Grant Accessibility Permission", action: #selector(openAccessibility), keyEquivalent: "")
         accessibilityItem.target = self
         menu.addItem(accessibilityItem)
+
         menu.addItem(NSMenuItem.separator())
 
         let quitItem = NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -468,21 +470,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
 
     @discardableResult
     func activateProfileIfAllowed(_ id: UUID) -> Bool {
-        guard confirmEditorNavigationIfNeeded() else {
-            rebuildMenu()
-            return false
-        }
-
         ProfileStore.shared.setActive(id)
         return true
     }
 
     @discardableResult
     func activateSubProfileIfAllowed(_ id: UUID) -> Bool {
-        guard confirmEditorNavigationIfNeeded() else {
-            return false
-        }
-
         ProfileStore.shared.setActiveSubProfile(id)
         return true
     }
@@ -633,10 +626,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDele
         default:
             return false
         }
-    }
-
-    private func confirmEditorNavigationIfNeeded() -> Bool {
-        editorWindowController?.confirmSaveIfNeeded() ?? true
     }
 
     private func templateID(from sender: NSMenuItem) -> UUID? {

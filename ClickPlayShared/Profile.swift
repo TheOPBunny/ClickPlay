@@ -8,6 +8,17 @@ enum ButtonInteractionMode: String, Codable, Equatable {
     case turbo
 }
 
+enum TurboConfiguration {
+    static let defaultClicksPerSecond = 15
+    static let minimumClicksPerSecond = 1
+    static let maximumClicksPerSecond = 30
+    static let tapDuration: TimeInterval = 0.033
+
+    static func normalizedClicksPerSecond(_ value: Int) -> Int {
+        min(max(value, minimumClicksPerSecond), maximumClicksPerSecond)
+    }
+}
+
 enum ButtonShape: String, Codable {
     case roundedRectangle
     case square
@@ -205,6 +216,37 @@ struct JoystickInputConfig: Codable, Equatable {
     var keyBindings: [ButtonKeyBinding]
     var interactionMode: ButtonInteractionMode
     var multiKeyActivationMode: MultiKeyActivationMode
+    var turboClicksPerSecond: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case keyBindings
+        case interactionMode
+        case multiKeyActivationMode
+        case turboClicksPerSecond
+    }
+
+    init(
+        keyBindings: [ButtonKeyBinding],
+        interactionMode: ButtonInteractionMode,
+        multiKeyActivationMode: MultiKeyActivationMode,
+        turboClicksPerSecond: Int = TurboConfiguration.defaultClicksPerSecond
+    ) {
+        self.keyBindings = keyBindings
+        self.interactionMode = interactionMode
+        self.multiKeyActivationMode = multiKeyActivationMode
+        self.turboClicksPerSecond = TurboConfiguration.normalizedClicksPerSecond(turboClicksPerSecond)
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        keyBindings = try container.decodeIfPresent([ButtonKeyBinding].self, forKey: .keyBindings) ?? []
+        interactionMode = try container.decodeIfPresent(ButtonInteractionMode.self, forKey: .interactionMode) ?? .momentary
+        multiKeyActivationMode = try container.decodeIfPresent(MultiKeyActivationMode.self, forKey: .multiKeyActivationMode) ?? .sequential
+        turboClicksPerSecond = TurboConfiguration.normalizedClicksPerSecond(
+            try container.decodeIfPresent(Int.self, forKey: .turboClicksPerSecond)
+                ?? TurboConfiguration.defaultClicksPerSecond
+        )
+    }
 
     static let empty = JoystickInputConfig(
         keyBindings: [],
@@ -213,10 +255,25 @@ struct JoystickInputConfig: Codable, Equatable {
     )
 }
 
+enum JoystickTriggerActionKind: String, Codable, Equatable {
+    case off
+    case keyCombo
+    case nestedJoystick
+}
+
+struct JoystickTriggerAction: Codable, Equatable {
+    var kind: JoystickTriggerActionKind
+    var input: JoystickInputConfig
+
+    static let off = JoystickTriggerAction(kind: .off, input: .empty)
+    static let nestedJoystick = JoystickTriggerAction(kind: .nestedJoystick, input: .empty)
+}
+
 enum JoystickScrollActionKind: String, Codable, Equatable {
     case off
     case axisLock
     case keyCombo
+    case nestedJoystick
 }
 
 struct JoystickScrollAction: Codable, Equatable {
@@ -225,10 +282,32 @@ struct JoystickScrollAction: Codable, Equatable {
 
     static let off = JoystickScrollAction(kind: .off, input: .empty)
     static let axisLock = JoystickScrollAction(kind: .axisLock, input: .empty)
+    static let nestedJoystick = JoystickScrollAction(kind: .nestedJoystick, input: .empty)
+}
+
+struct JoystickLayerConfig: Codable, Equatable {
+    var up: ButtonKeyBinding
+    var down: ButtonKeyBinding
+    var left: ButtonKeyBinding
+    var right: ButtonKeyBinding
+    var leftClickAction: JoystickTriggerAction
+    var scrollUpAction: JoystickScrollAction
+    var scrollDownAction: JoystickScrollAction
+
+    static let defaultBindings = JoystickLayerConfig(
+        up: ButtonKeyBinding(keyCode: 13, keyModifiers: 0),
+        down: ButtonKeyBinding(keyCode: 1, keyModifiers: 0),
+        left: ButtonKeyBinding(keyCode: 0, keyModifiers: 0),
+        right: ButtonKeyBinding(keyCode: 2, keyModifiers: 0),
+        leftClickAction: .off,
+        scrollUpAction: .off,
+        scrollDownAction: .off
+    )
 }
 
 /// Four directional bindings plus optional click/scroll behavior for joystick-style controls.
 struct JoystickConfig: Codable, Equatable {
+    static let maxLayerCount = 5
     static let defaultAxisLockHoldDuration = 5.0
     static let defaultAxisUnlockHoldDuration = 1.0
 
@@ -240,10 +319,11 @@ struct JoystickConfig: Codable, Equatable {
     var down: ButtonKeyBinding
     var left: ButtonKeyBinding
     var right: ButtonKeyBinding
-    var leftClickInput: JoystickInputConfig
-    var rightClickInput: JoystickInputConfig
+    var leftClickAction: JoystickTriggerAction
+    var rightClickAction: JoystickTriggerAction
     var scrollUpAction: JoystickScrollAction
     var scrollDownAction: JoystickScrollAction
+    var nestedLayers: [JoystickLayerConfig]
 
     private enum CodingKeys: String, CodingKey {
         case operationMode
@@ -254,10 +334,13 @@ struct JoystickConfig: Codable, Equatable {
         case down
         case left
         case right
+        case leftClickAction
+        case rightClickAction
         case leftClickInput
         case rightClickInput
         case scrollUpAction
         case scrollDownAction
+        case nestedLayers
     }
 
     static let defaultBindings = JoystickConfig(
@@ -269,10 +352,11 @@ struct JoystickConfig: Codable, Equatable {
         down: ButtonKeyBinding(keyCode: 1, keyModifiers: 0),
         left: ButtonKeyBinding(keyCode: 0, keyModifiers: 0),
         right: ButtonKeyBinding(keyCode: 2, keyModifiers: 0),
-        leftClickInput: .empty,
-        rightClickInput: .empty,
+        leftClickAction: .off,
+        rightClickAction: .off,
         scrollUpAction: .off,
-        scrollDownAction: .off
+        scrollDownAction: .off,
+        nestedLayers: []
     )
 
     init(
@@ -284,10 +368,11 @@ struct JoystickConfig: Codable, Equatable {
         down: ButtonKeyBinding,
         left: ButtonKeyBinding,
         right: ButtonKeyBinding,
-        leftClickInput: JoystickInputConfig = .empty,
-        rightClickInput: JoystickInputConfig = .empty,
+        leftClickAction: JoystickTriggerAction = .off,
+        rightClickAction: JoystickTriggerAction = .off,
         scrollUpAction: JoystickScrollAction = .off,
-        scrollDownAction: JoystickScrollAction = .off
+        scrollDownAction: JoystickScrollAction = .off,
+        nestedLayers: [JoystickLayerConfig] = []
     ) {
         self.operationMode = operationMode
         self.axisLockMode = axisLockMode
@@ -297,10 +382,11 @@ struct JoystickConfig: Codable, Equatable {
         self.down = down
         self.left = left
         self.right = right
-        self.leftClickInput = leftClickInput
-        self.rightClickInput = rightClickInput
+        self.leftClickAction = leftClickAction
+        self.rightClickAction = rightClickAction
         self.scrollUpAction = scrollUpAction
         self.scrollDownAction = scrollDownAction
+        self.nestedLayers = Array(nestedLayers.prefix(Self.maxLayerCount - 1))
     }
 
     init(from decoder: Decoder) throws {
@@ -313,10 +399,47 @@ struct JoystickConfig: Codable, Equatable {
         down = try container.decode(ButtonKeyBinding.self, forKey: .down)
         left = try container.decode(ButtonKeyBinding.self, forKey: .left)
         right = try container.decode(ButtonKeyBinding.self, forKey: .right)
-        leftClickInput = try container.decodeIfPresent(JoystickInputConfig.self, forKey: .leftClickInput) ?? .empty
-        rightClickInput = try container.decodeIfPresent(JoystickInputConfig.self, forKey: .rightClickInput) ?? .empty
+        leftClickAction = try container.decodeIfPresent(JoystickTriggerAction.self, forKey: .leftClickAction)
+            ?? Self.triggerAction(fromLegacyInput: try container.decodeIfPresent(JoystickInputConfig.self, forKey: .leftClickInput))
+        rightClickAction = try container.decodeIfPresent(JoystickTriggerAction.self, forKey: .rightClickAction)
+            ?? Self.triggerAction(fromLegacyInput: try container.decodeIfPresent(JoystickInputConfig.self, forKey: .rightClickInput))
         scrollUpAction = try container.decodeIfPresent(JoystickScrollAction.self, forKey: .scrollUpAction) ?? .off
         scrollDownAction = try container.decodeIfPresent(JoystickScrollAction.self, forKey: .scrollDownAction) ?? .off
+        nestedLayers = Array(
+            (try container.decodeIfPresent([JoystickLayerConfig].self, forKey: .nestedLayers) ?? [])
+                .prefix(Self.maxLayerCount - 1)
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(operationMode, forKey: .operationMode)
+        try container.encode(axisLockMode, forKey: .axisLockMode)
+        try container.encode(axisLockHoldDuration, forKey: .axisLockHoldDuration)
+        try container.encode(axisUnlockHoldDuration, forKey: .axisUnlockHoldDuration)
+        try container.encode(up, forKey: .up)
+        try container.encode(down, forKey: .down)
+        try container.encode(left, forKey: .left)
+        try container.encode(right, forKey: .right)
+        try container.encode(leftClickAction, forKey: .leftClickAction)
+        try container.encode(rightClickAction, forKey: .rightClickAction)
+        try container.encode(legacyInput(from: leftClickAction), forKey: .leftClickInput)
+        try container.encode(legacyInput(from: rightClickAction), forKey: .rightClickInput)
+        try container.encode(scrollUpAction, forKey: .scrollUpAction)
+        try container.encode(scrollDownAction, forKey: .scrollDownAction)
+        try container.encode(Array(nestedLayers.prefix(Self.maxLayerCount - 1)), forKey: .nestedLayers)
+    }
+
+    private static func triggerAction(fromLegacyInput input: JoystickInputConfig?) -> JoystickTriggerAction {
+        guard let input, !input.keyBindings.isEmpty else {
+            return .off
+        }
+
+        return JoystickTriggerAction(kind: .keyCombo, input: input)
+    }
+
+    private func legacyInput(from action: JoystickTriggerAction) -> JoystickInputConfig {
+        action.kind == .keyCombo ? action.input : .empty
     }
 }
 
@@ -416,9 +539,11 @@ struct ButtonConfig: Codable {
     var shape: ButtonShape
     var enabled: Bool
     var interactionMode: ButtonInteractionMode
+    var turboClicksPerSecond: Int
     var rightClickKeyBindings: [ButtonKeyBinding]?
     var rightClickFallsBackToPrimary: Bool
     var rightClickInteractionMode: ButtonInteractionMode?
+    var rightClickTurboClicksPerSecond: Int
     var action: ButtonAction
     var joystick: JoystickConfig
     var systemEventIconSize: SystemEventIconSize
@@ -445,9 +570,11 @@ struct ButtonConfig: Codable {
         case shape
         case enabled
         case interactionMode
+        case turboClicksPerSecond
         case rightClickKeyBindings
         case rightClickFallsBackToPrimary
         case rightClickInteractionMode
+        case rightClickTurboClicksPerSecond
         case action
         case joystick
         case systemEventIconSize
@@ -475,9 +602,11 @@ struct ButtonConfig: Codable {
         shape: ButtonShape = .roundedRectangle,
         enabled: Bool,
         interactionMode: ButtonInteractionMode = .momentary,
+        turboClicksPerSecond: Int = TurboConfiguration.defaultClicksPerSecond,
         rightClickKeyBindings: [ButtonKeyBinding]? = nil,
         rightClickFallsBackToPrimary: Bool = true,
         rightClickInteractionMode: ButtonInteractionMode? = nil,
+        rightClickTurboClicksPerSecond: Int = TurboConfiguration.defaultClicksPerSecond,
         action: ButtonAction = .keyboard,
         joystick: JoystickConfig = .defaultBindings,
         systemEventIconSize: SystemEventIconSize = .large,
@@ -509,9 +638,11 @@ struct ButtonConfig: Codable {
         self.shape = shape
         self.enabled = enabled
         self.interactionMode = interactionMode
+        self.turboClicksPerSecond = TurboConfiguration.normalizedClicksPerSecond(turboClicksPerSecond)
         self.rightClickKeyBindings = rightClickKeyBindings?.isEmpty == true ? nil : rightClickKeyBindings
         self.rightClickFallsBackToPrimary = rightClickFallsBackToPrimary
         self.rightClickInteractionMode = rightClickInteractionMode
+        self.rightClickTurboClicksPerSecond = TurboConfiguration.normalizedClicksPerSecond(rightClickTurboClicksPerSecond)
         self.action = action
         self.joystick = joystick
         self.systemEventIconSize = systemEventIconSize
@@ -546,10 +677,18 @@ struct ButtonConfig: Codable {
         shape = try container.decodeIfPresent(ButtonShape.self, forKey: .shape) ?? .roundedRectangle
         enabled = try container.decode(Bool.self, forKey: .enabled)
         interactionMode = try container.decodeIfPresent(ButtonInteractionMode.self, forKey: .interactionMode) ?? .momentary
+        turboClicksPerSecond = TurboConfiguration.normalizedClicksPerSecond(
+            try container.decodeIfPresent(Int.self, forKey: .turboClicksPerSecond)
+                ?? TurboConfiguration.defaultClicksPerSecond
+        )
         let decodedRightClickBindings = try container.decodeIfPresent([ButtonKeyBinding].self, forKey: .rightClickKeyBindings)
         rightClickKeyBindings = decodedRightClickBindings?.isEmpty == true ? nil : decodedRightClickBindings
         rightClickFallsBackToPrimary = try container.decodeIfPresent(Bool.self, forKey: .rightClickFallsBackToPrimary) ?? true
         rightClickInteractionMode = try container.decodeIfPresent(ButtonInteractionMode.self, forKey: .rightClickInteractionMode)
+        rightClickTurboClicksPerSecond = TurboConfiguration.normalizedClicksPerSecond(
+            try container.decodeIfPresent(Int.self, forKey: .rightClickTurboClicksPerSecond)
+                ?? TurboConfiguration.defaultClicksPerSecond
+        )
         action = try container.decodeIfPresent(ButtonAction.self, forKey: .action) ?? .keyboard
         if type == .systemEvent, action.systemEvent == nil {
             action = .systemEvent(.brightnessDown)
@@ -588,9 +727,11 @@ struct ButtonConfig: Codable {
         try container.encode(shape, forKey: .shape)
         try container.encode(enabled, forKey: .enabled)
         try container.encode(interactionMode, forKey: .interactionMode)
+        try container.encode(TurboConfiguration.normalizedClicksPerSecond(turboClicksPerSecond), forKey: .turboClicksPerSecond)
         try container.encodeIfPresent(rightClickKeyBindings?.isEmpty == true ? nil : rightClickKeyBindings, forKey: .rightClickKeyBindings)
         try container.encode(rightClickFallsBackToPrimary, forKey: .rightClickFallsBackToPrimary)
         try container.encodeIfPresent(rightClickInteractionMode, forKey: .rightClickInteractionMode)
+        try container.encode(TurboConfiguration.normalizedClicksPerSecond(rightClickTurboClicksPerSecond), forKey: .rightClickTurboClicksPerSecond)
         try container.encode(action, forKey: .action)
         try container.encode(joystick, forKey: .joystick)
         try container.encode(systemEventIconSize, forKey: .systemEventIconSize)
@@ -649,6 +790,8 @@ private struct DynamicCodingKey: CodingKey {
 struct Profile: Codable, Identifiable {
     static let defaultBackgroundColorHex = "#000000"
     static let defaultBackgroundFrostedGlassIntensity = 0
+    static let defaultVirtualCursorModeArmDelaySeconds = 10
+    static let defaultVirtualCursorModeTemporaryReleaseSeconds = 15
 
     var id: UUID
     var name: String
@@ -656,6 +799,9 @@ struct Profile: Codable, Identifiable {
     var showPointerLocation: Bool
     var backgroundColorHex: String                   // "#RRGGBB"
     var backgroundFrostedGlassIntensity: Int         // 0–100
+    var virtualCursorModeEnabled: Bool
+    var virtualCursorModeArmDelaySeconds: Int
+    var virtualCursorModeTemporaryReleaseSeconds: Int
     var compatibilityMode: Bool
     var editorCoordinateMode: EditorCoordinateMode
     var padWidth: Double                             // absolute pts
@@ -674,6 +820,10 @@ struct Profile: Codable, Identifiable {
         case showPointerLocation
         case backgroundColorHex
         case backgroundFrostedGlassIntensity
+        // Preserve the original serialized keys so existing profiles remain compatible.
+        case virtualCursorModeEnabled = "mouseCaptureEnabled"
+        case virtualCursorModeArmDelaySeconds = "mouseCaptureArmDelaySeconds"
+        case virtualCursorModeTemporaryReleaseSeconds = "mouseCaptureTemporaryReleaseSeconds"
         case compatibilityMode
         case editorCoordinateMode
         case padWidth
@@ -693,6 +843,9 @@ struct Profile: Codable, Identifiable {
         showPointerLocation: Bool = false,
         backgroundColorHex: String = Profile.defaultBackgroundColorHex,
         backgroundFrostedGlassIntensity: Int = Profile.defaultBackgroundFrostedGlassIntensity,
+        virtualCursorModeEnabled: Bool = false,
+        virtualCursorModeArmDelaySeconds: Int = Profile.defaultVirtualCursorModeArmDelaySeconds,
+        virtualCursorModeTemporaryReleaseSeconds: Int = Profile.defaultVirtualCursorModeTemporaryReleaseSeconds,
         compatibilityMode: Bool = false,
         editorCoordinateMode: EditorCoordinateMode = .legacyTopLeft,
         padWidth: Double,
@@ -710,6 +863,9 @@ struct Profile: Codable, Identifiable {
         self.showPointerLocation = showPointerLocation
         self.backgroundColorHex = backgroundColorHex
         self.backgroundFrostedGlassIntensity = backgroundFrostedGlassIntensity
+        self.virtualCursorModeEnabled = virtualCursorModeEnabled
+        self.virtualCursorModeArmDelaySeconds = max(1, virtualCursorModeArmDelaySeconds)
+        self.virtualCursorModeTemporaryReleaseSeconds = max(1, virtualCursorModeTemporaryReleaseSeconds)
         self.compatibilityMode = compatibilityMode
         self.editorCoordinateMode = editorCoordinateMode
         self.padWidth = padWidth
@@ -733,6 +889,17 @@ struct Profile: Codable, Identifiable {
         let legacyFrostedGlassKey = DynamicCodingKey("background" + "S" + "moke" + "Intensity")
         backgroundFrostedGlassIntensity = try container.decodeIfPresent(Int.self, forKey: .backgroundFrostedGlassIntensity)
             ?? (try legacyContainer.decodeIfPresent(Int.self, forKey: legacyFrostedGlassKey) ?? Self.defaultBackgroundFrostedGlassIntensity)
+        virtualCursorModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .virtualCursorModeEnabled) ?? false
+        virtualCursorModeArmDelaySeconds = max(
+            1,
+            try container.decodeIfPresent(Int.self, forKey: .virtualCursorModeArmDelaySeconds)
+                ?? Self.defaultVirtualCursorModeArmDelaySeconds
+        )
+        virtualCursorModeTemporaryReleaseSeconds = max(
+            1,
+            try container.decodeIfPresent(Int.self, forKey: .virtualCursorModeTemporaryReleaseSeconds)
+                ?? Self.defaultVirtualCursorModeTemporaryReleaseSeconds
+        )
         compatibilityMode = try container.decodeIfPresent(Bool.self, forKey: .compatibilityMode) ?? false
         editorCoordinateMode = try container.decodeIfPresent(EditorCoordinateMode.self, forKey: .editorCoordinateMode) ?? .legacyTopLeft
         padWidth = try container.decode(Double.self, forKey: .padWidth)
