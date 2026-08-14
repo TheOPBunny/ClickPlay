@@ -1827,8 +1827,13 @@ final class GamepadButtonView: NSView {
             return false
         }
 
-        guard ProcessInfo.processInfo.systemUptime <= pendingJoystickParkingSuppressionDeadline else {
-            clearPendingJoystickParkingSuppression()
+        let eventTimestamp = TimeInterval(event.timestamp) / 1_000_000_000
+        let suppressionStartedAt = pendingJoystickParkingSuppressionDeadline - Self.joystickParkingSuppressionWindow
+        guard eventTimestamp >= suppressionStartedAt,
+              eventTimestamp <= pendingJoystickParkingSuppressionDeadline else {
+            if eventTimestamp > pendingJoystickParkingSuppressionDeadline {
+                clearPendingJoystickParkingSuppression()
+            }
             return false
         }
 
