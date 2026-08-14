@@ -297,7 +297,6 @@ final class GamepadButtonView: NSView {
     private var isJoystickCursorHidden = false
     private var isBackgroundCursorHidingEnabled = false
     private var isJoystickCaptureReleasePending = false
-    private var pendingJoystickCaptureReleaseShouldWarp = false
     private var lastJoystickScrollActivation: (direction: JoystickScrollDirection, time: TimeInterval)?
     private var nestedLayerScrollSuppression: (direction: JoystickScrollDirection, time: TimeInterval)?
     private var joystickAxisLockWorkItem: DispatchWorkItem?
@@ -427,7 +426,7 @@ final class GamepadButtonView: NSView {
     }
 
     func releaseIfNeeded() {
-        releaseJoystickCapture(warpCursorToCenter: false)
+        releaseJoystickCapture()
         releaseJoystickDrag()
         isHovered = false
         isSystemEventPressed = false
@@ -535,7 +534,7 @@ final class GamepadButtonView: NSView {
             if isJoystickCaptureMode {
                 if isJoystickCaptured {
                     if !returnToPreviousJoystickLayer() {
-                        releaseJoystickCapture(warpCursorToCenter: true)
+                        releaseJoystickCapture()
                     }
                 }
             } else if bounds.contains(convert(event.locationInWindow, from: nil)) {
@@ -616,7 +615,7 @@ final class GamepadButtonView: NSView {
         if config.type == .joystick {
             if isJoystickCaptureMode, isJoystickCaptured {
                 if !returnToPreviousJoystickLayer() {
-                    releaseJoystickCapture(warpCursorToCenter: true)
+                    releaseJoystickCapture()
                 }
             }
             return
@@ -997,7 +996,7 @@ final class GamepadButtonView: NSView {
         } else if virtualJoystickRightClickReturnedToPreviousLayer {
             virtualJoystickRightClickReturnedToPreviousLayer = false
         } else if activeJoystickLayerIndex == 0 {
-            releaseJoystickCapture(warpCursorToCenter: false)
+            releaseJoystickCapture()
         }
 
         return isVirtualJoystickCaptured
@@ -1008,7 +1007,7 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        releaseJoystickCapture(warpCursorToCenter: false)
+        releaseJoystickCapture()
     }
 
     private func beginJoystickCapture(with event: NSEvent) {
@@ -1025,9 +1024,8 @@ final class GamepadButtonView: NSView {
 
         isJoystickCaptured = true
         isVirtualJoystickCaptured = false
-        // Disassociation preserves relative deltas without moving the cursor. Do not warp while captured;
-        // macOS can fold a warp into a later mouse delta and briefly activate the wrong direction.
-        CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
+        // Keep the mouse associated with macOS. The event tap supplies raw deltas, and changing
+        // association from this non-activating app can leave system hover handling desynchronized.
         hideJoystickCursorIfNeeded()
         onJoystickCaptureChanged?(true)
         updateAppearance(animated: true)
@@ -1045,7 +1043,6 @@ final class GamepadButtonView: NSView {
         lastJoystickScrollActivation = nil
         nestedLayerScrollSuppression = nil
         isJoystickCaptureReleasePending = false
-        pendingJoystickCaptureReleaseShouldWarp = false
         cancelJoystickAxisLockTimer()
         joystickIdleReturnGeneration &+= 1
         lastJoystickMovementTime = ProcessInfo.processInfo.systemUptime
@@ -1088,12 +1085,11 @@ final class GamepadButtonView: NSView {
         joystickIdleReturnWorkItem = nil
         joystickIdleReturnGeneration &+= 1
         isJoystickCaptureReleasePending = false
-        pendingJoystickCaptureReleaseShouldWarp = false
         cancelJoystickAxisLockTimer()
         clearJoystickHUDFlashes()
     }
 
-    private func releaseJoystickCapture(warpCursorToCenter: Bool) {
+    private func releaseJoystickCapture() {
         guard isJoystickCaptured
             || isJoystickCaptureReleasePending
             || activeJoystickDirection != nil
@@ -1111,23 +1107,21 @@ final class GamepadButtonView: NSView {
         releaseJoystickCaptureInputs()
 
         if isJoystickCaptured {
-            finishJoystickCaptureRelease(warpCursorToCenter: warpCursorToCenter)
+            finishJoystickCaptureRelease()
         } else {
             isJoystickCaptureReleasePending = false
-            pendingJoystickCaptureReleaseShouldWarp = false
         }
 
         updateAppearance(animated: true)
     }
 
-    private func beginDeferredJoystickCaptureRelease(warpCursorToCenter: Bool) {
+    private func beginDeferredJoystickCaptureRelease() {
         guard isJoystickCaptured else {
             return
         }
 
         releaseJoystickCaptureInputs()
         isJoystickCaptureReleasePending = true
-        pendingJoystickCaptureReleaseShouldWarp = pendingJoystickCaptureReleaseShouldWarp || warpCursorToCenter
         updateAppearance(animated: true)
         debugLog("[Button \(button.rawValue)] joystickCaptureReleasePending")
     }
@@ -1137,13 +1131,12 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        let shouldWarpCursorToCenter = pendingJoystickCaptureReleaseShouldWarp
         DispatchQueue.main.async { [weak self] in
             guard let self, self.isJoystickCaptureReleasePending else {
                 return
             }
 
-            self.finishJoystickCaptureRelease(warpCursorToCenter: shouldWarpCursorToCenter)
+            self.finishJoystickCaptureRelease()
             self.updateAppearance(animated: true)
         }
     }
@@ -1223,10 +1216,9 @@ final class GamepadButtonView: NSView {
         debugLog("[Button \(button.rawValue)] joystickLayer=\(currentJoystickLayerDisplayIndex)")
     }
 
-    private func finishJoystickCaptureRelease(warpCursorToCenter: Bool) {
+    private func finishJoystickCaptureRelease() {
         guard isJoystickCaptured else {
             isJoystickCaptureReleasePending = false
-            pendingJoystickCaptureReleaseShouldWarp = false
             return
         }
 
@@ -1235,14 +1227,9 @@ final class GamepadButtonView: NSView {
         isVirtualJoystickCaptured = false
         virtualJoystickRightClickReturnedToPreviousLayer = false
         isJoystickCaptureReleasePending = false
-        pendingJoystickCaptureReleaseShouldWarp = false
 
         if !wasVirtualJoystickCaptured {
             removeJoystickEventMonitors()
-            if warpCursorToCenter {
-                warpCursorToJoystickCenter()
-            }
-            reassociateMouseAndCursorAfterJoystickCaptureRelease()
             unhideJoystickCursorIfNeeded()
             if !isJoystickCursorHidden {
                 disableBackgroundCursorHidingIfNeeded()
@@ -1767,10 +1754,6 @@ final class GamepadButtonView: NSView {
         }
     }
 
-    private func warpCursorToJoystickCenter() {
-        warpCursor(to: CGPoint(x: bounds.midX, y: bounds.midY))
-    }
-
     // MARK: - Joystick Event Tap
 
     private static var joystickEventMask: CGEventMask {
@@ -1822,7 +1805,7 @@ final class GamepadButtonView: NSView {
                 return nil
             }
 
-            beginDeferredJoystickCaptureRelease(warpCursorToCenter: true)
+            beginDeferredJoystickCaptureRelease()
             return nil
 
         case .rightMouseUp:
@@ -2175,34 +2158,6 @@ final class GamepadButtonView: NSView {
         }
 
         handleDiscreteActivation(source: source, input: input)
-    }
-
-    private func warpCursor(to localPoint: CGPoint) {
-        guard let quartzPoint = quartzPoint(for: localPoint) else {
-            return
-        }
-
-        CGWarpMouseCursorPosition(quartzPoint)
-    }
-
-    private func reassociateMouseAndCursorAfterJoystickCaptureRelease() {
-        let result = CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
-        if result != .success {
-            errorLog("[Button \(button.rawValue)] ERROR: joystickMouseReassociationFailed code=\(result.rawValue)")
-        }
-    }
-
-    private func quartzPoint(for localPoint: CGPoint) -> CGPoint? {
-        guard let window, let screen = window.screen else {
-            return nil
-        }
-
-        let windowPoint = convert(localPoint, to: nil)
-        let screenPoint = window.convertPoint(toScreen: windowPoint)
-        return CGPoint(
-            x: screenPoint.x,
-            y: screen.frame.maxY - screenPoint.y
-        )
     }
 
     // MARK: - Press State Machine
