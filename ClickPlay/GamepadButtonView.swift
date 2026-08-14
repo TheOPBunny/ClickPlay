@@ -154,6 +154,15 @@ final class GamepadButtonView: NSView {
         case upLeft
     }
 
+    private struct JoystickBinding: Hashable {
+        let keyCode: CGKeyCode
+        let modifiersRawValue: UInt
+
+        var modifiers: NSEvent.ModifierFlags {
+            NSEvent.ModifierFlags(rawValue: modifiersRawValue)
+        }
+    }
+
     private enum JoystickVerticalDirection {
         case up
         case down
@@ -223,7 +232,7 @@ final class GamepadButtonView: NSView {
     private var activeJoystickLayerIndex = 0
     private var joystickOffset = CGPoint.zero
     private var activeJoystickDirection: JoystickDirection?
-    private var activeJoystickBindings: [(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)] = []
+    private var activeJoystickBindings: [JoystickBinding] = []
     private var lockedJoystickDirection: JoystickDirection?
     private var joystickEventTap: CFMachPort?
     private var joystickEventTapRunLoopSource: CFRunLoopSource?
@@ -1553,18 +1562,21 @@ final class GamepadButtonView: NSView {
     }
 
     private func setActiveJoystickDirection(_ direction: JoystickDirection?) {
-        releaseActiveJoystickBindings()
-        activeJoystickDirection = direction
+        let nextBindings = direction.map { uniqueJoystickBindings(bindings(for: $0)) } ?? []
+        let activeBindingSet = Set(activeJoystickBindings)
+        let nextBindingSet = Set(nextBindings)
 
-        guard let direction else {
-            return
-        }
-
-        activeJoystickBindings = uniqueInputBindings(bindings(for: direction))
-        for binding in activeJoystickBindings {
+        for binding in nextBindings where !activeBindingSet.contains(binding) {
             KeyInjector.shared.pressRaw(binding.keyCode, modifiers: binding.modifiers)
         }
-        debugLog("[Button \(button.rawValue)] joystickDirection=\(direction) bindings=\(activeJoystickBindings.map { $0.keyCode })")
+
+        for binding in activeJoystickBindings.reversed() where !nextBindingSet.contains(binding) {
+            KeyInjector.shared.releaseRaw(binding.keyCode, modifiers: binding.modifiers)
+        }
+
+        activeJoystickBindings = nextBindings
+        activeJoystickDirection = direction
+        debugLog("[Button \(button.rawValue)] joystickDirection=\(String(describing: direction)) bindings=\(activeJoystickBindings.map { $0.keyCode })")
     }
 
     private func releaseActiveJoystickBindings() {
@@ -1572,6 +1584,17 @@ final class GamepadButtonView: NSView {
             KeyInjector.shared.releaseRaw(binding.keyCode, modifiers: binding.modifiers)
         }
         activeJoystickBindings = []
+    }
+
+    private func uniqueJoystickBindings(_ bindings: [ButtonKeyBinding]) -> [JoystickBinding] {
+        var seenBindings = Set<JoystickBinding>()
+        return bindings.compactMap { binding in
+            let joystickBinding = JoystickBinding(
+                keyCode: CGKeyCode(binding.keyCode),
+                modifiersRawValue: UInt(binding.keyModifiers)
+            )
+            return seenBindings.insert(joystickBinding).inserted ? joystickBinding : nil
+        }
     }
 
     private func bindings(for direction: JoystickDirection) -> [ButtonKeyBinding] {
