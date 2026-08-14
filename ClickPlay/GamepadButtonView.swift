@@ -295,6 +295,8 @@ final class GamepadButtonView: NSView {
     private var joystickIdleReturnGeneration: UInt64 = 0
     private var lastJoystickMovementTime: TimeInterval = 0
     private var isJoystickCursorHidden = false
+    private var isBackgroundCursorHidingEnabled = false
+    private var joystickMouseAssociationGeneration: UInt64 = 0
     private var isJoystickCaptureReleasePending = false
     private var pendingJoystickCaptureReleaseShouldWarp = false
     private var lastJoystickScrollActivation: (direction: JoystickScrollDirection, time: TimeInterval)?
@@ -1024,6 +1026,7 @@ final class GamepadButtonView: NSView {
 
         isJoystickCaptured = true
         isVirtualJoystickCaptured = false
+        joystickMouseAssociationGeneration &+= 1
         // Disassociation preserves relative deltas without moving the cursor. Do not warp while captured;
         // macOS can fold a warp into a later mouse delta and briefly activate the wrong direction.
         CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
@@ -1402,10 +1405,12 @@ final class GamepadButtonView: NSView {
             errorLog("[Button \(button.rawValue)] ERROR: joystickBackgroundCursorHidingUnavailable")
             return
         }
+        isBackgroundCursorHidingEnabled = true
 
         let result = CGDisplayHideCursor(CGMainDisplayID())
         guard result == .success else {
             _ = BackgroundCursorHiding.setEnabled(false)
+            isBackgroundCursorHidingEnabled = false
             errorLog("[Button \(button.rawValue)] ERROR: joystickCursorHideFailed code=\(result.rawValue)")
             return
         }
@@ -1423,8 +1428,16 @@ final class GamepadButtonView: NSView {
             return
         }
         isJoystickCursorHidden = false
+    }
 
-        if !BackgroundCursorHiding.setEnabled(false) {
+    private func disableBackgroundCursorHidingIfNeeded() {
+        guard isBackgroundCursorHidingEnabled else {
+            return
+        }
+
+        if BackgroundCursorHiding.setEnabled(false) {
+            isBackgroundCursorHidingEnabled = false
+        } else {
             errorLog("[Button \(button.rawValue)] ERROR: joystickBackgroundCursorHidingResetFailed")
         }
     }
@@ -2172,12 +2185,40 @@ final class GamepadButtonView: NSView {
     }
 
     private func reassociateMouseAndCursorAfterJoystickCaptureRelease() {
+        joystickMouseAssociationGeneration &+= 1
+        let generation = joystickMouseAssociationGeneration
+
         CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
         refreshMouseHoverAfterJoystickCaptureRelease()
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { [weak self] in
+        scheduleMouseAndCursorReassociation(after: 0.02, generation: generation)
+        scheduleMouseAndCursorReassociation(after: 0.10, generation: generation)
+        scheduleMouseAndCursorReassociation(
+            after: 0.25,
+            generation: generation,
+            shouldDisableBackgroundCursorHiding: true
+        )
+    }
+
+    private func scheduleMouseAndCursorReassociation(
+        after delay: TimeInterval,
+        generation: UInt64,
+        shouldDisableBackgroundCursorHiding: Bool = false
+    ) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self,
+                  self.joystickMouseAssociationGeneration == generation,
+                  !self.isJoystickCaptured else {
+                return
+            }
+
             CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
-            self?.refreshMouseHoverAfterJoystickCaptureRelease()
+            self.unhideJoystickCursorIfNeeded()
+            self.refreshMouseHoverAfterJoystickCaptureRelease()
+
+            if shouldDisableBackgroundCursorHiding, !self.isJoystickCursorHidden {
+                self.disableBackgroundCursorHidingIfNeeded()
+            }
         }
     }
 
