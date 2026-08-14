@@ -2224,7 +2224,7 @@ final class GamepadButtonView: NSView {
 
     private func refreshMouseHoverAfterJoystickCaptureRelease() {
         guard let source = CGEventSource(stateID: .hidSystemState),
-              let location = quartzPoint(for: CGPoint(x: bounds.midX, y: bounds.midY)),
+              let location = CGEvent(source: nil)?.location,
               let event = CGEvent(
                 mouseEventSource: source,
                 mouseType: .mouseMoved,
@@ -2234,6 +2234,7 @@ final class GamepadButtonView: NSView {
             return
         }
 
+        source.localEventsSuppressionInterval = 0
         event.post(tap: .cghidEventTap)
     }
 
