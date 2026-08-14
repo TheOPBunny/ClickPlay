@@ -1204,6 +1204,7 @@ final class GamepadContentView: NSView {
                     view.updateConfig(
                         cfg,
                         compatibilityModeEnabled: profile.compatibilityMode,
+                        compatibilityModeDurationMilliseconds: profile.compatibilityModeDurationMilliseconds,
                         activeSubProfileID: profile.id
                     )
                 }
@@ -1213,6 +1214,7 @@ final class GamepadContentView: NSView {
                     button: button,
                     config: cfg,
                     compatibilityModeEnabled: profile.compatibilityMode,
+                    compatibilityModeDurationMilliseconds: profile.compatibilityModeDurationMilliseconds,
                     activeSubProfileID: profile.id
                 )
                 view.onJoystickCaptureChanged = { [weak self, weak view] captured in

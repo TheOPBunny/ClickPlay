@@ -130,6 +130,10 @@ final class GamepadButtonView: NSView {
         var pressedStartedAt: TimeInterval?
         var autoReleaseWorkItem: DispatchWorkItem?
         var sequenceRepeatWorkItem: DispatchWorkItem?
+        var sequentialStepWorkItem: DispatchWorkItem?
+        var sequentialPressedBinding: (keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)?
+        var sequentialGeneration: UInt64 = 0
+        var isSequentialRepeating = false
         var turboStepWorkItem: DispatchWorkItem?
         var turboPressedBindings: [(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)] = []
         var turboGeneration: UInt = 0
@@ -185,7 +189,7 @@ final class GamepadButtonView: NSView {
     }
 
     // Timing and movement constants tune joystick feel without changing the key-injection contract.
-    private static let compatibilityTapDuration = TurboConfiguration.tapDuration
+    private static let systemEventHighlightDuration = TurboConfiguration.tapDuration
     private static let joystickDeadzoneRadius: CGFloat = 18
     private static let joystickIdleReturnDelay: TimeInterval = 0.075
     private static let joystickCardinalDominanceRatio: CGFloat = 1.75
@@ -203,6 +207,7 @@ final class GamepadButtonView: NSView {
     let button: GamepadButton
     private var config: ButtonConfig
     private var compatibilityModeEnabled: Bool
+    private var compatibilityModeDurationMilliseconds: Int
     private var activeSubProfileID: UUID?
     private let primaryState = PressState()
     private let secondaryState = PressState()
@@ -267,10 +272,19 @@ final class GamepadButtonView: NSView {
     var onJoystickCaptureHUDChanged: ((JoystickCaptureHUDState?) -> Void)?
     var onDwellActionToggled: ((GamepadButton, DwellActionConfig) -> Bool)?
 
-    init(button: GamepadButton, config: ButtonConfig, compatibilityModeEnabled: Bool, activeSubProfileID: UUID?) {
+    init(
+        button: GamepadButton,
+        config: ButtonConfig,
+        compatibilityModeEnabled: Bool,
+        compatibilityModeDurationMilliseconds: Int,
+        activeSubProfileID: UUID?
+    ) {
         self.button = button
         self.config = config
         self.compatibilityModeEnabled = compatibilityModeEnabled
+        self.compatibilityModeDurationMilliseconds = Profile.normalizedCompatibilityModeDurationMilliseconds(
+            compatibilityModeDurationMilliseconds
+        )
         self.activeSubProfileID = activeSubProfileID
         super.init(frame: .zero)
         setup()
@@ -337,11 +351,19 @@ final class GamepadButtonView: NSView {
         updateJoystickLayers(baseColor: NSColor(hex: config.colorHex))
     }
 
-    func updateConfig(_ newConfig: ButtonConfig, compatibilityModeEnabled: Bool, activeSubProfileID: UUID?) {
+    func updateConfig(
+        _ newConfig: ButtonConfig,
+        compatibilityModeEnabled: Bool,
+        compatibilityModeDurationMilliseconds: Int,
+        activeSubProfileID: UUID?
+    ) {
         let wasJoystick = isJoystick
         releaseIfNeeded()
         config = newConfig
         self.compatibilityModeEnabled = compatibilityModeEnabled
+        self.compatibilityModeDurationMilliseconds = Profile.normalizedCompatibilityModeDurationMilliseconds(
+            compatibilityModeDurationMilliseconds
+        )
         self.activeSubProfileID = activeSubProfileID
         refreshVisualPalette()
         lastAppliedVisualState = nil
@@ -846,7 +868,7 @@ final class GamepadButtonView: NSView {
         updateAppearance(animated: true)
         SystemEventInjector.shared.trigger(systemEvent)
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.systemEventHighlightDuration) { [weak self] in
             guard let self else {
                 return
             }
@@ -2468,6 +2490,13 @@ final class GamepadButtonView: NSView {
         compatibilityModeEnabled && input.mode == .momentary
     }
 
+    private var compatibilityInputDuration: TimeInterval {
+        let milliseconds = Profile.normalizedCompatibilityModeDurationMilliseconds(
+            compatibilityModeDurationMilliseconds
+        )
+        return Double(milliseconds) / 1_000.0
+    }
+
     private func usesSequentialMultiKey(_ input: ResolvedInput) -> Bool {
         input.bindings.count > 1 && input.multiKeyActivationMode == .sequential
     }
@@ -2485,7 +2514,7 @@ final class GamepadButtonView: NSView {
         }
         state.autoReleaseWorkItem = workItem
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + compatibilityInputDuration, execute: workItem)
     }
 
     private func releaseCurrentPressedRespectingMinimumDuration(source: PressSource, input: ResolvedInput) {
@@ -2495,7 +2524,7 @@ final class GamepadButtonView: NSView {
         }
 
         let elapsed = ProcessInfo.processInfo.systemUptime - (state.pressedStartedAt ?? ProcessInfo.processInfo.systemUptime)
-        let remainingDuration = Self.compatibilityTapDuration - elapsed
+        let remainingDuration = compatibilityInputDuration - elapsed
         guard remainingDuration > 0 else {
             setCurrentPressed(false, source: source, input: input)
             return
@@ -2511,34 +2540,27 @@ final class GamepadButtonView: NSView {
 
     private func playSequentialBindings(source: PressSource, input: ResolvedInput) {
         let state = state(for: source)
-        state.autoReleaseWorkItem?.cancel()
-
+        stopSequentialPlayback(state)
         state.isPressed = true
         updateAppearance(animated: true)
 
         debugLog("[Button \(button.rawValue)] playSequential source=\(source) keyBindings=\(input.bindings.map(\.keyCode)) mode=\(input.mode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
-        postSequentialBindings(input)
-
-        let workItem = DispatchWorkItem { [weak self, weak state] in
-            state?.isPressed = false
-            self?.updateAppearance(animated: true)
-            state?.autoReleaseWorkItem = nil
-        }
-        state.autoReleaseWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration, execute: workItem)
+        runSequentialStep(source: source, input: input, index: 0, generation: state.sequentialGeneration)
     }
 
     private func toggleSequentialRepeat(source: PressSource, input: ResolvedInput) {
         let state = state(for: source)
-        if state.sequenceRepeatWorkItem != nil {
+        if state.isSequentialRepeating {
             stopSequentialRepeat(source: source)
             return
         }
 
+        stopSequentialPlayback(state)
         state.isPressed = true
+        state.isSequentialRepeating = true
         updateAppearance(animated: true)
         debugLog("[Button \(button.rawValue)] startSequentialRepeat source=\(source) keyBindings=\(input.bindings.map(\.keyCode))")
-        repeatSequentialBindings(source: source, input: input)
+        runSequentialStep(source: source, input: input, index: 0, generation: state.sequentialGeneration)
     }
 
     private func toggleTurboRepeat(source: PressSource, input: ResolvedInput) {
@@ -2555,30 +2577,74 @@ final class GamepadButtonView: NSView {
         beginTurboCycle(source: source, input: input)
     }
 
-    private func repeatSequentialBindings(source: PressSource, input: ResolvedInput) {
-        postSequentialBindings(input)
+    private func runSequentialStep(
+        source: PressSource,
+        input: ResolvedInput,
+        index: Int,
+        generation: UInt64
+    ) {
+        let state = state(for: source)
+        guard state.isPressed,
+              state.sequentialGeneration == generation,
+              input.bindings.indices.contains(index) else {
+            return
+        }
 
-        var workItem: DispatchWorkItem?
-        workItem = DispatchWorkItem { [weak self] in
-            guard workItem?.isCancelled == false else {
+        let binding = input.bindings[index]
+        let pressedBinding = (
+            keyCode: CGKeyCode(binding.keyCode),
+            modifiers: NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
+        )
+        state.sequentialPressedBinding = pressedBinding
+        KeyInjector.shared.pressRaw(pressedBinding.keyCode, modifiers: pressedBinding.modifiers)
+
+        let workItem = DispatchWorkItem { [weak self, weak state] in
+            guard let self, let state,
+                  state.isPressed,
+                  state.sequentialGeneration == generation else {
                 return
             }
 
-            self?.repeatSequentialBindings(source: source, input: input)
+            self.releaseSequentialBinding(state)
+            state.sequentialStepWorkItem = nil
+
+            let nextIndex = index + 1
+            if input.bindings.indices.contains(nextIndex) {
+                self.runSequentialStep(source: source, input: input, index: nextIndex, generation: generation)
+            } else if state.isSequentialRepeating {
+                self.runSequentialStep(source: source, input: input, index: 0, generation: generation)
+            } else {
+                state.isPressed = false
+                self.updateAppearance(animated: true)
+            }
         }
-        if let workItem {
-            state(for: source).sequenceRepeatWorkItem = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration, execute: workItem)
-        }
+        state.sequentialStepWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + compatibilityInputDuration, execute: workItem)
     }
 
     private func stopSequentialRepeat(source: PressSource) {
         let state = state(for: source)
-        state.sequenceRepeatWorkItem?.cancel()
-        state.sequenceRepeatWorkItem = nil
-        state.isPressed = false
+        stopSequentialPlayback(state)
         updateAppearance(animated: true)
         debugLog("[Button \(button.rawValue)] stopSequentialRepeat source=\(source)")
+    }
+
+    private func stopSequentialPlayback(_ state: PressState) {
+        state.sequentialStepWorkItem?.cancel()
+        state.sequentialStepWorkItem = nil
+        state.sequentialGeneration &+= 1
+        state.isSequentialRepeating = false
+        releaseSequentialBinding(state)
+        state.isPressed = false
+    }
+
+    private func releaseSequentialBinding(_ state: PressState) {
+        guard let binding = state.sequentialPressedBinding else {
+            return
+        }
+
+        KeyInjector.shared.releaseRaw(binding.keyCode, modifiers: binding.modifiers)
+        state.sequentialPressedBinding = nil
     }
 
     private func beginTurboCycle(source: PressSource, input: ResolvedInput) {
@@ -2701,15 +2767,6 @@ final class GamepadButtonView: NSView {
         debugLog("[Button \(button.rawValue)] stopTurboRepeat source=\(source)")
     }
 
-    private func postSequentialBindings(_ input: ResolvedInput) {
-        for binding in input.bindings {
-            let keyCode = CGKeyCode(binding.keyCode)
-            let modifiers = NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
-            KeyInjector.shared.pressRaw(keyCode, modifiers: modifiers)
-            KeyInjector.shared.releaseRaw(keyCode, modifiers: modifiers)
-        }
-    }
-
     private func setPressed(_ pressed: Bool, source: PressSource, input: ResolvedInput) {
         let state = state(for: source)
         if pressed {
@@ -2775,6 +2832,7 @@ final class GamepadButtonView: NSView {
         state.autoReleaseWorkItem = nil
         state.sequenceRepeatWorkItem?.cancel()
         state.sequenceRepeatWorkItem = nil
+        stopSequentialPlayback(state)
         state.turboStepWorkItem?.cancel()
         state.turboStepWorkItem = nil
         state.turboGeneration &+= 1

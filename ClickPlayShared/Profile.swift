@@ -808,6 +808,8 @@ struct Profile: Codable, Identifiable {
     static let defaultBackgroundFrostedGlassIntensity = 0
     static let defaultVirtualCursorModeArmDelaySeconds = 10
     static let defaultVirtualCursorModeTemporaryReleaseSeconds = 15
+    static let defaultCompatibilityModeDurationMilliseconds = 33
+    static let maximumCompatibilityModeDurationMilliseconds = 1_000
 
     var id: UUID
     var name: String
@@ -819,6 +821,7 @@ struct Profile: Codable, Identifiable {
     var virtualCursorModeArmDelaySeconds: Int
     var virtualCursorModeTemporaryReleaseSeconds: Int
     var compatibilityMode: Bool
+    var compatibilityModeDurationMilliseconds: Int
     var editorCoordinateMode: EditorCoordinateMode
     var padWidth: Double                             // absolute pts
     var padHeight: Double
@@ -841,6 +844,7 @@ struct Profile: Codable, Identifiable {
         case virtualCursorModeArmDelaySeconds = "mouseCaptureArmDelaySeconds"
         case virtualCursorModeTemporaryReleaseSeconds = "mouseCaptureTemporaryReleaseSeconds"
         case compatibilityMode
+        case compatibilityModeDurationMilliseconds
         case editorCoordinateMode
         case padWidth
         case padHeight
@@ -863,6 +867,7 @@ struct Profile: Codable, Identifiable {
         virtualCursorModeArmDelaySeconds: Int = Profile.defaultVirtualCursorModeArmDelaySeconds,
         virtualCursorModeTemporaryReleaseSeconds: Int = Profile.defaultVirtualCursorModeTemporaryReleaseSeconds,
         compatibilityMode: Bool = false,
+        compatibilityModeDurationMilliseconds: Int = Profile.defaultCompatibilityModeDurationMilliseconds,
         editorCoordinateMode: EditorCoordinateMode = .legacyTopLeft,
         padWidth: Double,
         padHeight: Double,
@@ -883,6 +888,9 @@ struct Profile: Codable, Identifiable {
         self.virtualCursorModeArmDelaySeconds = max(1, virtualCursorModeArmDelaySeconds)
         self.virtualCursorModeTemporaryReleaseSeconds = max(1, virtualCursorModeTemporaryReleaseSeconds)
         self.compatibilityMode = compatibilityMode
+        self.compatibilityModeDurationMilliseconds = Self.normalizedCompatibilityModeDurationMilliseconds(
+            compatibilityModeDurationMilliseconds
+        )
         self.editorCoordinateMode = editorCoordinateMode
         self.padWidth = padWidth
         self.padHeight = padHeight
@@ -917,6 +925,10 @@ struct Profile: Codable, Identifiable {
                 ?? Self.defaultVirtualCursorModeTemporaryReleaseSeconds
         )
         compatibilityMode = try container.decodeIfPresent(Bool.self, forKey: .compatibilityMode) ?? false
+        compatibilityModeDurationMilliseconds = Self.normalizedCompatibilityModeDurationMilliseconds(
+            try container.decodeIfPresent(Int.self, forKey: .compatibilityModeDurationMilliseconds)
+                ?? Self.defaultCompatibilityModeDurationMilliseconds
+        )
         editorCoordinateMode = try container.decodeIfPresent(EditorCoordinateMode.self, forKey: .editorCoordinateMode) ?? .legacyTopLeft
         padWidth = try container.decode(Double.self, forKey: .padWidth)
         padHeight = try container.decode(Double.self, forKey: .padHeight)
@@ -929,6 +941,10 @@ struct Profile: Codable, Identifiable {
         )
         subProfiles = try container.decodeIfPresent([Profile].self, forKey: .subProfiles) ?? []
         activeSubProfileID = try container.decodeIfPresent(UUID.self, forKey: .activeSubProfileID)
+    }
+
+    static func normalizedCompatibilityModeDurationMilliseconds(_ value: Int) -> Int {
+        min(max(1, value), maximumCompatibilityModeDurationMilliseconds)
     }
 
     var orderedButtonIDs: [GamepadButton] {

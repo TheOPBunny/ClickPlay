@@ -210,6 +210,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private let profileSettingsButton = NSButton(title: "Profile Settings", target: nil, action: nil)
     private let profileSettingsPopover = NSPopover()
     private let profileCompatibilityModeCheckbox = NSButton(checkboxWithTitle: "Compatibility Mode", target: nil, action: nil)
+    private let profileCompatibilityModeDurationField = NSTextField()
     private let profileBackgroundColorWell = NSColorWell()
     private let profileBackgroundResetButton = NSButton(title: "Reset", target: nil, action: nil)
     private let profileBackgroundFrostedGlassPopup = NSPopUpButton()
@@ -549,6 +550,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     func saveChanges() -> Bool {
         topProfileVirtualCursorModeEnabled = profileVirtualCursorModeEnabledCheckbox.state == .on
         applyProfileVirtualCursorModeTimingFields()
+        applyProfileCompatibilityModeDurationField()
         profile.compatibilityMode = profileCompatibilityModeCheckbox.state == .on
         clampEditableProfileToWorkspace()
         profile.buttonGroups = sanitizedEditorGroups(profile.buttonGroups)
@@ -1193,6 +1195,14 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
         profileCompatibilityModeCheckbox.target = self
         profileCompatibilityModeCheckbox.action = #selector(profileCompatibilityModeChanged)
 
+        profileCompatibilityModeDurationField.bezelStyle = .roundedBezel
+        profileCompatibilityModeDurationField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        profileCompatibilityModeDurationField.widthAnchor.constraint(equalToConstant: 58).isActive = true
+        profileCompatibilityModeDurationField.target = self
+        profileCompatibilityModeDurationField.action = #selector(profileCompatibilityModeDurationChanged)
+        profileCompatibilityModeDurationField.delegate = self
+        profileCompatibilityModeDurationField.toolTip = "Minimum momentary hold while Compatibility Mode is enabled, and per-key duration for sequential inputs"
+
         profileVirtualCursorModeEnabledCheckbox.target = self
         profileVirtualCursorModeEnabledCheckbox.action = #selector(profileVirtualCursorModeEnabledChanged)
 
@@ -1220,7 +1230,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
             field.delegate = self
         }
 
-        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 224))
+        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 310))
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -1238,6 +1248,19 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
         stack.addArrangedSubview(titleLabel)
         stack.addArrangedSubview(profileCompatibilityModeCheckbox)
+        stack.addArrangedSubview(
+            makeProfileSettingsRow(
+                label: "Compatibility Duration",
+                control: makeProfileSettingsUnitField(field: profileCompatibilityModeDurationField, unit: "ms")
+            )
+        )
+        let compatibilityDurationNote = NSTextField(
+            wrappingLabelWithString: "Also controls how long each sequential key is held, even when Compatibility Mode is off."
+        )
+        compatibilityDurationNote.font = .systemFont(ofSize: 11)
+        compatibilityDurationNote.textColor = .secondaryLabelColor
+        compatibilityDurationNote.preferredMaxLayoutWidth = 272
+        stack.addArrangedSubview(compatibilityDurationNote)
         stack.addArrangedSubview(makeProfileSettingsRow(label: "Gamepad Color", control: colorControls))
         stack.addArrangedSubview(makeProfileSettingsRow(label: "Frosted Glass", control: profileBackgroundFrostedGlassPopup))
         stack.addArrangedSubview(profileVirtualCursorModeEnabledCheckbox)
@@ -1300,6 +1323,7 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     private func syncProfileSettingsControls() {
         profileCompatibilityModeCheckbox.state = profile.compatibilityMode ? .on : .off
+        profileCompatibilityModeDurationField.stringValue = "\(profile.compatibilityModeDurationMilliseconds)"
         profileBackgroundColorWell.color = NSColor(hex: profile.backgroundColorHex)
         profileBackgroundFrostedGlassPopup.selectItem(withTag: profile.backgroundFrostedGlassIntensity)
         if profileBackgroundFrostedGlassPopup.selectedItem == nil {
@@ -1327,6 +1351,11 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
 
     @objc private func profileCompatibilityModeChanged() {
         profile.compatibilityMode = profileCompatibilityModeCheckbox.state == .on
+        reloadPreview(keepSelection: true)
+    }
+
+    @objc private func profileCompatibilityModeDurationChanged() {
+        applyProfileCompatibilityModeDurationField()
         reloadPreview(keepSelection: true)
     }
 
@@ -1360,23 +1389,32 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     }
 
     func controlTextDidEndEditing(_ obj: Notification) {
-        guard let field = obj.object as? NSTextField,
-              field === profileVirtualCursorModeArmDelayField || field === profileVirtualCursorModeTemporaryReleaseField else {
+        guard let field = obj.object as? NSTextField else {
             return
         }
 
-        applyProfileVirtualCursorModeTimingField(field)
+        if field === profileCompatibilityModeDurationField {
+            applyProfileCompatibilityModeDurationField()
+        } else if field === profileVirtualCursorModeArmDelayField || field === profileVirtualCursorModeTemporaryReleaseField {
+            applyProfileVirtualCursorModeTimingField(field)
+        }
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         guard commandSelector == #selector(NSResponder.insertNewline(_:)),
               let textField = control as? NSTextField,
-              textField === profileVirtualCursorModeArmDelayField || textField === profileVirtualCursorModeTemporaryReleaseField else {
+              textField === profileCompatibilityModeDurationField
+                || textField === profileVirtualCursorModeArmDelayField
+                || textField === profileVirtualCursorModeTemporaryReleaseField else {
             return false
         }
 
         textField.stringValue = textView.string
-        applyProfileVirtualCursorModeTimingField(textField)
+        if textField === profileCompatibilityModeDurationField {
+            applyProfileCompatibilityModeDurationField()
+        } else {
+            applyProfileVirtualCursorModeTimingField(textField)
+        }
         textField.window?.endEditing(for: textField)
         textField.window?.makeFirstResponder(nil)
         return true
@@ -1385,6 +1423,19 @@ final class ButtonEditorViewController: NSViewController, NSMenuItemValidation, 
     private func applyProfileVirtualCursorModeTimingFields() {
         applyProfileVirtualCursorModeTimingField(profileVirtualCursorModeArmDelayField)
         applyProfileVirtualCursorModeTimingField(profileVirtualCursorModeTemporaryReleaseField)
+    }
+
+    private func applyProfileCompatibilityModeDurationField() {
+        let fallback = profile.compatibilityModeDurationMilliseconds
+        let roundedValue: Int
+        if let parsedValue = Double(profileCompatibilityModeDurationField.stringValue), parsedValue.isFinite {
+            roundedValue = Int(parsedValue.rounded())
+        } else {
+            roundedValue = fallback
+        }
+        let value = Profile.normalizedCompatibilityModeDurationMilliseconds(roundedValue)
+        profile.compatibilityModeDurationMilliseconds = value
+        profileCompatibilityModeDurationField.stringValue = "\(value)"
     }
 
     private func applyProfileVirtualCursorModeTimingField(_ field: NSTextField) {
