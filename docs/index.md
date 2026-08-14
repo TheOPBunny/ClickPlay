@@ -211,6 +211,8 @@ Joystick-style controls map directional movement to directional key bindings. Ea
 
 You can add a joystick from the **Add...** drop-down in the top-right of the editor. Once a joystick is added, click it to edit its properties in the inspector panel.
 
+The joystick inspector includes a **Release Delay** setting from 0 to 1000 milliseconds. Newly needed direction keys are pressed immediately, while direction keys that are no longer needed are released after this delay. Shared keys stay held during diagonal changes, so moving from `W` to `W+A` presses only `A`. Leaving joystick control, hiding the overlay, or reloading a profile still releases all held directions immediately.
+
 ### Nested Joystick Layers
 
 Each joystick can contain up to five layers with separate direction, click, and scroll bindings. Use the **Layer** drop-down in the joystick inspector to configure the base layer and any nested layers.

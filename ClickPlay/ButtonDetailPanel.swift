@@ -72,6 +72,7 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
     private let joystickAxisLockModePopup = NSPopUpButton()
     private let joystickAxisLockHoldDurationField = NSTextField()
     private let joystickAxisUnlockHoldDurationField = NSTextField()
+    private let joystickReleaseDelayField = NSTextField()
     private let joystickUpClearButton = NSButton(title: "Clear", target: nil, action: nil)
     private let joystickDownClearButton = NSButton(title: "Clear", target: nil, action: nil)
     private let joystickLeftClearButton = NSButton(title: "Clear", target: nil, action: nil)
@@ -110,6 +111,7 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
     private var joystickOperationModeRow: NSStackView?
     private var joystickAxisLockModeRow: NSStackView?
     private var joystickAxisLockHoldDurationRow: NSStackView?
+    private var joystickReleaseDelayRow: NSStackView?
     private var joystickUpRow: NSStackView?
     private var joystickDownRow: NSStackView?
     private var joystickLeftRow: NSStackView?
@@ -208,6 +210,7 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         joystickAxisLockModePopup.selectItem(withTag: JoystickAxisLockMode.scrollWheel.tag)
         joystickAxisLockHoldDurationField.stringValue = String(format: "%.1f", JoystickConfig.defaultAxisLockHoldDuration)
         joystickAxisUnlockHoldDurationField.stringValue = String(format: "%.1f", JoystickConfig.defaultAxisUnlockHoldDuration)
+        joystickReleaseDelayField.stringValue = "\(JoystickConfig.defaultReleaseDelayMilliseconds)"
         joystickUpRecorder.setKeyBindings([JoystickConfig.defaultBindings.up])
         joystickDownRecorder.setKeyBindings([JoystickConfig.defaultBindings.down])
         joystickLeftRecorder.setKeyBindings([JoystickConfig.defaultBindings.left])
@@ -291,6 +294,7 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         joystickAxisLockModePopup.selectItem(withTag: config.joystick.axisLockMode.tag)
         joystickAxisLockHoldDurationField.stringValue = String(format: "%.1f", config.joystick.axisLockHoldDuration)
         joystickAxisUnlockHoldDurationField.stringValue = String(format: "%.1f", config.joystick.axisUnlockHoldDuration)
+        joystickReleaseDelayField.stringValue = "\(config.joystick.releaseDelayMilliseconds)"
         syncJoystickLayerControls(from: config.joystick)
         updateJoystickScrollActionOptions(axisLockMode: config.joystick.axisLockMode)
         updateMultiKeyActivationModeVisibility()
@@ -473,7 +477,7 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         rightClickClearButton.bezelStyle = .rounded
         rightClickClearButton.target = self
         rightClickClearButton.action = #selector(clearRightClickKey)
-        [joystickAxisLockHoldDurationField, joystickAxisUnlockHoldDurationField, dwellTimerField, dwellToleranceField].forEach { field in
+        [joystickAxisLockHoldDurationField, joystickAxisUnlockHoldDurationField, joystickReleaseDelayField, dwellTimerField, dwellToleranceField].forEach { field in
             field.bezelStyle = .roundedBezel
             field.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
             field.widthAnchor.constraint(equalToConstant: 58).isActive = true
@@ -540,7 +544,11 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         }
         joystickAxisLockModeRow = makeRow(label: "Axis Lock:", control: joystickAxisLockModePopup)
         joystickAxisLockHoldDurationRow = makeRow(label: "Lock Timer:", control: joystickAxisLockHoldDurationField)
-        [joystickAxisLockModeRow, joystickAxisLockHoldDurationRow, ].compactMap { $0 }.forEach(contentStack.addArrangedSubview)
+        joystickReleaseDelayRow = makeRow(
+            label: "Release Delay:",
+            control: makeUnitField(field: joystickReleaseDelayField, unit: "ms")
+        )
+        [joystickAxisLockModeRow, joystickAxisLockHoldDurationRow, joystickReleaseDelayRow].compactMap { $0 }.forEach(contentStack.addArrangedSubview)
         joystickUpRow = makeJoystickKeyRow(label: "Up:", recorder: joystickUpRecorder, clearButton: joystickUpClearButton)
         joystickDownRow = makeJoystickKeyRow(label: "Down:", recorder: joystickDownRecorder, clearButton: joystickDownClearButton)
         joystickLeftRow = makeJoystickKeyRow(label: "Left:", recorder: joystickLeftRecorder, clearButton: joystickLeftClearButton)
@@ -1424,6 +1432,10 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
                 from: joystickAxisUnlockHoldDurationField.stringValue,
                 fallback: config.joystick.axisUnlockHoldDuration
             )
+            config.joystick.releaseDelayMilliseconds = joystickReleaseDelayValue(
+                from: joystickReleaseDelayField.stringValue,
+                fallback: config.joystick.releaseDelayMilliseconds
+            )
             ensureNestedJoystickLayers(in: &config.joystick, through: selectedJoystickLayerIndex)
             if selectedJoystickLayerIndex == 0 {
                 config.joystick.up = joystickUpRecorder.recordedBindings.first ?? config.joystick.up
@@ -1475,6 +1487,7 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
             joystickAxisLockModePopup.selectItem(withTag: config.joystick.axisLockMode.tag)
             joystickAxisLockHoldDurationField.stringValue = String(format: "%.1f", config.joystick.axisLockHoldDuration)
             joystickAxisUnlockHoldDurationField.stringValue = String(format: "%.1f", config.joystick.axisUnlockHoldDuration)
+            joystickReleaseDelayField.stringValue = "\(config.joystick.releaseDelayMilliseconds)"
         } else {
             config.action = .keyboard
             config.interactionMode = ButtonInteractionMode(tag: interactionModePopup.selectedTag()) ?? .momentary
@@ -2072,6 +2085,7 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         joystickLayerRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickAxisLockModeRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickAxisLockHoldDurationRow?.isHidden = !showsHoldDirectionAxisLock || isProtectedSwitch
+        joystickReleaseDelayRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickUpRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickDownRow?.isHidden = !isJoystick || isProtectedSwitch
         joystickLeftRow?.isHidden = !isJoystick || isProtectedSwitch
@@ -2135,6 +2149,14 @@ final class ButtonDetailPanel: NSView, NSTextFieldDelegate {
         }
 
         return max(0.1, parsedValue)
+    }
+
+    private func joystickReleaseDelayValue(from stringValue: String, fallback: Int) -> Int {
+        guard let parsedValue = Double(stringValue), parsedValue.isFinite else {
+            return JoystickConfig.normalizedReleaseDelayMilliseconds(fallback)
+        }
+
+        return JoystickConfig.normalizedReleaseDelayMilliseconds(Int(parsedValue.rounded()))
     }
 
     private func clampedWholeSeconds(from stringValue: String) -> Int {

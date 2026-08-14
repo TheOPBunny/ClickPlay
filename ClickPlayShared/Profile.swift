@@ -310,11 +310,14 @@ struct JoystickConfig: Codable, Equatable {
     static let maxLayerCount = 5
     static let defaultAxisLockHoldDuration = 5.0
     static let defaultAxisUnlockHoldDuration = 1.0
+    static let defaultReleaseDelayMilliseconds = 0
+    static let maximumReleaseDelayMilliseconds = 1_000
 
     var operationMode: JoystickOperationMode
     var axisLockMode: JoystickAxisLockMode
     var axisLockHoldDuration: Double
     var axisUnlockHoldDuration: Double
+    var releaseDelayMilliseconds: Int
     var up: ButtonKeyBinding
     var down: ButtonKeyBinding
     var left: ButtonKeyBinding
@@ -330,6 +333,7 @@ struct JoystickConfig: Codable, Equatable {
         case axisLockMode
         case axisLockHoldDuration
         case axisUnlockHoldDuration
+        case releaseDelayMilliseconds
         case up
         case down
         case left
@@ -348,6 +352,7 @@ struct JoystickConfig: Codable, Equatable {
         axisLockMode: .scrollWheel,
         axisLockHoldDuration: defaultAxisLockHoldDuration,
         axisUnlockHoldDuration: defaultAxisUnlockHoldDuration,
+        releaseDelayMilliseconds: defaultReleaseDelayMilliseconds,
         up: ButtonKeyBinding(keyCode: 13, keyModifiers: 0),
         down: ButtonKeyBinding(keyCode: 1, keyModifiers: 0),
         left: ButtonKeyBinding(keyCode: 0, keyModifiers: 0),
@@ -364,6 +369,7 @@ struct JoystickConfig: Codable, Equatable {
         axisLockMode: JoystickAxisLockMode = .scrollWheel,
         axisLockHoldDuration: Double = JoystickConfig.defaultAxisLockHoldDuration,
         axisUnlockHoldDuration: Double = JoystickConfig.defaultAxisUnlockHoldDuration,
+        releaseDelayMilliseconds: Int = JoystickConfig.defaultReleaseDelayMilliseconds,
         up: ButtonKeyBinding,
         down: ButtonKeyBinding,
         left: ButtonKeyBinding,
@@ -378,6 +384,7 @@ struct JoystickConfig: Codable, Equatable {
         self.axisLockMode = axisLockMode
         self.axisLockHoldDuration = axisLockHoldDuration
         self.axisUnlockHoldDuration = axisUnlockHoldDuration
+        self.releaseDelayMilliseconds = Self.normalizedReleaseDelayMilliseconds(releaseDelayMilliseconds)
         self.up = up
         self.down = down
         self.left = left
@@ -395,6 +402,10 @@ struct JoystickConfig: Codable, Equatable {
         axisLockMode = try container.decodeIfPresent(JoystickAxisLockMode.self, forKey: .axisLockMode) ?? .scrollWheel
         axisLockHoldDuration = try container.decodeIfPresent(Double.self, forKey: .axisLockHoldDuration) ?? Self.defaultAxisLockHoldDuration
         axisUnlockHoldDuration = try container.decodeIfPresent(Double.self, forKey: .axisUnlockHoldDuration) ?? Self.defaultAxisUnlockHoldDuration
+        releaseDelayMilliseconds = Self.normalizedReleaseDelayMilliseconds(
+            try container.decodeIfPresent(Int.self, forKey: .releaseDelayMilliseconds)
+                ?? Self.defaultReleaseDelayMilliseconds
+        )
         up = try container.decode(ButtonKeyBinding.self, forKey: .up)
         down = try container.decode(ButtonKeyBinding.self, forKey: .down)
         left = try container.decode(ButtonKeyBinding.self, forKey: .left)
@@ -417,6 +428,7 @@ struct JoystickConfig: Codable, Equatable {
         try container.encode(axisLockMode, forKey: .axisLockMode)
         try container.encode(axisLockHoldDuration, forKey: .axisLockHoldDuration)
         try container.encode(axisUnlockHoldDuration, forKey: .axisUnlockHoldDuration)
+        try container.encode(Self.normalizedReleaseDelayMilliseconds(releaseDelayMilliseconds), forKey: .releaseDelayMilliseconds)
         try container.encode(up, forKey: .up)
         try container.encode(down, forKey: .down)
         try container.encode(left, forKey: .left)
@@ -428,6 +440,10 @@ struct JoystickConfig: Codable, Equatable {
         try container.encode(scrollUpAction, forKey: .scrollUpAction)
         try container.encode(scrollDownAction, forKey: .scrollDownAction)
         try container.encode(Array(nestedLayers.prefix(Self.maxLayerCount - 1)), forKey: .nestedLayers)
+    }
+
+    static func normalizedReleaseDelayMilliseconds(_ value: Int) -> Int {
+        min(max(0, value), maximumReleaseDelayMilliseconds)
     }
 
     private static func triggerAction(fromLegacyInput input: JoystickInputConfig?) -> JoystickTriggerAction {

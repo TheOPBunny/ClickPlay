@@ -233,6 +233,10 @@ final class GamepadButtonView: NSView {
     private var joystickOffset = CGPoint.zero
     private var activeJoystickDirection: JoystickDirection?
     private var activeJoystickBindings: [JoystickBinding] = []
+    private var heldJoystickBindings: [JoystickBinding] = []
+    private var pendingJoystickReleaseWorkItems: [JoystickBinding: DispatchWorkItem] = [:]
+    private var pendingJoystickReleaseGenerations: [JoystickBinding: UInt64] = [:]
+    private var joystickReleaseGeneration: UInt64 = 0
     private var lockedJoystickDirection: JoystickDirection?
     private var joystickEventTap: CFMachPort?
     private var joystickEventTapRunLoopSource: CFRunLoopSource?
@@ -965,10 +969,10 @@ final class GamepadButtonView: NSView {
     }
 
     private func resetJoystickCaptureStartState() {
+        releaseActiveJoystickBindings()
         activeJoystickLayerIndex = 0
         joystickOffset = .zero
         activeJoystickDirection = nil
-        activeJoystickBindings = []
         lockedJoystickDirection = nil
         requiresJoystickAxisLockNeutralBeforeLock = false
         lastJoystickAxisLockMovementTime = nil
@@ -1002,13 +1006,13 @@ final class GamepadButtonView: NSView {
     }
 
     private func resetJoystickRuntimeState() {
+        releaseActiveJoystickBindings()
         isJoystickDragActive = false
         isVirtualJoystickCaptured = false
         virtualJoystickRightClickReturnedToPreviousLayer = false
         activeJoystickLayerIndex = 0
         joystickOffset = .zero
         activeJoystickDirection = nil
-        activeJoystickBindings = []
         lockedJoystickDirection = nil
         requiresJoystickAxisLockNeutralBeforeLock = false
         lastJoystickAxisLockMovementTime = nil
@@ -1563,15 +1567,20 @@ final class GamepadButtonView: NSView {
 
     private func setActiveJoystickDirection(_ direction: JoystickDirection?) {
         let nextBindings = direction.map { uniqueJoystickBindings(bindings(for: $0)) } ?? []
-        let activeBindingSet = Set(activeJoystickBindings)
+        let heldBindingSet = Set(heldJoystickBindings)
         let nextBindingSet = Set(nextBindings)
 
-        for binding in nextBindings where !activeBindingSet.contains(binding) {
-            KeyInjector.shared.pressRaw(binding.keyCode, modifiers: binding.modifiers)
+        for binding in nextBindings {
+            if pendingJoystickReleaseWorkItems[binding] != nil {
+                cancelPendingJoystickRelease(for: binding)
+            } else if !heldBindingSet.contains(binding) {
+                KeyInjector.shared.pressRaw(binding.keyCode, modifiers: binding.modifiers)
+                heldJoystickBindings.append(binding)
+            }
         }
 
         for binding in activeJoystickBindings.reversed() where !nextBindingSet.contains(binding) {
-            KeyInjector.shared.releaseRaw(binding.keyCode, modifiers: binding.modifiers)
+            scheduleJoystickRelease(for: binding)
         }
 
         activeJoystickBindings = nextBindings
@@ -1580,10 +1589,62 @@ final class GamepadButtonView: NSView {
     }
 
     private func releaseActiveJoystickBindings() {
-        for binding in activeJoystickBindings.reversed() {
+        pendingJoystickReleaseWorkItems.values.forEach { $0.cancel() }
+        pendingJoystickReleaseWorkItems.removeAll()
+        pendingJoystickReleaseGenerations.removeAll()
+        joystickReleaseGeneration &+= 1
+
+        for binding in heldJoystickBindings.reversed() {
             KeyInjector.shared.releaseRaw(binding.keyCode, modifiers: binding.modifiers)
         }
+        heldJoystickBindings = []
         activeJoystickBindings = []
+    }
+
+    private func scheduleJoystickRelease(for binding: JoystickBinding) {
+        guard heldJoystickBindings.contains(binding), pendingJoystickReleaseWorkItems[binding] == nil else {
+            return
+        }
+
+        let delayMilliseconds = JoystickConfig.normalizedReleaseDelayMilliseconds(config.joystick.releaseDelayMilliseconds)
+        guard delayMilliseconds > 0 else {
+            releaseHeldJoystickBinding(binding)
+            return
+        }
+
+        joystickReleaseGeneration &+= 1
+        let generation = joystickReleaseGeneration
+        pendingJoystickReleaseGenerations[binding] = generation
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self,
+                  self.pendingJoystickReleaseGenerations[binding] == generation,
+                  !self.activeJoystickBindings.contains(binding) else {
+                return
+            }
+
+            self.pendingJoystickReleaseWorkItems[binding] = nil
+            self.pendingJoystickReleaseGenerations[binding] = nil
+            self.releaseHeldJoystickBinding(binding)
+        }
+        pendingJoystickReleaseWorkItems[binding] = workItem
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + (Double(delayMilliseconds) / 1_000.0),
+            execute: workItem
+        )
+    }
+
+    private func cancelPendingJoystickRelease(for binding: JoystickBinding) {
+        pendingJoystickReleaseWorkItems.removeValue(forKey: binding)?.cancel()
+        pendingJoystickReleaseGenerations[binding] = nil
+    }
+
+    private func releaseHeldJoystickBinding(_ binding: JoystickBinding) {
+        guard let heldIndex = heldJoystickBindings.firstIndex(of: binding) else {
+            return
+        }
+
+        heldJoystickBindings.remove(at: heldIndex)
+        KeyInjector.shared.releaseRaw(binding.keyCode, modifiers: binding.modifiers)
     }
 
     private func uniqueJoystickBindings(_ bindings: [ButtonKeyBinding]) -> [JoystickBinding] {
