@@ -1349,7 +1349,11 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        NSCursor.hide()
+        let result = CGDisplayHideCursor(CGMainDisplayID())
+        guard result == .success else {
+            errorLog("[Button \(button.rawValue)] ERROR: joystickCursorHideFailed code=\(result.rawValue)")
+            return
+        }
         isJoystickCursorHidden = true
     }
 
@@ -1358,7 +1362,11 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        NSCursor.unhide()
+        let result = CGDisplayShowCursor(CGMainDisplayID())
+        guard result == .success else {
+            errorLog("[Button \(button.rawValue)] ERROR: joystickCursorShowFailed code=\(result.rawValue)")
+            return
+        }
         isJoystickCursorHidden = false
     }
 
