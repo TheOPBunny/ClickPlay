@@ -296,6 +296,7 @@ final class GamepadButtonView: NSView {
     private var lastJoystickMovementTime: TimeInterval = 0
     private var isJoystickCursorHidden = false
     private var isBackgroundCursorHidingEnabled = false
+    private var joystickCaptureCursorRestoreLocation: CGPoint?
     private var isJoystickCaptureReleasePending = false
     private var lastJoystickScrollActivation: (direction: JoystickScrollDirection, time: TimeInterval)?
     private var nestedLayerScrollSuppression: (direction: JoystickScrollDirection, time: TimeInterval)?
@@ -1024,6 +1025,7 @@ final class GamepadButtonView: NSView {
 
         isJoystickCaptured = true
         isVirtualJoystickCaptured = false
+        joystickCaptureCursorRestoreLocation = event.cgEvent?.location ?? CGEvent(source: nil)?.location
         // Keep the mouse associated with macOS. The event tap supplies raw deltas, and changing
         // association from this non-activating app can leave system hover handling desynchronized.
         hideJoystickCursorIfNeeded()
@@ -1042,6 +1044,7 @@ final class GamepadButtonView: NSView {
         lastJoystickAxisLockMovementTime = nil
         lastJoystickScrollActivation = nil
         nestedLayerScrollSuppression = nil
+        joystickCaptureCursorRestoreLocation = nil
         isJoystickCaptureReleasePending = false
         cancelJoystickAxisLockTimer()
         joystickIdleReturnGeneration &+= 1
@@ -1081,6 +1084,7 @@ final class GamepadButtonView: NSView {
         lastJoystickAxisLockMovementTime = nil
         lastJoystickScrollActivation = nil
         nestedLayerScrollSuppression = nil
+        joystickCaptureCursorRestoreLocation = nil
         joystickIdleReturnWorkItem?.cancel()
         joystickIdleReturnWorkItem = nil
         joystickIdleReturnGeneration &+= 1
@@ -1224,12 +1228,20 @@ final class GamepadButtonView: NSView {
 
         isJoystickCaptured = false
         let wasVirtualJoystickCaptured = isVirtualJoystickCaptured
+        let cursorRestoreLocation = joystickCaptureCursorRestoreLocation
         isVirtualJoystickCaptured = false
+        joystickCaptureCursorRestoreLocation = nil
         virtualJoystickRightClickReturnedToPreviousLayer = false
         isJoystickCaptureReleasePending = false
 
         if !wasVirtualJoystickCaptured {
             removeJoystickEventMonitors()
+            if let cursorRestoreLocation {
+                let result = CGWarpMouseCursorPosition(cursorRestoreLocation)
+                if result != .success {
+                    errorLog("[Button \(button.rawValue)] ERROR: joystickCursorRestoreFailed code=\(result.rawValue)")
+                }
+            }
             unhideJoystickCursorIfNeeded()
             if !isJoystickCursorHidden {
                 disableBackgroundCursorHidingIfNeeded()
