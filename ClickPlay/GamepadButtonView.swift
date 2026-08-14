@@ -1,4 +1,53 @@
 import Cocoa
+import Darwin
+
+private enum BackgroundCursorHiding {
+    private typealias MainConnectionIDFunction = @convention(c) () -> Int32
+    private typealias SetConnectionPropertyFunction = @convention(c) (
+        Int32,
+        Int32,
+        UnsafeRawPointer?,
+        UnsafeRawPointer?
+    ) -> Int32
+
+    private struct Symbols {
+        let frameworkHandle: UnsafeMutableRawPointer
+        let mainConnectionID: MainConnectionIDFunction
+        let setConnectionProperty: SetConnectionPropertyFunction
+    }
+
+    private static let symbols: Symbols? = {
+        let frameworkPath = "/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight"
+        guard let frameworkHandle = dlopen(frameworkPath, RTLD_LAZY | RTLD_LOCAL),
+              let mainConnectionIDSymbol = dlsym(frameworkHandle, "CGSMainConnectionID"),
+              let setConnectionPropertySymbol = dlsym(frameworkHandle, "CGSSetConnectionProperty") else {
+            return nil
+        }
+
+        return Symbols(
+            frameworkHandle: frameworkHandle,
+            mainConnectionID: unsafeBitCast(
+                mainConnectionIDSymbol,
+                to: MainConnectionIDFunction.self
+            ),
+            setConnectionProperty: unsafeBitCast(
+                setConnectionPropertySymbol,
+                to: SetConnectionPropertyFunction.self
+            )
+        )
+    }()
+
+    static func setEnabled(_ enabled: Bool) -> Bool {
+        guard let symbols else {
+            return false
+        }
+
+        let connectionID = symbols.mainConnectionID()
+        let property = Unmanaged.passUnretained("SetsCursorInBackground" as CFString).toOpaque()
+        let value = Unmanaged.passUnretained(enabled ? kCFBooleanTrue : kCFBooleanFalse).toOpaque()
+        return symbols.setConnectionProperty(connectionID, connectionID, property, value) == 0
+    }
+}
 
 struct JoystickCaptureHUDState: Equatable {
     enum ActionAccent: Equatable {
@@ -1349,8 +1398,14 @@ final class GamepadButtonView: NSView {
             return
         }
 
+        guard BackgroundCursorHiding.setEnabled(true) else {
+            errorLog("[Button \(button.rawValue)] ERROR: joystickBackgroundCursorHidingUnavailable")
+            return
+        }
+
         let result = CGDisplayHideCursor(CGMainDisplayID())
         guard result == .success else {
+            _ = BackgroundCursorHiding.setEnabled(false)
             errorLog("[Button \(button.rawValue)] ERROR: joystickCursorHideFailed code=\(result.rawValue)")
             return
         }
@@ -1368,6 +1423,10 @@ final class GamepadButtonView: NSView {
             return
         }
         isJoystickCursorHidden = false
+
+        if !BackgroundCursorHiding.setEnabled(false) {
+            errorLog("[Button \(button.rawValue)] ERROR: joystickBackgroundCursorHidingResetFailed")
+        }
     }
 
     private func scheduleJoystickIdleReturnIfNeeded() {
