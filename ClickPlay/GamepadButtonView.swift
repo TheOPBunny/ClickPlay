@@ -296,7 +296,6 @@ final class GamepadButtonView: NSView {
     private var lastJoystickMovementTime: TimeInterval = 0
     private var isJoystickCursorHidden = false
     private var isBackgroundCursorHidingEnabled = false
-    private var joystickMouseAssociationGeneration: UInt64 = 0
     private var isJoystickCaptureReleasePending = false
     private var pendingJoystickCaptureReleaseShouldWarp = false
     private var lastJoystickScrollActivation: (direction: JoystickScrollDirection, time: TimeInterval)?
@@ -1026,7 +1025,6 @@ final class GamepadButtonView: NSView {
 
         isJoystickCaptured = true
         isVirtualJoystickCaptured = false
-        joystickMouseAssociationGeneration &+= 1
         // Disassociation preserves relative deltas without moving the cursor. Do not warp while captured;
         // macOS can fold a warp into a later mouse delta and briefly activate the wrong direction.
         CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
@@ -1246,6 +1244,9 @@ final class GamepadButtonView: NSView {
             }
             reassociateMouseAndCursorAfterJoystickCaptureRelease()
             unhideJoystickCursorIfNeeded()
+            if !isJoystickCursorHidden {
+                disableBackgroundCursorHidingIfNeeded()
+            }
         }
 
         onJoystickCaptureChanged?(false)
@@ -2185,57 +2186,10 @@ final class GamepadButtonView: NSView {
     }
 
     private func reassociateMouseAndCursorAfterJoystickCaptureRelease() {
-        joystickMouseAssociationGeneration &+= 1
-        let generation = joystickMouseAssociationGeneration
-
-        CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
-        refreshMouseHoverAfterJoystickCaptureRelease()
-
-        scheduleMouseAndCursorReassociation(after: 0.02, generation: generation)
-        scheduleMouseAndCursorReassociation(after: 0.10, generation: generation)
-        scheduleMouseAndCursorReassociation(
-            after: 0.25,
-            generation: generation,
-            shouldDisableBackgroundCursorHiding: true
-        )
-    }
-
-    private func scheduleMouseAndCursorReassociation(
-        after delay: TimeInterval,
-        generation: UInt64,
-        shouldDisableBackgroundCursorHiding: Bool = false
-    ) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self,
-                  self.joystickMouseAssociationGeneration == generation,
-                  !self.isJoystickCaptured else {
-                return
-            }
-
-            CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
-            self.unhideJoystickCursorIfNeeded()
-            self.refreshMouseHoverAfterJoystickCaptureRelease()
-
-            if shouldDisableBackgroundCursorHiding, !self.isJoystickCursorHidden {
-                self.disableBackgroundCursorHidingIfNeeded()
-            }
+        let result = CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
+        if result != .success {
+            errorLog("[Button \(button.rawValue)] ERROR: joystickMouseReassociationFailed code=\(result.rawValue)")
         }
-    }
-
-    private func refreshMouseHoverAfterJoystickCaptureRelease() {
-        guard let source = CGEventSource(stateID: .hidSystemState),
-              let location = CGEvent(source: nil)?.location,
-              let event = CGEvent(
-                mouseEventSource: source,
-                mouseType: .mouseMoved,
-                mouseCursorPosition: location,
-                mouseButton: .left
-              ) else {
-            return
-        }
-
-        source.localEventsSuppressionInterval = 0
-        event.post(tap: .cghidEventTap)
     }
 
     private func quartzPoint(for localPoint: CGPoint) -> CGPoint? {
