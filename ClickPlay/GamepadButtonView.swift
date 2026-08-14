@@ -1,4 +1,53 @@
 import Cocoa
+import Darwin
+
+private enum BackgroundCursorHiding {
+    private typealias MainConnectionIDFunction = @convention(c) () -> Int32
+    private typealias SetConnectionPropertyFunction = @convention(c) (
+        Int32,
+        Int32,
+        UnsafeRawPointer?,
+        UnsafeRawPointer?
+    ) -> Int32
+
+    private struct Symbols {
+        let frameworkHandle: UnsafeMutableRawPointer
+        let mainConnectionID: MainConnectionIDFunction
+        let setConnectionProperty: SetConnectionPropertyFunction
+    }
+
+    private static let symbols: Symbols? = {
+        let frameworkPath = "/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight"
+        guard let frameworkHandle = dlopen(frameworkPath, RTLD_LAZY | RTLD_LOCAL),
+              let mainConnectionIDSymbol = dlsym(frameworkHandle, "CGSMainConnectionID"),
+              let setConnectionPropertySymbol = dlsym(frameworkHandle, "CGSSetConnectionProperty") else {
+            return nil
+        }
+
+        return Symbols(
+            frameworkHandle: frameworkHandle,
+            mainConnectionID: unsafeBitCast(
+                mainConnectionIDSymbol,
+                to: MainConnectionIDFunction.self
+            ),
+            setConnectionProperty: unsafeBitCast(
+                setConnectionPropertySymbol,
+                to: SetConnectionPropertyFunction.self
+            )
+        )
+    }()
+
+    static func setEnabled(_ enabled: Bool) -> Bool {
+        guard let symbols else {
+            return false
+        }
+
+        let connectionID = symbols.mainConnectionID()
+        let property = Unmanaged.passUnretained("SetsCursorInBackground" as CFString).toOpaque()
+        let value = Unmanaged.passUnretained(enabled ? kCFBooleanTrue : kCFBooleanFalse).toOpaque()
+        return symbols.setConnectionProperty(connectionID, connectionID, property, value) == 0
+    }
+}
 
 struct JoystickCaptureHUDState: Equatable {
     enum ActionAccent: Equatable {
@@ -194,9 +243,6 @@ final class GamepadButtonView: NSView {
     private static let joystickIdleReturnDelay: TimeInterval = 0.075
     private static let joystickCardinalDominanceRatio: CGFloat = 1.75
     private static let joystickMinimumDeltaForAxisReset: CGFloat = 0.5
-    private static let joystickParkingInterval: TimeInterval = 0.04
-    private static let joystickParkingSuppressionWindow: TimeInterval = 0.012
-    private static let joystickParkingMatchTolerance: CGFloat = 3
     private static let joystickScrollActivationInterval: TimeInterval = 0.18
     private static let joystickNestedLayerScrollSuppressionDuration: TimeInterval = 0.1
     private static let joystickAxisLockEdgeThreshold: CGFloat = 0.88
@@ -248,9 +294,6 @@ final class GamepadButtonView: NSView {
     private var joystickIdleReturnWorkItem: DispatchWorkItem?
     private var joystickIdleReturnGeneration: UInt64 = 0
     private var lastJoystickMovementTime: TimeInterval = 0
-    private var joystickParkingWorkItem: DispatchWorkItem?
-    private var pendingJoystickParkingPoint: CGPoint?
-    private var pendingJoystickParkingSuppressionDeadline: TimeInterval = 0
     private var isJoystickCursorHidden = false
     private var isJoystickCaptureReleasePending = false
     private var pendingJoystickCaptureReleaseShouldWarp = false
@@ -981,11 +1024,11 @@ final class GamepadButtonView: NSView {
 
         isJoystickCaptured = true
         isVirtualJoystickCaptured = false
+        // Disassociation preserves relative deltas without moving the cursor. Do not warp while captured;
+        // macOS can fold a warp into a later mouse delta and briefly activate the wrong direction.
         CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
         hideJoystickCursorIfNeeded()
         onJoystickCaptureChanged?(true)
-        parkJoystickCursor()
-        scheduleJoystickCursorParking()
         updateAppearance(animated: true)
         debugLog("[Button \(button.rawValue)] joystickCaptureStarted")
     }
@@ -1043,9 +1086,6 @@ final class GamepadButtonView: NSView {
         joystickIdleReturnWorkItem?.cancel()
         joystickIdleReturnWorkItem = nil
         joystickIdleReturnGeneration &+= 1
-        joystickParkingWorkItem?.cancel()
-        joystickParkingWorkItem = nil
-        clearPendingJoystickParkingSuppression()
         isJoystickCaptureReleasePending = false
         pendingJoystickCaptureReleaseShouldWarp = false
         cancelJoystickAxisLockTimer()
@@ -1124,9 +1164,6 @@ final class GamepadButtonView: NSView {
         joystickIdleReturnWorkItem?.cancel()
         joystickIdleReturnWorkItem = nil
         joystickIdleReturnGeneration &+= 1
-        joystickParkingWorkItem?.cancel()
-        joystickParkingWorkItem = nil
-        clearPendingJoystickParkingSuppression()
         cancelJoystickAxisLockTimer()
         clearJoystickHUDFlashes()
     }
@@ -1343,9 +1380,6 @@ final class GamepadButtonView: NSView {
         joystickIdleReturnWorkItem?.cancel()
         joystickIdleReturnWorkItem = nil
         joystickIdleReturnGeneration &+= 1
-        joystickParkingWorkItem?.cancel()
-        joystickParkingWorkItem = nil
-        clearPendingJoystickParkingSuppression()
         cancelJoystickAxisLockTimer()
 
         if let joystickEventTapRunLoopSource {
@@ -1364,7 +1398,17 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        NSCursor.hide()
+        guard BackgroundCursorHiding.setEnabled(true) else {
+            errorLog("[Button \(button.rawValue)] ERROR: joystickBackgroundCursorHidingUnavailable")
+            return
+        }
+
+        let result = CGDisplayHideCursor(CGMainDisplayID())
+        guard result == .success else {
+            _ = BackgroundCursorHiding.setEnabled(false)
+            errorLog("[Button \(button.rawValue)] ERROR: joystickCursorHideFailed code=\(result.rawValue)")
+            return
+        }
         isJoystickCursorHidden = true
     }
 
@@ -1373,8 +1417,16 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        NSCursor.unhide()
+        let result = CGDisplayShowCursor(CGMainDisplayID())
+        guard result == .success else {
+            errorLog("[Button \(button.rawValue)] ERROR: joystickCursorShowFailed code=\(result.rawValue)")
+            return
+        }
         isJoystickCursorHidden = false
+
+        if !BackgroundCursorHiding.setEnabled(false) {
+            errorLog("[Button \(button.rawValue)] ERROR: joystickBackgroundCursorHidingResetFailed")
+        }
     }
 
     private func scheduleJoystickIdleReturnIfNeeded() {
@@ -1705,31 +1757,6 @@ final class GamepadButtonView: NSView {
         warpCursor(to: CGPoint(x: bounds.midX, y: bounds.midY))
     }
 
-    private func parkJoystickCursor() {
-        guard let quartzPoint = quartzPoint(for: CGPoint(x: bounds.midX, y: bounds.midY)) else {
-            return
-        }
-
-        pendingJoystickParkingPoint = quartzPoint
-        pendingJoystickParkingSuppressionDeadline = ProcessInfo.processInfo.systemUptime + Self.joystickParkingSuppressionWindow
-        CGWarpMouseCursorPosition(quartzPoint)
-    }
-
-    private func scheduleJoystickCursorParking() {
-        joystickParkingWorkItem?.cancel()
-
-        let workItem = DispatchWorkItem { [weak self] in
-            guard let self, self.isJoystickCaptured else {
-                return
-            }
-
-            self.parkJoystickCursor()
-            self.scheduleJoystickCursorParking()
-        }
-        joystickParkingWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.joystickParkingInterval, execute: workItem)
-    }
-
     // MARK: - Joystick Event Tap
 
     private static var joystickEventMask: CGEventMask {
@@ -1767,8 +1794,6 @@ final class GamepadButtonView: NSView {
                 CGEvent.tapEnable(tap: joystickEventTap, enable: true)
             }
             hideJoystickCursorIfNeeded()
-            parkJoystickCursor()
-            scheduleJoystickCursorParking()
             return nil
 
         case _ where isJoystickCaptureReleasePending:
@@ -1806,10 +1831,6 @@ final class GamepadButtonView: NSView {
             let deltaX = CGFloat(event.getIntegerValueField(.mouseEventDeltaX))
             let deltaY = CGFloat(-event.getIntegerValueField(.mouseEventDeltaY))
 
-            if shouldSuppressJoystickParkingEvent(event, deltaX: deltaX, deltaY: deltaY) {
-                return nil
-            }
-
             guard deltaX != 0 || deltaY != 0 else {
                 return nil
             }
@@ -1820,43 +1841,6 @@ final class GamepadButtonView: NSView {
         default:
             return Unmanaged.passUnretained(event)
         }
-    }
-
-    private func shouldSuppressJoystickParkingEvent(_ event: CGEvent, deltaX: CGFloat, deltaY: CGFloat) -> Bool {
-        guard let pendingJoystickParkingPoint else {
-            return false
-        }
-
-        let eventTimestamp = TimeInterval(event.timestamp) / 1_000_000_000
-        let suppressionStartedAt = pendingJoystickParkingSuppressionDeadline - Self.joystickParkingSuppressionWindow
-        guard eventTimestamp >= suppressionStartedAt,
-              eventTimestamp <= pendingJoystickParkingSuppressionDeadline else {
-            if eventTimestamp > pendingJoystickParkingSuppressionDeadline {
-                clearPendingJoystickParkingSuppression()
-            }
-            return false
-        }
-
-        let location = event.location
-        let distance = hypot(
-            location.x - pendingJoystickParkingPoint.x,
-            location.y - pendingJoystickParkingPoint.y
-        )
-        guard distance <= Self.joystickParkingMatchTolerance else {
-            return false
-        }
-
-        if deltaX != 0 || deltaY != 0 {
-            noteJoystickMovementActivity()
-        }
-
-        clearPendingJoystickParkingSuppression()
-        return true
-    }
-
-    private func clearPendingJoystickParkingSuppression() {
-        pendingJoystickParkingPoint = nil
-        pendingJoystickParkingSuppressionDeadline = 0
     }
 
     private func updateJoystickAxisLockHoldState() {
