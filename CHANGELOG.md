@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [1.5.1] - 2026-08-14
+
+### Added
+
+- Added a per-joystick release delay from 0 to 1000 milliseconds.
+- Added a profile setting for compatibility input duration from 1 to 1000 milliseconds.
+
+### Changed
+
+- Joystick diagonal changes now keep shared direction keys held instead of releasing and pressing them again.
+- Sequential multi-key inputs now hold each key for the profile's compatibility duration before moving to the next key.
+
+### Fixed
+
+- Joystick capture no longer briefly triggers incorrect directions when movement begins.
+- The pointer now stays hidden while a joystick is captured.
+
 ## [1.5.0] - 2026-07-25
 
 ### Added

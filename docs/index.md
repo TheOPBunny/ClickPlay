@@ -200,7 +200,9 @@ When an input uses Turbo mode, the inspector shows a rate setting from 1 to 30 c
 
 ### Compatibility Mode
 
-Compatibility Mode makes the `keyDown` state last for a minimum of 33 ms. This helps games accept inputs by keeping `keyDown` inside the game's input polling range. It can be useful if your mouse sends very short clicks that cause games to ignore inputs. This usually should not be an issue with standard hardware mice, but it can help with specialty mice, such as the Permobil Bluetooth mouse feature in some wheelchairs.
+Compatibility Mode makes the `keyDown` state last for a configurable minimum of 1 to 1000 milliseconds, with a default of 33 milliseconds. This helps games accept inputs by keeping `keyDown` inside the game's input polling range. It can be useful if your mouse sends very short clicks that cause games to ignore inputs. This usually should not be an issue with standard hardware mice, but it can help with specialty mice, such as the Permobil Bluetooth mouse feature in some wheelchairs.
+
+The duration is always available in **Profile Settings** because sequential multi-key inputs also use it when Compatibility Mode is off. Each key in a sequential input is held for the configured duration, released, and then followed immediately by the next key. Turbo input timing is not affected.
 
 ### Joystick Controls
 
@@ -210,6 +212,8 @@ Joystick-style controls map directional movement to directional key bindings. Ea
 - Click-drag: click and drag anywhere on the joystick surface for directional inputs. This is the default mode.
 
 You can add a joystick from the **Add...** drop-down in the top-right of the editor. Once a joystick is added, click it to edit its properties in the inspector panel.
+
+The joystick inspector includes a **Release Delay** setting from 0 to 1000 milliseconds. Newly needed direction keys are pressed immediately, while direction keys that are no longer needed are released after this delay. Shared keys stay held during diagonal changes, so moving from `W` to `W+A` presses only `A`. Leaving joystick control, hiding the overlay, or reloading a profile still releases all held directions immediately.
 
 ### Nested Joystick Layers
 

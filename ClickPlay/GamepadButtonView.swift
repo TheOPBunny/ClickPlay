@@ -1,4 +1,53 @@
 import Cocoa
+import Darwin
+
+private enum BackgroundCursorHiding {
+    private typealias MainConnectionIDFunction = @convention(c) () -> Int32
+    private typealias SetConnectionPropertyFunction = @convention(c) (
+        Int32,
+        Int32,
+        UnsafeRawPointer?,
+        UnsafeRawPointer?
+    ) -> Int32
+
+    private struct Symbols {
+        let frameworkHandle: UnsafeMutableRawPointer
+        let mainConnectionID: MainConnectionIDFunction
+        let setConnectionProperty: SetConnectionPropertyFunction
+    }
+
+    private static let symbols: Symbols? = {
+        let frameworkPath = "/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight"
+        guard let frameworkHandle = dlopen(frameworkPath, RTLD_LAZY | RTLD_LOCAL),
+              let mainConnectionIDSymbol = dlsym(frameworkHandle, "CGSMainConnectionID"),
+              let setConnectionPropertySymbol = dlsym(frameworkHandle, "CGSSetConnectionProperty") else {
+            return nil
+        }
+
+        return Symbols(
+            frameworkHandle: frameworkHandle,
+            mainConnectionID: unsafeBitCast(
+                mainConnectionIDSymbol,
+                to: MainConnectionIDFunction.self
+            ),
+            setConnectionProperty: unsafeBitCast(
+                setConnectionPropertySymbol,
+                to: SetConnectionPropertyFunction.self
+            )
+        )
+    }()
+
+    static func setEnabled(_ enabled: Bool) -> Bool {
+        guard let symbols else {
+            return false
+        }
+
+        let connectionID = symbols.mainConnectionID()
+        let property = Unmanaged.passUnretained("SetsCursorInBackground" as CFString).toOpaque()
+        let value = Unmanaged.passUnretained(enabled ? kCFBooleanTrue : kCFBooleanFalse).toOpaque()
+        return symbols.setConnectionProperty(connectionID, connectionID, property, value) == 0
+    }
+}
 
 struct JoystickCaptureHUDState: Equatable {
     enum ActionAccent: Equatable {
@@ -130,6 +179,10 @@ final class GamepadButtonView: NSView {
         var pressedStartedAt: TimeInterval?
         var autoReleaseWorkItem: DispatchWorkItem?
         var sequenceRepeatWorkItem: DispatchWorkItem?
+        var sequentialStepWorkItem: DispatchWorkItem?
+        var sequentialPressedBinding: (keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)?
+        var sequentialGeneration: UInt64 = 0
+        var isSequentialRepeating = false
         var turboStepWorkItem: DispatchWorkItem?
         var turboPressedBindings: [(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)] = []
         var turboGeneration: UInt = 0
@@ -154,6 +207,15 @@ final class GamepadButtonView: NSView {
         case upLeft
     }
 
+    private struct JoystickBinding: Hashable {
+        let keyCode: CGKeyCode
+        let modifiersRawValue: UInt
+
+        var modifiers: NSEvent.ModifierFlags {
+            NSEvent.ModifierFlags(rawValue: modifiersRawValue)
+        }
+    }
+
     private enum JoystickVerticalDirection {
         case up
         case down
@@ -176,14 +238,11 @@ final class GamepadButtonView: NSView {
     }
 
     // Timing and movement constants tune joystick feel without changing the key-injection contract.
-    private static let compatibilityTapDuration = TurboConfiguration.tapDuration
+    private static let systemEventHighlightDuration = TurboConfiguration.tapDuration
     private static let joystickDeadzoneRadius: CGFloat = 18
     private static let joystickIdleReturnDelay: TimeInterval = 0.075
     private static let joystickCardinalDominanceRatio: CGFloat = 1.75
     private static let joystickMinimumDeltaForAxisReset: CGFloat = 0.5
-    private static let joystickParkingInterval: TimeInterval = 0.04
-    private static let joystickParkingSuppressionWindow: TimeInterval = 0.012
-    private static let joystickParkingMatchTolerance: CGFloat = 3
     private static let joystickScrollActivationInterval: TimeInterval = 0.18
     private static let joystickNestedLayerScrollSuppressionDuration: TimeInterval = 0.1
     private static let joystickAxisLockEdgeThreshold: CGFloat = 0.88
@@ -194,6 +253,7 @@ final class GamepadButtonView: NSView {
     let button: GamepadButton
     private var config: ButtonConfig
     private var compatibilityModeEnabled: Bool
+    private var compatibilityModeDurationMilliseconds: Int
     private var activeSubProfileID: UUID?
     private let primaryState = PressState()
     private let secondaryState = PressState()
@@ -223,16 +283,17 @@ final class GamepadButtonView: NSView {
     private var activeJoystickLayerIndex = 0
     private var joystickOffset = CGPoint.zero
     private var activeJoystickDirection: JoystickDirection?
-    private var activeJoystickBindings: [(keyCode: CGKeyCode, modifiers: NSEvent.ModifierFlags)] = []
+    private var activeJoystickBindings: [JoystickBinding] = []
+    private var heldJoystickBindings: [JoystickBinding] = []
+    private var pendingJoystickReleaseWorkItems: [JoystickBinding: DispatchWorkItem] = [:]
+    private var pendingJoystickReleaseGenerations: [JoystickBinding: UInt64] = [:]
+    private var joystickReleaseGeneration: UInt64 = 0
     private var lockedJoystickDirection: JoystickDirection?
     private var joystickEventTap: CFMachPort?
     private var joystickEventTapRunLoopSource: CFRunLoopSource?
     private var joystickIdleReturnWorkItem: DispatchWorkItem?
     private var joystickIdleReturnGeneration: UInt64 = 0
     private var lastJoystickMovementTime: TimeInterval = 0
-    private var joystickParkingWorkItem: DispatchWorkItem?
-    private var pendingJoystickParkingPoint: CGPoint?
-    private var pendingJoystickParkingSuppressionDeadline: TimeInterval = 0
     private var isJoystickCursorHidden = false
     private var isJoystickCaptureReleasePending = false
     private var pendingJoystickCaptureReleaseShouldWarp = false
@@ -254,10 +315,19 @@ final class GamepadButtonView: NSView {
     var onJoystickCaptureHUDChanged: ((JoystickCaptureHUDState?) -> Void)?
     var onDwellActionToggled: ((GamepadButton, DwellActionConfig) -> Bool)?
 
-    init(button: GamepadButton, config: ButtonConfig, compatibilityModeEnabled: Bool, activeSubProfileID: UUID?) {
+    init(
+        button: GamepadButton,
+        config: ButtonConfig,
+        compatibilityModeEnabled: Bool,
+        compatibilityModeDurationMilliseconds: Int,
+        activeSubProfileID: UUID?
+    ) {
         self.button = button
         self.config = config
         self.compatibilityModeEnabled = compatibilityModeEnabled
+        self.compatibilityModeDurationMilliseconds = Profile.normalizedCompatibilityModeDurationMilliseconds(
+            compatibilityModeDurationMilliseconds
+        )
         self.activeSubProfileID = activeSubProfileID
         super.init(frame: .zero)
         setup()
@@ -324,11 +394,19 @@ final class GamepadButtonView: NSView {
         updateJoystickLayers(baseColor: NSColor(hex: config.colorHex))
     }
 
-    func updateConfig(_ newConfig: ButtonConfig, compatibilityModeEnabled: Bool, activeSubProfileID: UUID?) {
+    func updateConfig(
+        _ newConfig: ButtonConfig,
+        compatibilityModeEnabled: Bool,
+        compatibilityModeDurationMilliseconds: Int,
+        activeSubProfileID: UUID?
+    ) {
         let wasJoystick = isJoystick
         releaseIfNeeded()
         config = newConfig
         self.compatibilityModeEnabled = compatibilityModeEnabled
+        self.compatibilityModeDurationMilliseconds = Profile.normalizedCompatibilityModeDurationMilliseconds(
+            compatibilityModeDurationMilliseconds
+        )
         self.activeSubProfileID = activeSubProfileID
         refreshVisualPalette()
         lastAppliedVisualState = nil
@@ -833,7 +911,7 @@ final class GamepadButtonView: NSView {
         updateAppearance(animated: true)
         SystemEventInjector.shared.trigger(systemEvent)
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.systemEventHighlightDuration) { [weak self] in
             guard let self else {
                 return
             }
@@ -946,20 +1024,20 @@ final class GamepadButtonView: NSView {
 
         isJoystickCaptured = true
         isVirtualJoystickCaptured = false
+        // Disassociation preserves relative deltas without moving the cursor. Do not warp while captured;
+        // macOS can fold a warp into a later mouse delta and briefly activate the wrong direction.
         CGAssociateMouseAndMouseCursorPosition(boolean_t(0))
         hideJoystickCursorIfNeeded()
-        parkJoystickCursor()
-        scheduleJoystickCursorParking()
         onJoystickCaptureChanged?(true)
         updateAppearance(animated: true)
         debugLog("[Button \(button.rawValue)] joystickCaptureStarted")
     }
 
     private func resetJoystickCaptureStartState() {
+        releaseActiveJoystickBindings()
         activeJoystickLayerIndex = 0
         joystickOffset = .zero
         activeJoystickDirection = nil
-        activeJoystickBindings = []
         lockedJoystickDirection = nil
         requiresJoystickAxisLockNeutralBeforeLock = false
         lastJoystickAxisLockMovementTime = nil
@@ -993,13 +1071,13 @@ final class GamepadButtonView: NSView {
     }
 
     private func resetJoystickRuntimeState() {
+        releaseActiveJoystickBindings()
         isJoystickDragActive = false
         isVirtualJoystickCaptured = false
         virtualJoystickRightClickReturnedToPreviousLayer = false
         activeJoystickLayerIndex = 0
         joystickOffset = .zero
         activeJoystickDirection = nil
-        activeJoystickBindings = []
         lockedJoystickDirection = nil
         requiresJoystickAxisLockNeutralBeforeLock = false
         lastJoystickAxisLockMovementTime = nil
@@ -1008,9 +1086,6 @@ final class GamepadButtonView: NSView {
         joystickIdleReturnWorkItem?.cancel()
         joystickIdleReturnWorkItem = nil
         joystickIdleReturnGeneration &+= 1
-        joystickParkingWorkItem?.cancel()
-        joystickParkingWorkItem = nil
-        clearPendingJoystickParkingSuppression()
         isJoystickCaptureReleasePending = false
         pendingJoystickCaptureReleaseShouldWarp = false
         cancelJoystickAxisLockTimer()
@@ -1089,9 +1164,6 @@ final class GamepadButtonView: NSView {
         joystickIdleReturnWorkItem?.cancel()
         joystickIdleReturnWorkItem = nil
         joystickIdleReturnGeneration &+= 1
-        joystickParkingWorkItem?.cancel()
-        joystickParkingWorkItem = nil
-        clearPendingJoystickParkingSuppression()
         cancelJoystickAxisLockTimer()
         clearJoystickHUDFlashes()
     }
@@ -1308,9 +1380,6 @@ final class GamepadButtonView: NSView {
         joystickIdleReturnWorkItem?.cancel()
         joystickIdleReturnWorkItem = nil
         joystickIdleReturnGeneration &+= 1
-        joystickParkingWorkItem?.cancel()
-        joystickParkingWorkItem = nil
-        clearPendingJoystickParkingSuppression()
         cancelJoystickAxisLockTimer()
 
         if let joystickEventTapRunLoopSource {
@@ -1329,7 +1398,17 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        NSCursor.hide()
+        guard BackgroundCursorHiding.setEnabled(true) else {
+            errorLog("[Button \(button.rawValue)] ERROR: joystickBackgroundCursorHidingUnavailable")
+            return
+        }
+
+        let result = CGDisplayHideCursor(CGMainDisplayID())
+        guard result == .success else {
+            _ = BackgroundCursorHiding.setEnabled(false)
+            errorLog("[Button \(button.rawValue)] ERROR: joystickCursorHideFailed code=\(result.rawValue)")
+            return
+        }
         isJoystickCursorHidden = true
     }
 
@@ -1338,8 +1417,16 @@ final class GamepadButtonView: NSView {
             return
         }
 
-        NSCursor.unhide()
+        let result = CGDisplayShowCursor(CGMainDisplayID())
+        guard result == .success else {
+            errorLog("[Button \(button.rawValue)] ERROR: joystickCursorShowFailed code=\(result.rawValue)")
+            return
+        }
         isJoystickCursorHidden = false
+
+        if !BackgroundCursorHiding.setEnabled(false) {
+            errorLog("[Button \(button.rawValue)] ERROR: joystickBackgroundCursorHidingResetFailed")
+        }
     }
 
     private func scheduleJoystickIdleReturnIfNeeded() {
@@ -1553,25 +1640,96 @@ final class GamepadButtonView: NSView {
     }
 
     private func setActiveJoystickDirection(_ direction: JoystickDirection?) {
-        releaseActiveJoystickBindings()
+        let nextBindings = direction.map { uniqueJoystickBindings(bindings(for: $0)) } ?? []
+        let heldBindingSet = Set(heldJoystickBindings)
+        let nextBindingSet = Set(nextBindings)
+
+        for binding in nextBindings {
+            if pendingJoystickReleaseWorkItems[binding] != nil {
+                cancelPendingJoystickRelease(for: binding)
+            } else if !heldBindingSet.contains(binding) {
+                KeyInjector.shared.pressRaw(binding.keyCode, modifiers: binding.modifiers)
+                heldJoystickBindings.append(binding)
+            }
+        }
+
+        for binding in activeJoystickBindings.reversed() where !nextBindingSet.contains(binding) {
+            scheduleJoystickRelease(for: binding)
+        }
+
+        activeJoystickBindings = nextBindings
         activeJoystickDirection = direction
-
-        guard let direction else {
-            return
-        }
-
-        activeJoystickBindings = uniqueInputBindings(bindings(for: direction))
-        for binding in activeJoystickBindings {
-            KeyInjector.shared.pressRaw(binding.keyCode, modifiers: binding.modifiers)
-        }
-        debugLog("[Button \(button.rawValue)] joystickDirection=\(direction) bindings=\(activeJoystickBindings.map { $0.keyCode })")
+        debugLog("[Button \(button.rawValue)] joystickDirection=\(String(describing: direction)) bindings=\(activeJoystickBindings.map { $0.keyCode })")
     }
 
     private func releaseActiveJoystickBindings() {
-        for binding in activeJoystickBindings.reversed() {
+        pendingJoystickReleaseWorkItems.values.forEach { $0.cancel() }
+        pendingJoystickReleaseWorkItems.removeAll()
+        pendingJoystickReleaseGenerations.removeAll()
+        joystickReleaseGeneration &+= 1
+
+        for binding in heldJoystickBindings.reversed() {
             KeyInjector.shared.releaseRaw(binding.keyCode, modifiers: binding.modifiers)
         }
+        heldJoystickBindings = []
         activeJoystickBindings = []
+    }
+
+    private func scheduleJoystickRelease(for binding: JoystickBinding) {
+        guard heldJoystickBindings.contains(binding), pendingJoystickReleaseWorkItems[binding] == nil else {
+            return
+        }
+
+        let delayMilliseconds = JoystickConfig.normalizedReleaseDelayMilliseconds(config.joystick.releaseDelayMilliseconds)
+        guard delayMilliseconds > 0 else {
+            releaseHeldJoystickBinding(binding)
+            return
+        }
+
+        joystickReleaseGeneration &+= 1
+        let generation = joystickReleaseGeneration
+        pendingJoystickReleaseGenerations[binding] = generation
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self,
+                  self.pendingJoystickReleaseGenerations[binding] == generation,
+                  !self.activeJoystickBindings.contains(binding) else {
+                return
+            }
+
+            self.pendingJoystickReleaseWorkItems[binding] = nil
+            self.pendingJoystickReleaseGenerations[binding] = nil
+            self.releaseHeldJoystickBinding(binding)
+        }
+        pendingJoystickReleaseWorkItems[binding] = workItem
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + (Double(delayMilliseconds) / 1_000.0),
+            execute: workItem
+        )
+    }
+
+    private func cancelPendingJoystickRelease(for binding: JoystickBinding) {
+        pendingJoystickReleaseWorkItems.removeValue(forKey: binding)?.cancel()
+        pendingJoystickReleaseGenerations[binding] = nil
+    }
+
+    private func releaseHeldJoystickBinding(_ binding: JoystickBinding) {
+        guard let heldIndex = heldJoystickBindings.firstIndex(of: binding) else {
+            return
+        }
+
+        heldJoystickBindings.remove(at: heldIndex)
+        KeyInjector.shared.releaseRaw(binding.keyCode, modifiers: binding.modifiers)
+    }
+
+    private func uniqueJoystickBindings(_ bindings: [ButtonKeyBinding]) -> [JoystickBinding] {
+        var seenBindings = Set<JoystickBinding>()
+        return bindings.compactMap { binding in
+            let joystickBinding = JoystickBinding(
+                keyCode: CGKeyCode(binding.keyCode),
+                modifiersRawValue: UInt(binding.keyModifiers)
+            )
+            return seenBindings.insert(joystickBinding).inserted ? joystickBinding : nil
+        }
     }
 
     private func bindings(for direction: JoystickDirection) -> [ButtonKeyBinding] {
@@ -1597,31 +1755,6 @@ final class GamepadButtonView: NSView {
 
     private func warpCursorToJoystickCenter() {
         warpCursor(to: CGPoint(x: bounds.midX, y: bounds.midY))
-    }
-
-    private func parkJoystickCursor() {
-        guard let quartzPoint = quartzPoint(for: CGPoint(x: bounds.midX, y: bounds.midY)) else {
-            return
-        }
-
-        pendingJoystickParkingPoint = quartzPoint
-        pendingJoystickParkingSuppressionDeadline = ProcessInfo.processInfo.systemUptime + Self.joystickParkingSuppressionWindow
-        CGWarpMouseCursorPosition(quartzPoint)
-    }
-
-    private func scheduleJoystickCursorParking() {
-        joystickParkingWorkItem?.cancel()
-
-        let workItem = DispatchWorkItem { [weak self] in
-            guard let self, self.isJoystickCaptured else {
-                return
-            }
-
-            self.parkJoystickCursor()
-            self.scheduleJoystickCursorParking()
-        }
-        joystickParkingWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.joystickParkingInterval, execute: workItem)
     }
 
     // MARK: - Joystick Event Tap
@@ -1661,8 +1794,6 @@ final class GamepadButtonView: NSView {
                 CGEvent.tapEnable(tap: joystickEventTap, enable: true)
             }
             hideJoystickCursorIfNeeded()
-            parkJoystickCursor()
-            scheduleJoystickCursorParking()
             return nil
 
         case _ where isJoystickCaptureReleasePending:
@@ -1700,10 +1831,6 @@ final class GamepadButtonView: NSView {
             let deltaX = CGFloat(event.getIntegerValueField(.mouseEventDeltaX))
             let deltaY = CGFloat(-event.getIntegerValueField(.mouseEventDeltaY))
 
-            if shouldSuppressJoystickParkingEvent(event, deltaX: deltaX, deltaY: deltaY) {
-                return nil
-            }
-
             guard deltaX != 0 || deltaY != 0 else {
                 return nil
             }
@@ -1714,38 +1841,6 @@ final class GamepadButtonView: NSView {
         default:
             return Unmanaged.passUnretained(event)
         }
-    }
-
-    private func shouldSuppressJoystickParkingEvent(_ event: CGEvent, deltaX: CGFloat, deltaY: CGFloat) -> Bool {
-        guard let pendingJoystickParkingPoint else {
-            return false
-        }
-
-        guard ProcessInfo.processInfo.systemUptime <= pendingJoystickParkingSuppressionDeadline else {
-            clearPendingJoystickParkingSuppression()
-            return false
-        }
-
-        let location = event.location
-        let distance = hypot(
-            location.x - pendingJoystickParkingPoint.x,
-            location.y - pendingJoystickParkingPoint.y
-        )
-        guard distance <= Self.joystickParkingMatchTolerance else {
-            return false
-        }
-
-        if deltaX != 0 || deltaY != 0 {
-            noteJoystickMovementActivity()
-        }
-
-        clearPendingJoystickParkingSuppression()
-        return true
-    }
-
-    private func clearPendingJoystickParkingSuppression() {
-        pendingJoystickParkingPoint = nil
-        pendingJoystickParkingSuppressionDeadline = 0
     }
 
     private func updateJoystickAxisLockHoldState() {
@@ -2384,6 +2479,13 @@ final class GamepadButtonView: NSView {
         compatibilityModeEnabled && input.mode == .momentary
     }
 
+    private var compatibilityInputDuration: TimeInterval {
+        let milliseconds = Profile.normalizedCompatibilityModeDurationMilliseconds(
+            compatibilityModeDurationMilliseconds
+        )
+        return Double(milliseconds) / 1_000.0
+    }
+
     private func usesSequentialMultiKey(_ input: ResolvedInput) -> Bool {
         input.bindings.count > 1 && input.multiKeyActivationMode == .sequential
     }
@@ -2401,7 +2503,7 @@ final class GamepadButtonView: NSView {
         }
         state.autoReleaseWorkItem = workItem
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + compatibilityInputDuration, execute: workItem)
     }
 
     private func releaseCurrentPressedRespectingMinimumDuration(source: PressSource, input: ResolvedInput) {
@@ -2411,7 +2513,7 @@ final class GamepadButtonView: NSView {
         }
 
         let elapsed = ProcessInfo.processInfo.systemUptime - (state.pressedStartedAt ?? ProcessInfo.processInfo.systemUptime)
-        let remainingDuration = Self.compatibilityTapDuration - elapsed
+        let remainingDuration = compatibilityInputDuration - elapsed
         guard remainingDuration > 0 else {
             setCurrentPressed(false, source: source, input: input)
             return
@@ -2427,34 +2529,27 @@ final class GamepadButtonView: NSView {
 
     private func playSequentialBindings(source: PressSource, input: ResolvedInput) {
         let state = state(for: source)
-        state.autoReleaseWorkItem?.cancel()
-
+        stopSequentialPlayback(state)
         state.isPressed = true
         updateAppearance(animated: true)
 
         debugLog("[Button \(button.rawValue)] playSequential source=\(source) keyBindings=\(input.bindings.map(\.keyCode)) mode=\(input.mode.rawValue) compatibilityMode=\(compatibilityModeEnabled)")
-        postSequentialBindings(input)
-
-        let workItem = DispatchWorkItem { [weak self, weak state] in
-            state?.isPressed = false
-            self?.updateAppearance(animated: true)
-            state?.autoReleaseWorkItem = nil
-        }
-        state.autoReleaseWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration, execute: workItem)
+        runSequentialStep(source: source, input: input, index: 0, generation: state.sequentialGeneration)
     }
 
     private func toggleSequentialRepeat(source: PressSource, input: ResolvedInput) {
         let state = state(for: source)
-        if state.sequenceRepeatWorkItem != nil {
+        if state.isSequentialRepeating {
             stopSequentialRepeat(source: source)
             return
         }
 
+        stopSequentialPlayback(state)
         state.isPressed = true
+        state.isSequentialRepeating = true
         updateAppearance(animated: true)
         debugLog("[Button \(button.rawValue)] startSequentialRepeat source=\(source) keyBindings=\(input.bindings.map(\.keyCode))")
-        repeatSequentialBindings(source: source, input: input)
+        runSequentialStep(source: source, input: input, index: 0, generation: state.sequentialGeneration)
     }
 
     private func toggleTurboRepeat(source: PressSource, input: ResolvedInput) {
@@ -2471,30 +2566,74 @@ final class GamepadButtonView: NSView {
         beginTurboCycle(source: source, input: input)
     }
 
-    private func repeatSequentialBindings(source: PressSource, input: ResolvedInput) {
-        postSequentialBindings(input)
+    private func runSequentialStep(
+        source: PressSource,
+        input: ResolvedInput,
+        index: Int,
+        generation: UInt64
+    ) {
+        let state = state(for: source)
+        guard state.isPressed,
+              state.sequentialGeneration == generation,
+              input.bindings.indices.contains(index) else {
+            return
+        }
 
-        var workItem: DispatchWorkItem?
-        workItem = DispatchWorkItem { [weak self] in
-            guard workItem?.isCancelled == false else {
+        let binding = input.bindings[index]
+        let pressedBinding = (
+            keyCode: CGKeyCode(binding.keyCode),
+            modifiers: NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
+        )
+        state.sequentialPressedBinding = pressedBinding
+        KeyInjector.shared.pressRaw(pressedBinding.keyCode, modifiers: pressedBinding.modifiers)
+
+        let workItem = DispatchWorkItem { [weak self, weak state] in
+            guard let self, let state,
+                  state.isPressed,
+                  state.sequentialGeneration == generation else {
                 return
             }
 
-            self?.repeatSequentialBindings(source: source, input: input)
+            self.releaseSequentialBinding(state)
+            state.sequentialStepWorkItem = nil
+
+            let nextIndex = index + 1
+            if input.bindings.indices.contains(nextIndex) {
+                self.runSequentialStep(source: source, input: input, index: nextIndex, generation: generation)
+            } else if state.isSequentialRepeating {
+                self.runSequentialStep(source: source, input: input, index: 0, generation: generation)
+            } else {
+                state.isPressed = false
+                self.updateAppearance(animated: true)
+            }
         }
-        if let workItem {
-            state(for: source).sequenceRepeatWorkItem = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.compatibilityTapDuration, execute: workItem)
-        }
+        state.sequentialStepWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + compatibilityInputDuration, execute: workItem)
     }
 
     private func stopSequentialRepeat(source: PressSource) {
         let state = state(for: source)
-        state.sequenceRepeatWorkItem?.cancel()
-        state.sequenceRepeatWorkItem = nil
-        state.isPressed = false
+        stopSequentialPlayback(state)
         updateAppearance(animated: true)
         debugLog("[Button \(button.rawValue)] stopSequentialRepeat source=\(source)")
+    }
+
+    private func stopSequentialPlayback(_ state: PressState) {
+        state.sequentialStepWorkItem?.cancel()
+        state.sequentialStepWorkItem = nil
+        state.sequentialGeneration &+= 1
+        state.isSequentialRepeating = false
+        releaseSequentialBinding(state)
+        state.isPressed = false
+    }
+
+    private func releaseSequentialBinding(_ state: PressState) {
+        guard let binding = state.sequentialPressedBinding else {
+            return
+        }
+
+        KeyInjector.shared.releaseRaw(binding.keyCode, modifiers: binding.modifiers)
+        state.sequentialPressedBinding = nil
     }
 
     private func beginTurboCycle(source: PressSource, input: ResolvedInput) {
@@ -2617,15 +2756,6 @@ final class GamepadButtonView: NSView {
         debugLog("[Button \(button.rawValue)] stopTurboRepeat source=\(source)")
     }
 
-    private func postSequentialBindings(_ input: ResolvedInput) {
-        for binding in input.bindings {
-            let keyCode = CGKeyCode(binding.keyCode)
-            let modifiers = NSEvent.ModifierFlags(rawValue: UInt(binding.keyModifiers))
-            KeyInjector.shared.pressRaw(keyCode, modifiers: modifiers)
-            KeyInjector.shared.releaseRaw(keyCode, modifiers: modifiers)
-        }
-    }
-
     private func setPressed(_ pressed: Bool, source: PressSource, input: ResolvedInput) {
         let state = state(for: source)
         if pressed {
@@ -2691,6 +2821,7 @@ final class GamepadButtonView: NSView {
         state.autoReleaseWorkItem = nil
         state.sequenceRepeatWorkItem?.cancel()
         state.sequenceRepeatWorkItem = nil
+        stopSequentialPlayback(state)
         state.turboStepWorkItem?.cancel()
         state.turboStepWorkItem = nil
         state.turboGeneration &+= 1
